@@ -81,7 +81,7 @@ export function ProductCard({ product, imagePriority }: Props) {
             <button
               type="button"
               aria-label="Diminuir quantidade"
-              disabled={!canAdd || qty <= 1}
+              disabled={qty <= 1}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -92,7 +92,7 @@ export function ProductCard({ product, imagePriority }: Props) {
               -
             </button>
             <span className="pointer-events-none flex items-center justify-center tabular-nums text-stone-50">
-              {canAdd ? qty : 0}
+              {qty}
             </span>
             <button
               type="button"
