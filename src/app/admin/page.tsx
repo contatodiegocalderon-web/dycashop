@@ -15,6 +15,12 @@ const cards = [
     accent: "from-violet-600 to-indigo-700",
   },
   {
+    href: "/admin/categorias",
+    title: "Categorias",
+    desc: "Custos, tabela de atacado e vídeo por categoria.",
+    accent: "from-fuchsia-600 to-purple-700",
+  },
+  {
     href: "/admin/clientes",
     title: "Clientes",
     desc: "Lista de leads e compradores, exportação CSV e follow-up.",

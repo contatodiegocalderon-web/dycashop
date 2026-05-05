@@ -28,6 +28,7 @@ export function categorySlugFromLabel(label: string): string {
 }
 
 const PREVIEW_LIMIT = 5;
+const PAGE_SIZE = 1000;
 
 /**
  * Categorias = valor exacto de `products.category` (nome da pasta no Drive).
@@ -36,12 +37,22 @@ const PREVIEW_LIMIT = 5;
 export async function getCatalogCategories(): Promise<CategorySummary[]> {
   const supabase = supabaseAnon();
 
-  const { data: allRows, error: countErr } = await supabase
-    .from("products")
-    .select("category");
+  const allRows: { category: string | null }[] = [];
+  let offset = 0;
+  while (true) {
+    const { data: page, error: countErr } = await supabase
+      .from("products")
+      .select("category")
+      .range(offset, offset + PAGE_SIZE - 1);
 
-  if (countErr) {
-    throw new Error(countErr.message);
+    if (countErr) {
+      throw new Error(countErr.message);
+    }
+
+    const chunk = (page ?? []) as { category: string | null }[];
+    allRows.push(...chunk);
+    if (chunk.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
   }
 
   const countMap = new Map<string, number>();

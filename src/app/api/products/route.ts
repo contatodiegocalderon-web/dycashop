@@ -8,6 +8,8 @@ function supabaseAnon() {
   return createClient(url, key);
 }
 
+const PAGE_SIZE = 1000;
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -20,42 +22,54 @@ export async function GET(request: NextRequest) {
     /** `exact`: filtro pela categoria exacta (página da pasta); omitir = busca parcial (filtro livre). */
     const categoryMatch = searchParams.get("categoryMatch");
 
-    let q = supabaseAnon()
-      .from("products")
-      .select("*")
-      .order("brand", { ascending: true })
-      .order("color", { ascending: true });
+    const supabase = supabaseAnon();
+    const rows: Record<string, unknown>[] = [];
+    let offset = 0;
 
-    if (size && ["M", "G", "GG"].includes(size)) {
-      q = q.eq("size", size);
-    }
-    if (brand?.trim()) {
-      const b = brand.trim();
-      q = brandExact ? q.eq("brand", b) : q.ilike("brand", `%${b}%`);
-    }
-    if (color?.trim()) {
-      const c = color.trim();
-      q = colorExact ? q.eq("color", c) : q.ilike("color", `%${c}%`);
-    }
-    if (category?.trim()) {
-      const c = category.trim();
-      if (categoryMatch === "exact") {
-        if (c === "Sem categoria") {
-          q = q.is("category", null);
-        } else {
-          q = q.eq("category", c);
-        }
-      } else {
-        q = q.ilike("category", `%${c}%`);
+    while (true) {
+      let q = supabase
+        .from("products")
+        .select("*")
+        .order("brand", { ascending: true })
+        .order("color", { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (size && ["M", "G", "GG"].includes(size)) {
+        q = q.eq("size", size);
       }
+      if (brand?.trim()) {
+        const b = brand.trim();
+        q = brandExact ? q.eq("brand", b) : q.ilike("brand", `%${b}%`);
+      }
+      if (color?.trim()) {
+        const c = color.trim();
+        q = colorExact ? q.eq("color", c) : q.ilike("color", `%${c}%`);
+      }
+      if (category?.trim()) {
+        const c = category.trim();
+        if (categoryMatch === "exact") {
+          if (c === "Sem categoria") {
+            q = q.is("category", null);
+          } else {
+            q = q.eq("category", c);
+          }
+        } else {
+          q = q.ilike("category", `%${c}%`);
+        }
+      }
+
+      const { data, error } = await q;
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      const page = (data ?? []) as Record<string, unknown>[];
+      rows.push(...page);
+      if (page.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
     }
 
-    const { data, error } = await q;
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    const products = (data ?? []).map((p) => {
+    const products = rows.map((p) => {
       const row = p as {
         drive_file_id: string;
         image_url?: string | null;

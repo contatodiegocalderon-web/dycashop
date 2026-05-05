@@ -63,7 +63,7 @@ export function CategoryGrid({ categories }: Props) {
                   {cat.label}
                 </h2>
                 <p className="mt-0.5 text-left text-[10px] text-stone-500 sm:text-[11px]">
-                  {cat.count} {cat.count === 1 ? "peça" : "peças"}
+                  +{cat.count} modelos diferentes
                 </p>
               </div>
             </Link>

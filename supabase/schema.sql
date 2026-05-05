@@ -80,6 +80,14 @@ create table if not exists public.category_cost_defaults (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.category_showcase_settings (
+  category_label text primary key,
+  video_url text,
+  video_poster_url text,
+  wholesale_tiers jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 insert into public.category_cost_defaults (category_label, cost_per_piece)
   values ('Sem categoria', 0)
   on conflict (category_label) do nothing;
@@ -111,9 +119,23 @@ alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 
 alter table public.category_cost_defaults enable row level security;
+alter table public.category_showcase_settings enable row level security;
 
 create policy "category_cost_defaults_deny_all_anon"
   on public.category_cost_defaults for all
+  using (false)
+  with check (false);
+
+drop policy if exists "category_showcase_settings_select_public"
+  on public.category_showcase_settings;
+create policy "category_showcase_settings_select_public"
+  on public.category_showcase_settings for select
+  using (true);
+
+drop policy if exists "category_showcase_settings_deny_all_anon"
+  on public.category_showcase_settings;
+create policy "category_showcase_settings_deny_all_anon"
+  on public.category_showcase_settings for all
   using (false)
   with check (false);
 

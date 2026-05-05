@@ -23,12 +23,6 @@ type MetricsPayload = {
   antigoCount: number;
 };
 
-type CostRow = {
-  category_label: string;
-  cost_per_piece: number;
-  updated_at?: string | null;
-};
-
 function money(n: number) {
   return n.toLocaleString("pt-BR", {
     style: "currency",
@@ -37,36 +31,18 @@ function money(n: number) {
 }
 
 export default function AdminMetricasPage() {
-  const { adminFetch, isOwner } = useAdminAuth();
+  const { adminFetch } = useAdminAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
-  const [costRows, setCostRows] = useState<CostRow[]>([]);
-  const [costEdits, setCostEdits] = useState<Record<string, string>>({});
-  const [savingCosts, setSavingCosts] = useState(false);
-  const loadAll = useCallback(async () => {
+  const loadMetrics = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [mRes, cRes] = await Promise.all([
-        adminFetch("/api/admin/metrics"),
-        adminFetch("/api/admin/category-costs"),
-      ]);
-
+      const mRes = await adminFetch("/api/admin/metrics");
       const mJson = await mRes.json();
-      const cJson = await cRes.json();
-
       if (!mRes.ok) throw new Error(mJson.error ?? "Falha nas métricas");
-      if (!cRes.ok) throw new Error(cJson.error ?? "Falha nos custos");
-
       setMetrics(mJson.metrics as MetricsPayload);
-      const rows = (cJson.rows ?? []) as CostRow[];
-      setCostRows(rows);
-      const edits: Record<string, string> = {};
-      for (const r of rows) {
-        edits[r.category_label] = String(r.cost_per_piece);
-      }
-      setCostEdits(edits);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
       setMetrics(null);
@@ -76,30 +52,8 @@ export default function AdminMetricasPage() {
   }, [adminFetch]);
 
   useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
-
-  async function saveCosts() {
-    setSavingCosts(true);
-    setError(null);
-    try {
-      const entries = Object.entries(costEdits).map(([category_label, v]) => ({
-        category_label,
-        cost_per_piece: Number(String(v).replace(",", ".")),
-      }));
-      const res = await adminFetch("/api/admin/category-costs", {
-        method: "PUT",
-        body: JSON.stringify({ entries }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Falha ao salvar");
-      await loadAll();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setSavingCosts(false);
-    }
-  }
+    void loadMetrics();
+  }, [loadMetrics]);
 
   const sortedCategories = Object.entries(metrics?.piecesByCategory ?? {}).sort(
     (a, b) => b[1] - a[1]
@@ -134,8 +88,12 @@ export default function AdminMetricasPage() {
             Métricas de vendas
           </h1>
           <p className="mt-1 max-w-xl text-sm text-stone-600">
-            Lucro = valor da venda menos (peças × custo da categoria). Categorias vêm do catálogo
-            importado — só indique o custo por peça.
+            Lucro = valor da venda menos (peças × custo da categoria). Configure custos e
+            conteúdo por categoria na aba{" "}
+            <Link href="/admin/categorias" className="font-medium text-emerald-800 underline">
+              Categorias
+            </Link>
+            .
           </p>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <Link href="/admin/pedidos" className="font-medium text-emerald-800 underline">
@@ -148,7 +106,7 @@ export default function AdminMetricasPage() {
         </div>
         <button
           type="button"
-          onClick={loadAll}
+          onClick={loadMetrics}
           disabled={loading}
           className="rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-stone-900/15 hover:bg-stone-800 disabled:opacity-50"
         >
@@ -281,61 +239,6 @@ export default function AdminMetricasPage() {
         </div>
       )}
 
-      <div className="rounded-3xl border border-stone-200 bg-gradient-to-b from-white to-stone-50 p-6 shadow-lg shadow-stone-900/5">
-        <h2 className="text-xl font-bold text-stone-900">Custo por categoria</h2>
-        <p className="mt-1 text-sm text-stone-600">
-          Lista gerada automaticamente a partir das categorias dos produtos importados. Preencha o
-          custo por peça e guarde.
-        </p>
-        {costRows.length === 0 ? (
-          <p className="mt-4 text-sm text-amber-800">
-            Ainda não há produtos no catálogo — sincronize o Drive em{" "}
-            <Link href="/admin/configuracao" className="font-medium underline">
-              Catálogo &amp; Drive
-            </Link>
-            .
-          </p>
-        ) : (
-          <>
-            <ul className="mt-6 grid gap-3 sm:grid-cols-2">
-              {costRows.map((row) => (
-                <li
-                  key={row.category_label}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-stone-100 bg-white px-4 py-3 shadow-sm"
-                >
-                  <span className="font-medium text-stone-800">{row.category_label}</span>
-                  <label className="flex items-center gap-2 text-sm text-stone-600">
-                    R$ / peça
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      disabled={!isOwner}
-                      value={costEdits[row.category_label] ?? ""}
-                      onChange={(e) =>
-                        setCostEdits((prev) => ({
-                          ...prev,
-                          [row.category_label]: e.target.value,
-                        }))
-                      }
-                      className="w-28 rounded-xl border border-stone-200 px-3 py-2 text-stone-900 disabled:bg-stone-100"
-                    />
-                  </label>
-                </li>
-              ))}
-            </ul>
-            {isOwner && (
-              <button
-                type="button"
-                onClick={saveCosts}
-                disabled={savingCosts}
-                className="mt-6 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {savingCosts ? "A guardar…" : "Guardar custos"}
-              </button>
-            )}
-          </>
-        )}
-      </div>
     </div>
   );
 }
