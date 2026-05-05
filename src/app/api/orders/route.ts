@@ -1,0 +1,137 @@
+import { randomBytes } from "crypto";
+import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { productPublicImageUrl } from "@/lib/product-image-url";
+import type { Product } from "@/types";
+
+function snapshotImageUrl(p: Product): string {
+  return productPublicImageUrl(p);
+}
+
+type BodyItem = { productId: string; quantity: number };
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = (await request.json()) as {
+      items?: BodyItem[];
+      customerNote?: string;
+    };
+    const items = body.items;
+    if (!items?.length) {
+      return NextResponse.json({ error: "items obrigatório" }, { status: 400 });
+    }
+
+    const admin = createAdminClient();
+
+    const productIds = Array.from(new Set(items.map((i) => i.productId)));
+    const { data: products, error: pErr } = await admin
+      .from("products")
+      .select("*")
+      .in("id", productIds);
+
+    if (pErr || !products?.length) {
+      return NextResponse.json(
+        { error: pErr?.message ?? "Produtos não encontrados" },
+        { status: 400 }
+      );
+    }
+
+    const byId = new Map(products.map((p: Product) => [p.id, p]));
+    const qtyByProduct = new Map<string, number>();
+    for (const it of items) {
+      if (!it.productId || !Number.isFinite(it.quantity) || it.quantity < 1) {
+        return NextResponse.json({ error: "Item inválido" }, { status: 400 });
+      }
+      qtyByProduct.set(
+        it.productId,
+        (qtyByProduct.get(it.productId) ?? 0) + it.quantity
+      );
+    }
+
+    const qtyKeys = Array.from(qtyByProduct.keys());
+    for (const pid of qtyKeys) {
+      const qty = qtyByProduct.get(pid)!;
+      const p = byId.get(pid);
+      if (!p) {
+        return NextResponse.json(
+          { error: `Produto ${pid} inexistente` },
+          { status: 400 }
+        );
+      }
+      if (p.status !== "ATIVO" || p.stock < qty) {
+        return NextResponse.json(
+          {
+            error: `Estoque insuficiente para ${p.brand} ${p.color} (${p.size}). Disponível: ${p.stock}`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const publicToken = randomBytes(18).toString("hex");
+
+    const { data: order, error: oErr } = await admin
+      .from("orders")
+      .insert({
+        status: "PENDENTE_PAGAMENTO",
+        customer_note: body.customerNote ?? null,
+        public_token: publicToken,
+      })
+      .select("id")
+      .single();
+
+    if (oErr || !order) {
+      const msg = oErr?.message ?? "Falha ao criar pedido";
+      const hint =
+        /public_token|column/i.test(msg)
+          ? "Execute o SQL em supabase/migration_order_public_token.sql no painel do Supabase."
+          : undefined;
+      return NextResponse.json(
+        { error: msg, ...(hint ? { hint } : {}) },
+        { status: 500 }
+      );
+    }
+
+    const orderItems = items.map((it) => {
+      const p = byId.get(it.productId)!;
+      const cat =
+        p.category != null && String(p.category).trim() !== ""
+          ? String(p.category).trim()
+          : "Sem categoria";
+      return {
+        order_id: order.id,
+        product_id: p.id,
+        quantity: it.quantity,
+        snapshot_image_url: snapshotImageUrl(p),
+        snapshot_original_name: p.original_file_name,
+        snapshot_brand: p.brand,
+        snapshot_color: p.color,
+        snapshot_size: p.size,
+        snapshot_drive_file_id: p.drive_file_id,
+        snapshot_category: cat,
+      };
+    });
+
+    const { error: iErr } = await admin.from("order_items").insert(orderItems);
+    if (iErr) {
+      await admin.from("orders").delete().eq("id", order.id);
+      return NextResponse.json({ error: iErr.message }, { status: 500 });
+    }
+
+    const siteBase =
+      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "";
+    const receiptUrl = siteBase
+      ? `${siteBase}/recibo/${publicToken}`
+      : null;
+
+    return NextResponse.json({
+      orderId: order.id,
+      publicToken,
+      /** Absoluto se NEXT_PUBLIC_SITE_URL estiver definido; senão o cliente monta com window.location.origin */
+      receiptUrl,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
