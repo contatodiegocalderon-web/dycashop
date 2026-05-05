@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { CartProvider } from "@/providers/cart-provider";
-import { SiteHeader } from "@/components/site-header";
+import { ShopChrome } from "@/components/shop-chrome";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -43,11 +43,10 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className="bg-[#0f0f11]">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-screen min-h-[100dvh] bg-[#0f0f11] font-sans antialiased text-stone-100`}
+        className={`${geistSans.variable} ${geistMono.variable} flex min-h-screen min-h-[100dvh] flex-col bg-[#0f0f11] font-sans antialiased text-stone-100`}
       >
         <CartProvider>
-          <SiteHeader />
-          <main className="min-page">{children}</main>
+          <ShopChrome>{children}</ShopChrome>
         </CartProvider>
       </body>
     </html>

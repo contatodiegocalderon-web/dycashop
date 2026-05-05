@@ -4,8 +4,8 @@ import type { CategorySummary } from "@/lib/catalog-categories";
 type Props = { categories: CategorySummary[] };
 
 /**
- * Grelha compacta: o cliente vê o máximo de categorias possível no primeiro ecrã
- * (sem banners altos). Imagem leve (largura reduzida) para carregar rápido no 4G.
+ * Tiles estilo banner: fundo liso + camadas (gradiente, vinheta, textura leve).
+ * Imagem = capa do admin ou fallback da primeira pré-visualização do catálogo.
  */
 export function CategoryGrid({ categories }: Props) {
   if (categories.length === 0) {
@@ -24,47 +24,69 @@ export function CategoryGrid({ categories }: Props) {
   }
 
   return (
-    <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 sm:gap-2.5">
+    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 sm:gap-4">
       {categories.map((cat, idx) => {
-        const heroSrc = cat.previewImageUrls[0] ?? null;
+        const heroSrc =
+          cat.coverImageUrl?.trim() || cat.previewImageUrls[0] || null;
         const eager = idx < 8;
 
         return (
           <li key={`${cat.slug}-${idx}-${cat.label}`} className="min-w-0">
             <Link
               href={`/categoria/${encodeURIComponent(cat.slug)}`}
-              className="group flex h-full min-h-[7.5rem] flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-zinc-900/50 ring-1 ring-white/[0.03] transition hover:border-white/[0.12] hover:ring-white/[0.07] active:scale-[0.99] motion-reduce:transition-none"
+              className="group relative block overflow-hidden rounded-2xl border border-white/[0.07] bg-[#121214] shadow-lg shadow-black/30 ring-1 ring-white/[0.05] transition hover:border-white/[0.14] hover:ring-white/[0.09] active:scale-[0.99] motion-reduce:transition-none"
               prefetch
             >
-              <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-zinc-950 sm:aspect-[5/4]">
+              {/* Fundo liso + textura em malha */}
+              <div className="pointer-events-none absolute inset-0 bg-[#121214]" aria-hidden />
+              <div
+                className="pointer-events-none absolute inset-0 opacity-[0.07] bg-[linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:14px_14px]"
+                aria-hidden
+              />
+
+              <div className="relative aspect-[16/11] w-full overflow-hidden sm:aspect-[5/3]">
                 {heroSrc ? (
                   <img
                     src={heroSrc}
                     alt=""
-                    className="h-full w-full object-cover object-center transition duration-500 group-hover:scale-105 motion-reduce:group-hover:scale-100"
+                    className="absolute inset-0 h-full w-full object-cover object-center transition duration-700 group-hover:scale-[1.03] motion-reduce:group-hover:scale-100"
                     loading={eager ? "eager" : "lazy"}
                     decoding="async"
                     fetchPriority={eager ? "high" : "low"}
                     sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                   />
-                ) : (
-                  <div
-                    className="h-full w-full bg-gradient-to-br from-zinc-800 to-zinc-950"
-                    aria-hidden
-                  />
-                )}
+                ) : null}
+
+                {/* Camadas estilo vitrine */}
                 <div
-                  className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent"
+                  className="absolute inset-0 bg-gradient-to-br from-zinc-900/55 via-transparent to-zinc-950/65"
                   aria-hidden
                 />
-              </div>
-              <div className="flex min-h-0 flex-1 flex-col justify-center px-2.5 py-2">
-                <h2 className="line-clamp-2 text-left text-[13px] font-medium leading-snug text-stone-100 sm:text-sm">
-                  {cat.label}
-                </h2>
-                <p className="mt-0.5 text-left text-[10px] text-stone-500 sm:text-[11px]">
-                  +{cat.count} modelos diferentes
-                </p>
+                <div
+                  className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-zinc-800/25"
+                  aria-hidden
+                />
+                <div
+                  className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(255,255,255,0.14),transparent_52%)] opacity-90 mix-blend-soft-light"
+                  aria-hidden
+                />
+                <div
+                  className="absolute inset-0 opacity-[0.18] mix-blend-overlay bg-[repeating-linear-gradient(-45deg,transparent,transparent_3px,rgba(255,255,255,0.06)_3px,rgba(255,255,255,0.06)_6px)]"
+                  aria-hidden
+                />
+                <div
+                  className="absolute inset-0 ring-1 ring-inset ring-white/[0.07]"
+                  aria-hidden
+                />
+
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/55 to-transparent px-3 pb-3 pt-10 sm:px-3.5 sm:pb-3.5">
+                  <h2 className="line-clamp-2 text-left text-[13px] font-semibold leading-snug tracking-wide text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.85)] sm:text-sm">
+                    {cat.label}
+                  </h2>
+                  <p className="mt-1 text-left text-[10px] font-medium uppercase tracking-[0.18em] text-stone-400/95 sm:text-[11px]">
+                    +{cat.count} modelos
+                  </p>
+                </div>
               </div>
             </Link>
           </li>

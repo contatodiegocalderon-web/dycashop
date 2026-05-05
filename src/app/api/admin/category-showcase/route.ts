@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAdmin, assertOwnerAccess } from "@/lib/admin-auth";
-import { DEFAULT_SHOWCASE, type WholesaleTier } from "@/lib/category-showcase";
+import {
+  DEFAULT_SHOWCASE,
+  sanitizeWholesaleTiers,
+  type WholesaleTier,
+} from "@/lib/category-showcase";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 
 export const runtime = "nodejs";
 const PAGE_SIZE = 1000;
@@ -11,26 +16,9 @@ type ShowcaseRow = {
   video_url: string | null;
   video_poster_url: string | null;
   wholesale_tiers: WholesaleTier[];
+  catalog_cover_image_url: string | null;
+  display_order: number | null;
 };
-
-function normalizeTier(raw: unknown): WholesaleTier | null {
-  const t = raw as { minQty?: unknown; maxQty?: unknown; price?: unknown };
-  const minQty = Number(t.minQty);
-  const maxQty = t.maxQty == null ? null : Number(t.maxQty);
-  const price = Number(t.price);
-  if (!Number.isFinite(minQty) || minQty < 1) return null;
-  if (maxQty != null && (!Number.isFinite(maxQty) || maxQty < minQty)) return null;
-  if (!Number.isFinite(price) || price < 0) return null;
-  return { minQty, maxQty, price };
-}
-
-function sanitizeTiers(raw: unknown): WholesaleTier[] {
-  if (!Array.isArray(raw)) return DEFAULT_SHOWCASE.wholesaleTiers;
-  const tiers = raw
-    .map((t) => normalizeTier(t))
-    .filter((t): t is WholesaleTier => t != null);
-  return tiers.length > 0 ? tiers : DEFAULT_SHOWCASE.wholesaleTiers;
-}
 
 async function loadCatalogCategoryLabels(admin: ReturnType<typeof createAdminClient>) {
   const labels = new Set<string>();
@@ -56,6 +44,25 @@ async function loadCatalogCategoryLabels(admin: ReturnType<typeof createAdminCli
   return Array.from(labels).sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
+async function fetchShowcaseRows(admin: ReturnType<typeof createAdminClient>) {
+  const full = await admin.from("category_showcase_settings").select(
+    "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, display_order"
+  );
+  if (!full.error) return full.data ?? [];
+  if (!isMissingSchemaColumnError(full.error)) {
+    throw new Error(full.error.message);
+  }
+  const base = await admin
+    .from("category_showcase_settings")
+    .select("category_label, video_url, video_poster_url, wholesale_tiers");
+  if (base.error) throw new Error(base.error.message);
+  return (base.data ?? []).map((row) => ({
+    ...row,
+    catalog_cover_image_url: null,
+    display_order: null,
+  }));
+}
+
 export async function GET(request: NextRequest) {
   try {
     await assertAdmin(request);
@@ -70,21 +77,27 @@ export async function GET(request: NextRequest) {
   try {
     const admin = createAdminClient();
     const labels = await loadCatalogCategoryLabels(admin);
-    const { data, error } = await admin
-      .from("category_showcase_settings")
-      .select("category_label, video_url, video_poster_url, wholesale_tiers");
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    const data = await fetchShowcaseRows(admin);
     const map = new Map<string, ShowcaseRow>();
     for (const row of data ?? []) {
       const label = String(row.category_label ?? "").trim();
       if (!label) continue;
+      const r = row as {
+        category_label?: string;
+        video_url?: string | null;
+        video_poster_url?: string | null;
+        wholesale_tiers?: unknown;
+        catalog_cover_image_url?: string | null;
+        display_order?: number | null;
+      };
       map.set(label, {
         category_label: label,
-        video_url: row.video_url?.trim() || null,
-        video_poster_url: row.video_poster_url?.trim() || null,
-        wholesale_tiers: sanitizeTiers(row.wholesale_tiers),
+        video_url: r.video_url?.trim() || null,
+        video_poster_url: r.video_poster_url?.trim() || null,
+        wholesale_tiers: sanitizeWholesaleTiers(r.wholesale_tiers),
+        catalog_cover_image_url: r.catalog_cover_image_url?.trim() || null,
+        display_order:
+          typeof r.display_order === "number" ? r.display_order : null,
       });
     }
     const rows = labels.map((category_label) => {
@@ -95,6 +108,8 @@ export async function GET(request: NextRequest) {
           video_url: null,
           video_poster_url: null,
           wholesale_tiers: DEFAULT_SHOWCASE.wholesaleTiers,
+          catalog_cover_image_url: null,
+          display_order: null,
         }
       );
     });
@@ -125,6 +140,8 @@ export async function PUT(request: NextRequest) {
         video_url?: string | null;
         video_poster_url?: string | null;
         wholesale_tiers?: unknown;
+        catalog_cover_image_url?: string | null;
+        display_order?: number | null;
       }[];
     };
     if (!Array.isArray(body.entries) || body.entries.length === 0) {
@@ -140,7 +157,12 @@ export async function PUT(request: NextRequest) {
         category_label,
         video_url: raw.video_url?.trim() || null,
         video_poster_url: raw.video_poster_url?.trim() || null,
-        wholesale_tiers: sanitizeTiers(raw.wholesale_tiers),
+        wholesale_tiers: sanitizeWholesaleTiers(raw.wholesale_tiers),
+        catalog_cover_image_url: raw.catalog_cover_image_url?.trim() || null,
+        display_order:
+          raw.display_order != null && Number.isFinite(Number(raw.display_order))
+            ? Number(raw.display_order)
+            : null,
       };
     });
     const admin = createAdminClient();

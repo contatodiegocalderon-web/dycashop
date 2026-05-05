@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 
 export type WholesaleTier = {
   minQty: number;
@@ -10,6 +11,8 @@ export type CategoryShowcaseConfig = {
   videoUrl: string | null;
   videoPoster?: string;
   wholesaleTiers: WholesaleTier[];
+  /** Capa customizada (banner) — admin / Storage. */
+  catalogCoverImageUrl?: string | null;
 };
 
 export const DEFAULT_SHOWCASE: CategoryShowcaseConfig = {
@@ -27,6 +30,14 @@ function supabaseAnon() {
   return createClient(url, key);
 }
 
+export function sanitizeWholesaleTiers(raw: unknown): WholesaleTier[] {
+  const tiersRaw = Array.isArray(raw) ? raw : [];
+  const tiers = tiersRaw
+    .map((t) => normalizeTier(t))
+    .filter((t): t is WholesaleTier => t != null);
+  return tiers.length > 0 ? tiers : DEFAULT_SHOWCASE.wholesaleTiers;
+}
+
 function normalizeTier(raw: unknown): WholesaleTier | null {
   const t = raw as { minQty?: unknown; maxQty?: unknown; price?: unknown };
   const minQty = Number(t.minQty);
@@ -42,6 +53,7 @@ function normalizeShowcaseRow(row: {
   video_url?: string | null;
   video_poster_url?: string | null;
   wholesale_tiers?: unknown;
+  catalog_cover_image_url?: string | null;
 }): CategoryShowcaseConfig {
   const tiersRaw = Array.isArray(row.wholesale_tiers) ? row.wholesale_tiers : [];
   const tiers = tiersRaw
@@ -51,6 +63,7 @@ function normalizeShowcaseRow(row: {
     videoUrl: row.video_url?.trim() || null,
     videoPoster: row.video_poster_url?.trim() || undefined,
     wholesaleTiers: tiers.length > 0 ? tiers : DEFAULT_SHOWCASE.wholesaleTiers,
+    catalogCoverImageUrl: row.catalog_cover_image_url?.trim() || null,
   };
 }
 
@@ -60,11 +73,24 @@ export async function getCategoryShowcaseConfig(
   const label = categoryLabel.trim();
   if (!label) return DEFAULT_SHOWCASE;
   const supabase = supabaseAnon();
-  const { data, error } = await supabase
+
+  let q = await supabase
     .from("category_showcase_settings")
-    .select("video_url, video_poster_url, wholesale_tiers")
+    .select(
+      "video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url"
+    )
     .eq("category_label", label)
     .maybeSingle();
+
+  if (q.error && isMissingSchemaColumnError(q.error)) {
+    q = await supabase
+      .from("category_showcase_settings")
+      .select("video_url, video_poster_url, wholesale_tiers")
+      .eq("category_label", label)
+      .maybeSingle();
+  }
+
+  const { data, error } = q;
   if (error || !data) return DEFAULT_SHOWCASE;
   return normalizeShowcaseRow(data);
 }

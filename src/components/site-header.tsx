@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/providers/cart-provider";
@@ -29,25 +30,23 @@ export function SiteHeader() {
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
         <Link
           href="/"
-          className="group flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.28em] text-stone-100 transition-colors hover:text-white"
+          className="group flex items-center gap-3 sm:gap-3.5"
+          aria-label="DYCASHOP — início"
         >
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.07] ring-1 ring-white/[0.08] transition group-hover:bg-white/[0.1]">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4 text-stone-200"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M7 7h10v10M7 17L17 7"
-              />
-            </svg>
+          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0a0a0c] ring-1 ring-white/[0.09] shadow-[0_0_0_1px_rgba(212,175,55,0.06)] transition duration-300 group-hover:ring-amber-400/25 group-hover:shadow-[0_0_28px_-10px_rgba(212,175,55,0.35)] sm:h-9 sm:w-9">
+            <Image
+              src="/brand-logo.png"
+              alt=""
+              width={36}
+              height={36}
+              className="object-contain p-[3px]"
+              sizes="(max-width: 640px) 32px, 36px"
+              priority
+            />
           </span>
-          DYCASHOP
+          <span className="text-[13px] font-semibold uppercase tracking-[0.28em] text-stone-100 transition-colors group-hover:text-white">
+            DYCASHOP
+          </span>
         </Link>
 
         <Link

@@ -145,7 +145,10 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     if (legacy.trim()) {
       h.set("x-admin-key", legacy.trim());
     }
-    if (!h.has("Content-Type") && init?.body != null) {
+    const body = init?.body;
+    const isFormData =
+      typeof FormData !== "undefined" && body instanceof FormData;
+    if (!h.has("Content-Type") && body != null && !isFormData) {
       h.set("Content-Type", "application/json");
     }
     return fetch(input, {

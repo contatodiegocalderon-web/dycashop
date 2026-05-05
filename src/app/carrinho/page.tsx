@@ -48,15 +48,30 @@ export default function CarrinhoPage() {
           customerNote: cep.trim() || undefined,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Falha ao criar pedido");
 
-      const publicToken = data.publicToken as string | undefined;
+      const rawText = await res.text();
+      let data: {
+        error?: string;
+        publicToken?: string;
+        receiptUrl?: string | null;
+      } = {};
+      try {
+        data = rawText ? (JSON.parse(rawText) as typeof data) : {};
+      } catch {
+        throw new Error("Resposta inválida do servidor.");
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Falha ao criar pedido");
+      }
+
+      const publicToken = data.publicToken;
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
       const receiptUrl =
-        (data.receiptUrl as string | null | undefined)?.trim() ||
-        (publicToken ? `${origin}/recibo/${publicToken}` : "");
+        (data.receiptUrl?.trim() ||
+          (publicToken ? `${origin}/recibo/${publicToken}` : "")) ||
+        "";
 
       const text = buildOrderWhatsAppText(lines, {
         receiptUrl: receiptUrl || undefined,
@@ -65,9 +80,11 @@ export default function CarrinhoPage() {
       const url = waMeUrl(phone, text);
       clear();
       setCep("");
-      window.open(url, "_blank", "noopener,noreferrer");
+      window.location.assign(url);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Erro");
+      setErr(
+        e instanceof Error ? e.message : "Falha de rede ou do servidor."
+      );
     } finally {
       setBusy(false);
     }
@@ -126,14 +143,8 @@ export default function CarrinhoPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-stone-100">
-                          {line.product.category && (
-                            <span className="mr-1 text-xs font-normal text-stone-500">
-                              [{line.product.category}]{" "}
-                            </span>
-                          )}
                           {line.product.brand} — {line.product.color}
                         </p>
-                        <p className="text-xs text-stone-400">SKU {line.product.sku}</p>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <label className="text-xs text-stone-400">
                             Qtd

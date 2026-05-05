@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { productPublicImageUrl } from "@/lib/product-image-url";
+import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 
 export type CategorySummary = {
   slug: string;
@@ -7,6 +8,8 @@ export type CategorySummary = {
   count: number;
   /** URLs prontas para `<img src>` (Storage ou proxy Drive). */
   previewImageUrls: string[];
+  /** Capa definida no admin (substitui preview automático na home). */
+  coverImageUrl: string | null;
 };
 
 function supabaseAnon() {
@@ -29,6 +32,31 @@ export function categorySlugFromLabel(label: string): string {
 
 const PREVIEW_LIMIT = 5;
 const PAGE_SIZE = 1000;
+
+/**
+ * Ordem na home: `display_order` da BD (menor primeiro); sem valor usa posição alfabética ×100.
+ */
+export function sortCategoryLabelsForCatalog(
+  labels: string[],
+  orderFromDb: Map<string, number | null | undefined>
+): string[] {
+  const alpha = [...labels].sort((a, b) => a.localeCompare(b, "pt"));
+  const alphaIdx = new Map(alpha.map((l, i) => [l, i]));
+  return [...labels].sort((a, b) => {
+    const rawA = orderFromDb.get(a);
+    const rawB = orderFromDb.get(b);
+    const va =
+      rawA != null && Number.isFinite(Number(rawA))
+        ? Number(rawA)
+        : (alphaIdx.get(a)! + 1) * 100;
+    const vb =
+      rawB != null && Number.isFinite(Number(rawB))
+        ? Number(rawB)
+        : (alphaIdx.get(b)! + 1) * 100;
+    if (va !== vb) return va - vb;
+    return a.localeCompare(b, "pt");
+  });
+}
 
 /**
  * Categorias = valor exacto de `products.category` (nome da pasta no Drive).
@@ -64,9 +92,45 @@ export async function getCatalogCategories(): Promise<CategorySummary[]> {
     countMap.set(label, (countMap.get(label) ?? 0) + 1);
   }
 
-  const sortedLabels = Array.from(countMap.keys()).sort((a, b) =>
-    a.localeCompare(b, "pt", { sensitivity: "base" })
-  );
+  const labelKeys = Array.from(countMap.keys());
+
+  const coverMap = new Map<string, string | null>();
+  const orderMap = new Map<string, number | null | undefined>();
+
+  const full = await supabase
+    .from("category_showcase_settings")
+    .select("category_label, catalog_cover_image_url, display_order");
+
+  if (full.error && isMissingSchemaColumnError(full.error)) {
+    const minimal = await supabase
+      .from("category_showcase_settings")
+      .select("category_label");
+    if (minimal.error) {
+      throw new Error(minimal.error.message);
+    }
+  } else if (full.error) {
+    throw new Error(full.error.message);
+  } else {
+    for (const r of full.data ?? []) {
+      const row = r as {
+        category_label?: string | null;
+        catalog_cover_image_url?: string | null;
+        display_order?: number | null;
+      };
+      const lab =
+        row.category_label != null && String(row.category_label).trim() !== ""
+          ? String(row.category_label).trim()
+          : "";
+      if (!lab) continue;
+      coverMap.set(lab, row.catalog_cover_image_url?.trim() || null);
+      orderMap.set(
+        lab,
+        typeof row.display_order === "number" ? row.display_order : null
+      );
+    }
+  }
+
+  const sortedLabels = sortCategoryLabelsForCatalog(labelKeys, orderMap);
 
   const usedSlugs = new Set<string>();
   const out: CategorySummary[] = [];
@@ -119,6 +183,7 @@ export async function getCatalogCategories(): Promise<CategorySummary[]> {
       label,
       count: countMap.get(label) ?? 0,
       previewImageUrls,
+      coverImageUrl: coverMap.get(label) ?? null,
     });
   }
 

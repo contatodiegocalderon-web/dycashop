@@ -40,9 +40,7 @@ export function buildOrderWhatsAppText(
     parts.push(`*Tamanho ${size}*`);
     for (const line of g) {
       const p = line.product;
-      parts.push(
-        `• ${line.quantity}x ${p.brand} ${p.color} — SKU ${p.sku}`
-      );
+      parts.push(`• ${line.quantity}x ${p.brand} — ${p.color}`);
     }
     parts.push("");
   }

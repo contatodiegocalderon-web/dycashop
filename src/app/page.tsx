@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CategoryGrid } from "@/components/category-grid";
+import { VideoCallCta } from "@/components/video-call-cta";
 import { getCatalogCategories } from "@/lib/catalog-categories";
 
 /** Lista pastas/categorias sempre com dados atuais (evita HTML estático desatualizado). */
@@ -16,7 +17,7 @@ export default async function HomePage() {
           Selecione uma categoria
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-stone-50 sm:text-4xl">
-          Catálogo
+          Catálogo 100% atualizado
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-stone-500">
           Abra para filtrar por tamanho, marca e cor, monte o carrinho e envie o pedido
@@ -25,6 +26,8 @@ export default async function HomePage() {
       </div>
 
       <CategoryGrid categories={categories} />
+
+      <VideoCallCta />
 
       <p className="mt-12 text-center text-xs text-stone-600">
         <Link

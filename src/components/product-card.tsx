@@ -30,10 +30,6 @@ export function ProductCard({ product, imagePriority }: Props) {
 
   const imageSrc = product.drive_image_url;
 
-  const catLabel =
-    product.category?.trim() ||
-    "Produto";
-
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-zinc-900/60 shadow-lg shadow-black/20 ring-1 ring-white/[0.04]">
       <div className="relative aspect-[3/4] max-h-[220px] bg-zinc-950 sm:max-h-[240px]">
@@ -52,10 +48,7 @@ export function ProductCard({ product, imagePriority }: Props) {
       </div>
 
       <div className="flex flex-1 flex-col px-3 pb-3 pt-2.5">
-        <p className="line-clamp-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-500">
-          {catLabel}
-        </p>
-        <h3 className="mt-1 line-clamp-2 text-lg font-bold uppercase leading-tight tracking-wide text-stone-50">
+        <h3 className="line-clamp-2 text-lg font-bold uppercase leading-tight tracking-wide text-stone-50">
           {product.brand}
         </h3>
         <p className="mt-0.5 line-clamp-1 text-sm font-medium uppercase tracking-wide text-stone-400">
@@ -72,9 +65,9 @@ export function ProductCard({ product, imagePriority }: Props) {
           )}
         </p>
 
-        <div className="mt-3 flex w-full items-stretch gap-2 border-t border-white/[0.07] pt-3">
+        <div className="mt-3 flex w-full items-center gap-2 border-t border-white/[0.07] pt-3">
           <div
-            className={`grid min-w-0 flex-1 grid-cols-[minmax(2.75rem,auto)_1fr_minmax(2.75rem,auto)] items-center overflow-hidden rounded-xl border border-zinc-600/90 bg-zinc-950/90 text-[15px] font-semibold ${
+            className={`flex min-w-0 flex-1 items-stretch overflow-hidden rounded-xl border border-zinc-600/90 bg-zinc-950/90 ${
               !canAdd ? "opacity-40" : ""
             }`}
           >
@@ -87,11 +80,11 @@ export function ProductCard({ product, imagePriority }: Props) {
                 e.stopPropagation();
                 setQty((q) => Math.max(1, q - 1));
               }}
-              className="relative z-10 flex h-11 items-center justify-center text-stone-100 transition hover:bg-zinc-800 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-10 w-8 shrink-0 items-center justify-center text-lg font-light text-stone-500 transition hover:bg-zinc-800/80 hover:text-stone-400 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              -
+              −
             </button>
-            <span className="pointer-events-none flex items-center justify-center tabular-nums text-stone-50">
+            <span className="flex min-w-[2rem] flex-1 items-center justify-center tabular-nums text-[15px] font-semibold text-stone-50">
               {qty}
             </span>
             <button
@@ -103,7 +96,7 @@ export function ProductCard({ product, imagePriority }: Props) {
                 e.stopPropagation();
                 setQty((q) => Math.min(available, q + 1));
               }}
-              className="relative z-10 flex h-11 items-center justify-center text-stone-100 transition hover:bg-zinc-800 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-11 min-w-[2.75rem] shrink-0 items-center justify-center text-lg font-semibold text-stone-50 transition hover:bg-zinc-800 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               +
             </button>
@@ -111,10 +104,12 @@ export function ProductCard({ product, imagePriority }: Props) {
           <button
             type="button"
             disabled={!canAdd}
+            aria-label="Adicionar ao carrinho"
+            title="Adicionar ao carrinho"
             onClick={() => canAdd && addProduct(product, qty)}
-            className="min-w-[7.5rem] shrink-0 rounded-xl bg-stone-100 px-4 py-2.5 text-sm font-bold text-zinc-900 shadow-md transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[0.12] bg-zinc-700 text-2xl font-bold leading-none text-white shadow-md shadow-black/30 transition hover:bg-zinc-600 hover:border-white/[0.18] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Adicionar
+            +
           </button>
         </div>
       </div>
