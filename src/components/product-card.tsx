@@ -81,7 +81,7 @@ export function ProductCard({ product, imagePriority }: Props) {
               e.stopPropagation();
               if (canAdd) addProduct(product, 1);
             }}
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/[0.14] bg-zinc-600 text-3xl font-bold leading-none text-white shadow-md shadow-black/35 transition hover:bg-zinc-500 hover:border-white/25 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[0.14] bg-zinc-600 text-[2rem] font-bold leading-none text-white shadow-md shadow-black/35 transition hover:bg-zinc-500 hover:border-white/25 active:scale-[0.96] sm:h-12 sm:w-12 sm:text-3xl disabled:cursor-not-allowed disabled:opacity-40"
           >
             +
           </button>
