@@ -2,7 +2,8 @@ import { existsSync, readFileSync, statSync } from "fs";
 import path from "path";
 import { google } from "googleapis";
 
-const DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"] as const;
+/** Conta de serviço: mesmo âmbito que OAuth — renomear no Drive exige escrita, não só `drive.readonly`. */
+const DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"] as const;
 
 function normalizePrivateKey(key: string): string {
   if (key.includes("\\n")) {

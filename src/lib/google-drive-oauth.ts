@@ -1,7 +1,8 @@
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { google } from "googleapis";
 
-const SCOPES = ["https://www.googleapis.com/auth/drive.readonly"] as const;
+/** Leitura + alteração de metadados/nomes (renomear fotos com stock). `drive.readonly` não permite `files.update`. */
+const SCOPES = ["https://www.googleapis.com/auth/drive"] as const;
 
 export function getOAuthRedirectUri(): string {
   const base =
@@ -70,6 +71,22 @@ export function verifyGoogleAuthState(state: string): boolean {
 
 export async function exchangeGoogleAuthCode(code: string) {
   const oauth2 = createOAuth2Client();
-  const { tokens } = await oauth2.getToken(code);
-  return tokens;
+  try {
+    const { tokens } = await oauth2.getToken(code);
+    return tokens;
+  } catch (e: unknown) {
+    const err = e as {
+      message?: string;
+      response?: {
+        data?: { error?: string; error_description?: string };
+      };
+    };
+    const d = err.response?.data;
+    const detail =
+      (typeof d?.error_description === "string" && d.error_description) ||
+      (typeof d?.error === "string" && d.error) ||
+      err.message ||
+      "Falha ao trocar código OAuth";
+    throw new Error(detail);
+  }
 }

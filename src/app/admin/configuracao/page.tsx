@@ -143,7 +143,7 @@ function ConfiguracaoInner() {
     }
   }
 
-  async function saveFolderAndSync() {
+  async function saveFolderOnly() {
     if (!folderUrl.trim()) {
       setStatus("Cole o link da pasta do Drive.");
       return;
@@ -151,18 +151,16 @@ function ConfiguracaoInner() {
     setLoading(true);
     setStatus(null);
     try {
-      const res = await adminFetch("/api/admin/catalog-settings?stream=1", {
+      const res = await adminFetch("/api/admin/catalog-settings", {
         method: "POST",
-        body: JSON.stringify({ folderUrl: folderUrl.trim() }),
+        body: JSON.stringify({ folderUrl: folderUrl.trim(), saveOnly: true }),
       });
-      if (!res.ok) {
-        throw errorFromResponseBody(await res.text());
-      }
-      await consumeSyncResponse(res);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Falha ao guardar");
+      setStatus(data.message ?? "Link da pasta guardado.");
       await loadSettings();
       setFolderUrl("");
     } catch (e) {
-      setSyncProg(null);
       setStatus(e instanceof Error ? e.message : "Erro");
     } finally {
       setLoading(false);
@@ -189,6 +187,33 @@ function ConfiguracaoInner() {
     }
   }
 
+  async function pushDriveToMatchAppStock() {
+    setLoading(true);
+    setStatus(null);
+    try {
+      const res = await adminFetch("/api/admin/drive-stock-push", {
+        method: "POST",
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        renamed?: number;
+        totalProducts?: number;
+        errors?: { productId: string; message: string }[];
+      };
+      if (!res.ok) throw new Error(data.error ?? "Falha ao atualizar Drive");
+      setStatus(
+        `Drive alinhado ao stock do app: ${data.renamed ?? 0} de ${data.totalProducts ?? 0} produtos.` +
+          ((data.errors?.length ?? 0) > 0
+            ? `\nFalhas: ${data.errors?.length}.`
+            : "")
+      );
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   if (!isOwner) {
     return (
       <div className="mx-auto max-w-xl px-4 py-12 text-center text-sm text-stone-600">
@@ -205,9 +230,9 @@ function ConfiguracaoInner() {
             Configuração do catálogo
           </h1>
           <p className="text-sm text-stone-600">
-            Cole o link da pasta do Drive e sincronize — sem ficheiros JSON. O
-            estoque passa a ser só na app (pedidos); ao voltar a sincronizar, os
-            números no nome do ficheiro não repõem stock já vendido.
+            Cole o link da pasta do Drive e sincronize. Nesta tela, a
+            sincronização manual usa o Drive como fonte (corrige estoque do app
+            para igualar ao Drive).
           </p>
         </div>
       </div>
@@ -278,18 +303,26 @@ function ConfiguracaoInner() {
         <button
           type="button"
           disabled={loading}
-          onClick={() => void saveFolderAndSync()}
-          className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-40"
+          onClick={() => void saveFolderOnly()}
+          className="rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-800 disabled:opacity-40"
         >
-          Guardar link e sincronizar agora
+          Guardar link da pasta
         </button>
         <button
           type="button"
           disabled={loading}
           onClick={() => void syncOnly()}
-          className="rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-40"
+          className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-900 hover:bg-blue-100 disabled:opacity-40"
         >
-          Só sincronizar
+          Importar do Drive
+        </button>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => void pushDriveToMatchAppStock()}
+          className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100 disabled:opacity-40"
+        >
+          Igualar Drive com app
         </button>
       </div>
 

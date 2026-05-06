@@ -50,7 +50,8 @@ export interface CartLine {
 export interface OrderItemRow {
   id: string;
   order_id: string;
-  product_id: string;
+  /** Null se o produto foi removido do catálogo (ex.: já não existe no Drive). */
+  product_id: string | null;
   quantity: number;
   snapshot_image_url: string;
   snapshot_original_name: string;

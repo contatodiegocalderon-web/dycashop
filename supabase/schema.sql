@@ -61,7 +61,7 @@ create unique index if not exists orders_public_token_idx on public.orders (publ
 create table if not exists public.order_items (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders (id) on delete cascade,
-  product_id uuid not null references public.products (id),
+  product_id uuid references public.products (id) on delete set null,
   quantity integer not null check (quantity > 0),
   snapshot_image_url text not null,
   snapshot_original_name text not null,

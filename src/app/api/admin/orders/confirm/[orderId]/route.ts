@@ -117,6 +117,7 @@ export async function POST(
 
     const totals = new Map<string, number>();
     for (const it of items) {
+      if (!it.product_id) continue;
       totals.set(
         it.product_id,
         (totals.get(it.product_id) ?? 0) + it.quantity
@@ -184,6 +185,8 @@ export async function POST(
       return NextResponse.json({ error: fErr.message }, { status: 500 });
     }
 
+    // Só renomeia no Drive os produtos deste pedido (rápido). Sincronização completa
+    // catálogo ↔ Drive corre no job diário /api/cron/daily-catalog-sync.
     const driveRename = await renameDriveFilesToCurrentStock(productIdList);
 
     return NextResponse.json({

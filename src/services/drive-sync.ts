@@ -19,6 +19,7 @@ const BETWEEN_BATCH_MS = 200;
 export type SyncResult = {
   imported: number;
   totalParsed: number;
+  removedMissingFromDrive: number;
   message?: string;
   storageUploaded: number;
   storageSkipped: number;
@@ -79,7 +80,9 @@ async function removeLegacyImportProducts(admin: AdminClient): Promise<void> {
     .from("order_items")
     .select("product_id");
   const protectedIds = new Set(
-    (orderRows ?? []).map((r: { product_id: string }) => r.product_id)
+    (orderRows ?? [])
+      .map((r: { product_id: string | null }) => r.product_id)
+      .filter((id): id is string => Boolean(id))
   );
 
   async function deleteBatch(kind: "null" | "streetwear") {
@@ -104,6 +107,43 @@ async function removeLegacyImportProducts(admin: AdminClient): Promise<void> {
 
   await deleteBatch("null");
   await deleteBatch("streetwear");
+}
+
+async function pruneProductsMissingFromDrive(
+  admin: AdminClient,
+  driveFileIds: string[]
+): Promise<{ removed: number }> {
+  const driveSet = new Set(driveFileIds);
+
+  const { data: products, error: listErr } = await admin
+    .from("products")
+    .select("id, drive_file_id");
+  if (listErr) throw new Error(listErr.message);
+
+  const removable: string[] = [];
+  for (const p of products ?? []) {
+    const row = p as { id: string; drive_file_id: string | null };
+    const driveId = row.drive_file_id?.trim() ?? "";
+    if (!driveId || driveSet.has(driveId)) continue;
+    removable.push(row.id);
+  }
+
+  if (removable.length === 0) {
+    return { removed: 0 };
+  }
+
+  let removed = 0;
+  for (let i = 0; i < removable.length; i += IN_CHUNK) {
+    const slice = removable.slice(i, i + IN_CHUNK);
+    const { error: delErr, count } = await admin
+      .from("products")
+      .delete({ count: "exact" })
+      .in("id", slice);
+    if (delErr) throw new Error(delErr.message);
+    removed += count ?? slice.length;
+  }
+
+  return { removed };
 }
 
 async function fetchExistingStockByDriveIds(
@@ -250,13 +290,15 @@ async function processImageQueue(
 
 async function runSync(
   rootFolderId: string,
-  emit?: (e: SyncProgressEvent) => void
+  emit?: (e: SyncProgressEvent) => void,
+  opts?: { preserveExistingStock?: boolean }
 ): Promise<SyncResult> {
   const fromDrive = await fetchDriveProductRows(rootFolderId);
   if (!fromDrive.length) {
     return {
       imported: 0,
       totalParsed: 0,
+      removedMissingFromDrive: 0,
       message:
         "Nenhuma imagem válida. Na pasta principal do catálogo: uma subpasta por categoria (nome da pasta = categoria); dentro, M, G, GG com ficheiros «MARCA COR». Verifique nomes e permissões no Drive.",
       storageUploaded: 0,
@@ -273,9 +315,14 @@ async function runSync(
   await removeLegacyImportProducts(admin);
 
   const ids = fromDrive.map((r) => r.drive_file_id);
-  const existingRows = await fetchExistingStockByDriveIds(admin, ids);
-
-  const rows = mergePreservingStock(fromDrive, existingRows);
+  const prune = await pruneProductsMissingFromDrive(admin, ids);
+  const preserveExistingStock = opts?.preserveExistingStock === true;
+  const rows = preserveExistingStock
+    ? mergePreservingStock(
+        fromDrive,
+        await fetchExistingStockByDriveIds(admin, ids)
+      )
+    : fromDrive;
 
   let totalUpserted = 0;
   for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
@@ -311,6 +358,7 @@ async function runSync(
   return {
     imported: totalUpserted,
     totalParsed: rows.length,
+    removedMissingFromDrive: prune.removed,
     storageUploaded: uploaded,
     storageSkipped: skippedCount,
     storageErrors: errors,
@@ -320,22 +368,28 @@ async function runSync(
 }
 
 export async function syncProductsFromDriveFolder(
-  rootFolderId: string
+  rootFolderId: string,
+  opts?: { preserveExistingStock?: boolean }
 ): Promise<SyncResult> {
-  return runSync(rootFolderId, undefined);
+  return runSync(rootFolderId, undefined, opts);
 }
 
 /** NDJSON: uma linha JSON por evento (progresso + resultado final). */
 export function syncProductsFromDriveFolderStreaming(
-  rootFolderId: string
+  rootFolderId: string,
+  opts?: { preserveExistingStock?: boolean }
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream({
     async start(controller) {
       try {
-        const result = await runSync(rootFolderId, (e) => {
+        const result = await runSync(
+          rootFolderId,
+          (e) => {
           controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
-        });
+          },
+          opts
+        );
         controller.enqueue(
           encoder.encode(
             JSON.stringify({ type: "complete", result } satisfies SyncProgressEvent) +

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "@/providers/cart-provider";
 import type { CartLine, ProductSize } from "@/types";
 import type { WhatsAppSeller } from "@/lib/sellers";
@@ -100,6 +100,7 @@ export default function CarrinhoPage() {
     WHATSAPP_SELLERS[0]?.phone ?? null
   );
   const [portalReady, setPortalReady] = useState(false);
+  const lastTouchRef = useRef(0);
 
   const groups = useMemo(() => groupBySize(lines), [lines]);
 
@@ -197,6 +198,17 @@ export default function CarrinhoPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function touchAdjustQuantity(productId: string, nextQty: number) {
+    lastTouchRef.current = Date.now();
+    setLineQuantity(productId, nextQty);
+  }
+
+  function clickAdjustQuantity(productId: string, nextQty: number) {
+    // Evita clique fantasma após touch em alguns browsers mobile.
+    if (Date.now() - lastTouchRef.current < 450) return;
+    setLineQuantity(productId, nextQty);
   }
 
   return (
@@ -362,8 +374,15 @@ export default function CarrinhoPage() {
                               aria-label="Diminuir quantidade"
                               className="flex min-h-[44px] min-w-[44px] items-center justify-center px-2 text-lg font-semibold text-stone-100 active:bg-zinc-800 disabled:opacity-40"
                               disabled={busy}
+                              onTouchStart={(e) => {
+                                e.preventDefault();
+                                touchAdjustQuantity(
+                                  line.productId,
+                                  line.quantity - 1
+                                );
+                              }}
                               onClick={() =>
-                                setLineQuantity(
+                                clickAdjustQuantity(
                                   line.productId,
                                   line.quantity - 1
                                 )
@@ -393,8 +412,15 @@ export default function CarrinhoPage() {
                               disabled={
                                 busy || line.quantity >= line.product.stock
                               }
+                              onTouchStart={(e) => {
+                                e.preventDefault();
+                                touchAdjustQuantity(
+                                  line.productId,
+                                  line.quantity + 1
+                                );
+                              }}
                               onClick={() =>
-                                setLineQuantity(
+                                clickAdjustQuantity(
                                   line.productId,
                                   line.quantity + 1
                                 )

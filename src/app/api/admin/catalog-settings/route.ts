@@ -56,9 +56,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { folderUrl?: string; syncOnly?: boolean };
+  let body: { folderUrl?: string; syncOnly?: boolean; saveOnly?: boolean };
   try {
-    body = (await request.json()) as { folderUrl?: string; syncOnly?: boolean };
+    body = (await request.json()) as {
+      folderUrl?: string;
+      syncOnly?: boolean;
+      saveOnly?: boolean;
+    };
   } catch {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
@@ -150,6 +154,14 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  }
+
+  if (body.saveOnly) {
+    return NextResponse.json({
+      saved: true,
+      folderId,
+      message: "Link da pasta guardado com sucesso.",
+    });
   }
 
   try {
