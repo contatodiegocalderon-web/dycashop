@@ -18,9 +18,12 @@ type ShowcaseRow = {
   video_url: string | null;
   video_poster_url: string | null;
   wholesale_tiers: WholesaleTier[];
+  home_grid_cover_image_url: string | null;
   catalog_cover_image_url: string | null;
   display_order: number | null;
 };
+
+type CoverKind = "home_grid" | "category_page";
 
 function tiersToText(tiers: WholesaleTier[]) {
   return tiers
@@ -73,7 +76,10 @@ export default function AdminCategoriasPage() {
   const [videoEdits, setVideoEdits] = useState<Record<string, string>>({});
   const [posterEdits, setPosterEdits] = useState<Record<string, string>>({});
   const [tiersEdits, setTiersEdits] = useState<Record<string, string>>({});
-  const [coverEdits, setCoverEdits] = useState<Record<string, string>>({});
+  const [gridCoverEdits, setGridCoverEdits] = useState<Record<string, string>>({});
+  const [categoryCoverEdits, setCategoryCoverEdits] = useState<
+    Record<string, string>
+  >({});
   const [uploadBusy, setUploadBusy] = useState<Record<string, boolean>>({});
   const [showcaseRows, setShowcaseRows] = useState<ShowcaseRow[]>([]);
   const [reorderBusy, setReorderBusy] = useState(false);
@@ -122,7 +128,8 @@ export default function AdminCategoriasPage() {
       const videoMap: Record<string, string> = {};
       const posterMap: Record<string, string> = {};
       const tiersMap: Record<string, string> = {};
-      const coverMap: Record<string, string> = {};
+      const gridMap: Record<string, string> = {};
+      const catCoverMap: Record<string, string> = {};
       for (const label of sortedLabels) {
         const cost = costRows.find((r) => r.category_label === label)?.cost_per_piece ?? 0;
         const showcase = showcaseRowsParsed.find((r) => r.category_label === label);
@@ -130,7 +137,8 @@ export default function AdminCategoriasPage() {
         videoMap[label] = showcase?.video_url ?? "";
         posterMap[label] = showcase?.video_poster_url ?? "";
         tiersMap[label] = tiersToText(showcase?.wholesale_tiers ?? []);
-        coverMap[label] = showcase?.catalog_cover_image_url ?? "";
+        gridMap[label] = showcase?.home_grid_cover_image_url ?? "";
+        catCoverMap[label] = showcase?.catalog_cover_image_url ?? "";
       }
 
       setCategories(sortedLabels);
@@ -138,7 +146,8 @@ export default function AdminCategoriasPage() {
       setVideoEdits(videoMap);
       setPosterEdits(posterMap);
       setTiersEdits(tiersMap);
-      setCoverEdits(coverMap);
+      setGridCoverEdits(gridMap);
+      setCategoryCoverEdits(catCoverMap);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
     } finally {
@@ -165,7 +174,10 @@ export default function AdminCategoriasPage() {
         video_url: (videoEdits[category_label] ?? "").trim() || null,
         video_poster_url: (posterEdits[category_label] ?? "").trim() || null,
         wholesale_tiers: parseTierText(tiersEdits[category_label] ?? ""),
-        catalog_cover_image_url: (coverEdits[category_label] ?? "").trim() || null,
+        home_grid_cover_image_url:
+          (gridCoverEdits[category_label] ?? "").trim() || null,
+        catalog_cover_image_url:
+          (categoryCoverEdits[category_label] ?? "").trim() || null,
         display_order:
           showcaseRows.find((r) => r.category_label === category_label)?.display_order ??
           null,
@@ -196,14 +208,20 @@ export default function AdminCategoriasPage() {
     }
   }
 
-  async function uploadCover(label: string, file: File) {
+  function busyKey(label: string, kind: CoverKind) {
+    return `${kind}:${label}`;
+  }
+
+  async function uploadCover(label: string, file: File, kind: CoverKind) {
     if (!isOwner) return;
-    setUploadBusy((b) => ({ ...b, [label]: true }));
+    const key = busyKey(label, kind);
+    setUploadBusy((b) => ({ ...b, [key]: true }));
     setError(null);
     setOk(null);
     try {
       const fd = new FormData();
       fd.append("category_label", label);
+      fd.append("cover_kind", kind);
       fd.append("file", file);
       const res = await adminFetch("/api/admin/category-cover-upload", {
         method: "POST",
@@ -212,16 +230,22 @@ export default function AdminCategoriasPage() {
       const data = (await res.json()) as { error?: string; url?: string };
       if (!res.ok) throw new Error(data.error ?? "Falha no envio");
       if (data.url) {
-        setCoverEdits((prev) => ({ ...prev, [label]: data.url! }));
+        if (kind === "home_grid") {
+          setGridCoverEdits((prev) => ({ ...prev, [label]: data.url! }));
+        } else {
+          setCategoryCoverEdits((prev) => ({ ...prev, [label]: data.url! }));
+        }
       }
       setOk(
-        "Capa atualizada — aparece no cartão desta categoria na página inicial (grelha) e no topo da página da categoria."
+        kind === "home_grid"
+          ? "Imagem do cartão na página inicial atualizada."
+          : "Banner da página da categoria atualizado."
       );
       await loadAll();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro no envio");
     } finally {
-      setUploadBusy((b) => ({ ...b, [label]: false }));
+      setUploadBusy((b) => ({ ...b, [key]: false }));
     }
   }
 
@@ -247,25 +271,38 @@ export default function AdminCategoriasPage() {
     }
   }
 
-  async function removeCover(label: string) {
+  async function removeCover(label: string, kind: CoverKind) {
     if (!isOwner) return;
-    setUploadBusy((b) => ({ ...b, [label]: true }));
+    const key = busyKey(label, kind);
+    setUploadBusy((b) => ({ ...b, [key]: true }));
     setError(null);
     setOk(null);
     try {
+      const q = new URLSearchParams({
+        category_label: label,
+        cover_kind: kind,
+      });
       const res = await adminFetch(
-        `/api/admin/category-cover-upload?category_label=${encodeURIComponent(label)}`,
+        `/api/admin/category-cover-upload?${q.toString()}`,
         { method: "DELETE" }
       );
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Falha ao remover");
-      setCoverEdits((prev) => ({ ...prev, [label]: "" }));
-      setOk("Capa removida.");
+      if (kind === "home_grid") {
+        setGridCoverEdits((prev) => ({ ...prev, [label]: "" }));
+      } else {
+        setCategoryCoverEdits((prev) => ({ ...prev, [label]: "" }));
+      }
+      setOk(
+        kind === "home_grid"
+          ? "Imagem da grelha removida."
+          : "Banner da categoria removido."
+      );
       await loadAll();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
     } finally {
-      setUploadBusy((b) => ({ ...b, [label]: false }));
+      setUploadBusy((b) => ({ ...b, [key]: false }));
     }
   }
 
@@ -435,71 +472,129 @@ export default function AdminCategoriasPage() {
         </>
       ) : (
         <div className="space-y-6">
-          <div className="space-y-2 rounded-2xl border border-amber-300/40 bg-gradient-to-br from-amber-50/95 via-white to-stone-50 p-5 shadow-sm ring-1 ring-amber-400/20">
-            <p className="text-sm font-semibold text-stone-900">
-              Capa de cada categoria na página inicial
+          <div className="space-y-2 rounded-2xl border border-stone-200 bg-stone-50/80 p-5 shadow-sm">
+            <p className="text-sm font-semibold text-stone-900">Duas imagens por categoria</p>
+            <p className="text-sm text-stone-600">
+              <strong>1) Grelha da página inicial</strong> — fundo do cartão (onde antes entrava uma
+              foto automática de produto). <strong>2) Página da categoria</strong> — faixa larga no
+              topo ao abrir a pasta.
             </p>
             <p className="text-sm text-stone-600">
-              É a <strong>imagem grande de fundo do cartão</strong> na grelha (onde antes aparecia só
-              uma foto automática de um produto). Uma capa por categoria — não há banner extra em
-              cima da página.
-            </p>
-            <p className="text-sm text-stone-600">
-              Recomendado: foto <strong>horizontal</strong>, por exemplo{" "}
-              <strong>1920 × 1080 px</strong> ou <strong>1600 × 900 px</strong>; largura máx.{" "}
-              <strong>1920 px</strong> após otimização. Formatos: JPEG, PNG ou WebP até 6 MB.
+              Horizontal recomendado; largura máx. 1920 px. JPEG, PNG ou WebP até 6 MB. Se a base
+              ainda não tiver a coluna nova, execute{" "}
+              <code className="rounded bg-stone-200 px-1 text-xs">
+                supabase/migration_home_grid_cover_split.sql
+              </code>{" "}
+              no Supabase.
             </p>
           </div>
           {categories.map((label) => {
-            const url = (coverEdits[label] ?? "").trim();
-            const busy = uploadBusy[label] ?? false;
+            const gridUrl = (gridCoverEdits[label] ?? "").trim();
+            const catUrl = (categoryCoverEdits[label] ?? "").trim();
+            const busyGrid = uploadBusy[busyKey(label, "home_grid")] ?? false;
+            const busyCat = uploadBusy[busyKey(label, "category_page")] ?? false;
             return (
               <section
                 key={label}
                 className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm"
               >
                 <h2 className="text-lg font-semibold text-stone-900">{label}</h2>
-                <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
-                  <div className="relative h-28 w-full overflow-hidden rounded-xl border border-stone-200 bg-stone-100 sm:h-32 sm:max-w-md">
-                    {url ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- URL dinâmica Storage
-                      <img
-                        src={url}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-stone-500">
-                        Sem capa personalizada — na loja usa-se automaticamente uma foto de produto
-                        desta pasta.
+
+                <div className="mt-5 grid gap-6 lg:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">
+                      Página inicial — cartão na grelha
+                    </p>
+                    <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start">
+                      <div className="relative aspect-[16/11] w-full overflow-hidden rounded-xl border border-stone-200 bg-stone-100 sm:max-w-sm">
+                        {gridUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- URL dinâmica Storage
+                          <img
+                            src={gridUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full min-h-[120px] items-center justify-center px-3 text-center text-xs text-stone-500">
+                            Sem imagem — usa foto automática de um produto.
+                          </div>
+                        )}
                       </div>
-                    )}
+                      <div className="flex min-w-0 flex-1 flex-col gap-2">
+                        <label className="text-sm font-medium text-stone-700">
+                          Subir imagem
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            disabled={!isOwner || busyGrid}
+                            className="mt-1 block w-full max-w-sm text-sm text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-stone-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-stone-800"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              if (f && isOwner) void uploadCover(label, f, "home_grid");
+                            }}
+                          />
+                        </label>
+                        {isOwner && (
+                          <button
+                            type="button"
+                            disabled={busyGrid || !gridUrl}
+                            onClick={() => void removeCover(label, "home_grid")}
+                            className="w-fit rounded-lg border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+                          >
+                            {busyGrid ? "A processar…" : "Remover"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex min-w-0 flex-1 flex-col gap-2">
-                    <label className="text-sm font-medium text-stone-700">
-                      Capa do cartão na página inicial (subir imagem)
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        disabled={!isOwner || busy}
-                        className="mt-1 block w-full max-w-sm text-sm text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-stone-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-stone-800"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          e.target.value = "";
-                          if (f && isOwner) void uploadCover(label, f);
-                        }}
-                      />
-                    </label>
-                    {isOwner && (
-                      <button
-                        type="button"
-                        disabled={busy || !url}
-                        onClick={() => void removeCover(label)}
-                        className="w-fit rounded-lg border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40"
-                      >
-                        {busy ? "A processar…" : "Remover capa"}
-                      </button>
-                    )}
+
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">
+                      Página da categoria — banner no topo
+                    </p>
+                    <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start">
+                      <div className="relative aspect-[21/9] w-full overflow-hidden rounded-xl border border-stone-200 bg-stone-100 sm:max-w-sm">
+                        {catUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={catUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full min-h-[100px] items-center justify-center px-3 text-center text-xs text-stone-500">
+                            Sem banner — só conteúdo e filtros abaixo.
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col gap-2">
+                        <label className="text-sm font-medium text-stone-700">
+                          Subir imagem
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            disabled={!isOwner || busyCat}
+                            className="mt-1 block w-full max-w-sm text-sm text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-stone-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-stone-800"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              if (f && isOwner) void uploadCover(label, f, "category_page");
+                            }}
+                          />
+                        </label>
+                        {isOwner && (
+                          <button
+                            type="button"
+                            disabled={busyCat || !catUrl}
+                            onClick={() => void removeCover(label, "category_page")}
+                            className="w-fit rounded-lg border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+                          >
+                            {busyCat ? "A processar…" : "Remover"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </section>

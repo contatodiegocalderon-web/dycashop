@@ -10,6 +10,9 @@ export const runtime = "nodejs";
 
 const MAX_BYTES = 6 * 1024 * 1024;
 
+/** `home_grid` = cartão na página inicial; `category_page` = banner em /categoria */
+export type CoverKind = "home_grid" | "category_page";
+
 function safeLabelSegment(label: string) {
   return label
     .normalize("NFD")
@@ -19,50 +22,86 @@ function safeLabelSegment(label: string) {
     .slice(0, 64) || "categoria";
 }
 
+type ExistingShowcase = {
+  video_url?: string | null;
+  video_poster_url?: string | null;
+  wholesale_tiers?: unknown;
+  display_order?: number | null;
+  catalog_cover_image_url?: string | null;
+  home_grid_cover_image_url?: string | null;
+};
+
 async function upsertCoverUrl(
   admin: ReturnType<typeof createAdminClient>,
   categoryLabel: string,
-  url: string | null
+  url: string | null,
+  kind: CoverKind
 ) {
+  let hasHomeGridColumn = true;
   let sel = await admin
     .from("category_showcase_settings")
     .select(
-      "video_url, video_poster_url, wholesale_tiers, display_order"
+      "video_url, video_poster_url, wholesale_tiers, display_order, catalog_cover_image_url, home_grid_cover_image_url"
     )
     .eq("category_label", categoryLabel)
     .maybeSingle();
 
   if (sel.error && isMissingSchemaColumnError(sel.error)) {
+    hasHomeGridColumn = false;
     sel = await admin
       .from("category_showcase_settings")
-      .select("video_url, video_poster_url, wholesale_tiers")
+      .select(
+        "video_url, video_poster_url, wholesale_tiers, display_order, catalog_cover_image_url"
+      )
       .eq("category_label", categoryLabel)
       .maybeSingle();
   }
 
   if (sel.error) throw new Error(sel.error.message);
 
-  const existing = sel.data as {
-    video_url?: string | null;
-    video_poster_url?: string | null;
-    wholesale_tiers?: unknown;
-    display_order?: number | null;
-  } | null;
+  if (!hasHomeGridColumn && kind === "home_grid") {
+    throw new Error(
+      "Execute o SQL em supabase/migration_home_grid_cover_split.sql no Supabase."
+    );
+  }
+
+  const ex = (sel.data as ExistingShowcase | null) ?? null;
+
+  let catalog: string | null;
+  let grid: string | null;
+  if (!ex) {
+    catalog = kind === "category_page" ? url : null;
+    grid = kind === "home_grid" ? url : null;
+  } else {
+    catalog =
+      kind === "category_page"
+        ? url
+        : ex.catalog_cover_image_url?.trim() || null;
+    grid =
+      kind === "home_grid"
+        ? url
+        : ex.home_grid_cover_image_url?.trim() || null;
+  }
 
   const payload: Record<string, unknown> = {
     category_label: categoryLabel,
-    video_url: existing?.video_url ?? null,
-    video_poster_url: existing?.video_poster_url ?? null,
+    video_url: ex?.video_url ?? null,
+    video_poster_url: ex?.video_poster_url ?? null,
     wholesale_tiers:
-      existing?.wholesale_tiers ?? DEFAULT_SHOWCASE.wholesaleTiers,
-    catalog_cover_image_url: url,
+      ex?.wholesale_tiers ?? DEFAULT_SHOWCASE.wholesaleTiers,
+    catalog_cover_image_url: catalog,
   };
 
   if (
-    existing &&
-    typeof (existing as { display_order?: number }).display_order === "number"
+    ex &&
+    typeof ex.display_order === "number" &&
+    Number.isFinite(ex.display_order)
   ) {
-    payload.display_order = (existing as { display_order: number }).display_order;
+    payload.display_order = ex.display_order;
+  }
+
+  if (hasHomeGridColumn) {
+    payload.home_grid_cover_image_url = grid;
   }
 
   const { error } = await admin
@@ -71,7 +110,7 @@ async function upsertCoverUrl(
   if (error) throw new Error(error.message);
 }
 
-/** POST multipart: category_label + file (jpeg/png/webp) */
+/** POST multipart: category_label, cover_kind (home_grid | category_page), file */
 export async function POST(request: NextRequest) {
   try {
     await assertOwnerAccess(request);
@@ -86,6 +125,9 @@ export async function POST(request: NextRequest) {
   try {
     const form = await request.formData();
     const categoryLabel = String(form.get("category_label") ?? "").trim();
+    const kindRaw = String(form.get("cover_kind") ?? "category_page").trim();
+    const kind: CoverKind =
+      kindRaw === "home_grid" ? "home_grid" : "category_page";
     const file = form.get("file");
     if (!categoryLabel) {
       return NextResponse.json(
@@ -127,7 +169,9 @@ export async function POST(request: NextRequest) {
 
     const admin = createAdminClient();
     const segment = safeLabelSegment(categoryLabel);
-    const path = `category-covers/${segment}-${crypto.randomUUID()}.jpg`;
+    const sub =
+      kind === "home_grid" ? "grid" : "category-page";
+    const path = `category-covers/${sub}/${segment}-${crypto.randomUUID()}.jpg`;
 
     const { error: upErr } = await admin.storage
       .from(CATALOG_STORAGE_BUCKET)
@@ -151,9 +195,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await upsertCoverUrl(admin, categoryLabel, publicUrl);
+    await upsertCoverUrl(admin, categoryLabel, publicUrl, kind);
 
-    return NextResponse.json({ ok: true, url: publicUrl });
+    return NextResponse.json({ ok: true, url: publicUrl, cover_kind: kind });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Erro" },
@@ -162,7 +206,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/** Remove capa: ?category_label=... */
+/** Remover capa: ?category_label=...&cover_kind=home_grid|category_page */
 export async function DELETE(request: NextRequest) {
   try {
     await assertOwnerAccess(request);
@@ -178,6 +222,11 @@ export async function DELETE(request: NextRequest) {
     const categoryLabel = request.nextUrl.searchParams
       .get("category_label")
       ?.trim();
+    const kindRaw =
+      request.nextUrl.searchParams.get("cover_kind") ?? "category_page";
+    const kind: CoverKind =
+      kindRaw === "home_grid" ? "home_grid" : "category_page";
+
     if (!categoryLabel) {
       return NextResponse.json(
         { error: "category_label obrigatório." },
@@ -185,7 +234,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
     const admin = createAdminClient();
-    await upsertCoverUrl(admin, categoryLabel, null);
+    await upsertCoverUrl(admin, categoryLabel, null, kind);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json(

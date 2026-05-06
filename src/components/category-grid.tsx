@@ -34,7 +34,7 @@ export function CategoryGrid({ categories }: Props) {
           <li key={`${cat.slug}-${idx}-${cat.label}`} className="min-w-0">
             <Link
               href={`/categoria/${encodeURIComponent(cat.slug)}`}
-              className="group relative block overflow-hidden rounded-2xl border border-white/[0.07] bg-[#121214] shadow-lg shadow-black/30 ring-1 ring-white/[0.05] transition hover:border-white/[0.14] hover:ring-white/[0.09] active:scale-[0.99] motion-reduce:transition-none"
+              className="group relative block overflow-hidden rounded-2xl border border-white/[0.08] bg-[#121214] shadow-lg shadow-black/30 ring-1 ring-white/[0.06] transition hover:border-white/[0.12] hover:ring-white/[0.08] active:scale-[0.99] motion-reduce:transition-none"
               prefetch
             >
               {/* Fundo liso + textura em malha */}

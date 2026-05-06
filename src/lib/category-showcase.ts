@@ -11,7 +11,7 @@ export type CategoryShowcaseConfig = {
   videoUrl: string | null;
   videoPoster?: string;
   wholesaleTiers: WholesaleTier[];
-  /** Capa customizada (banner) — admin / Storage. */
+  /** Banner largo no topo da página da categoria (`catalog_cover_image_url`). */
   catalogCoverImageUrl?: string | null;
 };
 

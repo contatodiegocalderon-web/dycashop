@@ -8,7 +8,7 @@ export type CategorySummary = {
   count: number;
   /** URLs prontas para `<img src>` (Storage ou proxy Drive). */
   previewImageUrls: string[];
-  /** Capa definida no admin (substitui preview automático na home). */
+  /** Capa do cartão na grelha da página inicial (`home_grid_cover_image_url`). */
   coverImageUrl: string | null;
 };
 
@@ -109,14 +109,31 @@ export async function getCatalogCategories(): Promise<CategorySummary[]> {
 
   const full = await supabase
     .from("category_showcase_settings")
-    .select("category_label, catalog_cover_image_url, display_order");
+    .select(
+      "category_label, home_grid_cover_image_url, catalog_cover_image_url, display_order"
+    );
 
   if (full.error && isMissingSchemaColumnError(full.error)) {
-    const minimal = await supabase
+    const legacy = await supabase
       .from("category_showcase_settings")
-      .select("category_label");
-    if (minimal.error) {
-      throw new Error(minimal.error.message);
+      .select("category_label, catalog_cover_image_url, display_order");
+    if (legacy.error) {
+      throw new Error(legacy.error.message);
+    }
+    for (const r of legacy.data ?? []) {
+      const lab =
+        r.category_label != null && String(r.category_label).trim() !== ""
+          ? String(r.category_label).trim()
+          : "";
+      if (!lab) continue;
+      coverMap.set(lab, r.catalog_cover_image_url?.trim() || null);
+      const ord = r.display_order;
+      orderMap.set(
+        lab,
+        typeof ord === "number" && ord !== DISPLAY_ORDER_DEFAULT_SENTINEL
+          ? ord
+          : null
+      );
     }
   } else if (full.error) {
     throw new Error(full.error.message);
@@ -124,6 +141,7 @@ export async function getCatalogCategories(): Promise<CategorySummary[]> {
     for (const r of full.data ?? []) {
       const row = r as {
         category_label?: string | null;
+        home_grid_cover_image_url?: string | null;
         catalog_cover_image_url?: string | null;
         display_order?: number | null;
       };
@@ -132,7 +150,7 @@ export async function getCatalogCategories(): Promise<CategorySummary[]> {
           ? String(row.category_label).trim()
           : "";
       if (!lab) continue;
-      coverMap.set(lab, row.catalog_cover_image_url?.trim() || null);
+      coverMap.set(lab, row.home_grid_cover_image_url?.trim() || null);
       const ord = row.display_order;
       orderMap.set(
         lab,

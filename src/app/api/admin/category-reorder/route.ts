@@ -10,6 +10,7 @@ import {
   sortCategoryLabelsForCatalog,
 } from "@/lib/catalog-categories";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 
 export const runtime = "nodejs";
 
@@ -44,6 +45,7 @@ type RowLite = {
   video_url: string | null;
   video_poster_url: string | null;
   wholesale_tiers: WholesaleTier[];
+  home_grid_cover_image_url: string | null;
   catalog_cover_image_url: string | null;
   display_order: number | null;
 };
@@ -76,13 +78,37 @@ export async function POST(request: NextRequest) {
     const admin = createAdminClient();
     const labels = await loadCatalogCategoryLabels(admin);
 
-    const { data: rows, error: selErr } = await admin
-      .from("category_showcase_settings")
-      .select(
+    let rows:
+      | {
+          category_label?: string | null;
+          video_url?: string | null;
+          video_poster_url?: string | null;
+          wholesale_tiers?: unknown;
+          catalog_cover_image_url?: string | null;
+          home_grid_cover_image_url?: string | null;
+          display_order?: number | null;
+        }[]
+      | null = null;
+    let schemaHasHomeGrid = true;
+
+    const fullSel = await admin.from("category_showcase_settings").select(
+      "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, home_grid_cover_image_url, display_order"
+    );
+
+    if (!fullSel.error) {
+      rows = fullSel.data ?? [];
+    } else if (isMissingSchemaColumnError(fullSel.error)) {
+      const legacy = await admin.from("category_showcase_settings").select(
         "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, display_order"
       );
-
-    if (selErr && /display_order|catalog_cover_image_url/i.test(selErr.message ?? "")) {
+      if (legacy.error) {
+        return NextResponse.json({ error: legacy.error.message }, { status: 500 });
+      }
+      rows = legacy.data ?? [];
+      schemaHasHomeGrid = false;
+    } else if (
+      /display_order|catalog_cover_image_url/i.test(fullSel.error.message ?? "")
+    ) {
       return NextResponse.json(
         {
           error:
@@ -90,9 +116,8 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
-    }
-    if (selErr) {
-      return NextResponse.json({ error: selErr.message }, { status: 500 });
+    } else {
+      return NextResponse.json({ error: fullSel.error.message }, { status: 500 });
     }
 
     const map = new Map<string, RowLite>();
@@ -104,6 +129,10 @@ export async function POST(request: NextRequest) {
         video_url: raw.video_url?.trim() || null,
         video_poster_url: raw.video_poster_url?.trim() || null,
         wholesale_tiers: sanitizeWholesaleTiers(raw.wholesale_tiers),
+        home_grid_cover_image_url: schemaHasHomeGrid
+          ? (raw as { home_grid_cover_image_url?: string | null })
+              .home_grid_cover_image_url?.trim() || null
+          : null,
         catalog_cover_image_url:
           (raw as { catalog_cover_image_url?: string | null })
             .catalog_cover_image_url?.trim() || null,
@@ -163,7 +192,7 @@ export async function POST(request: NextRequest) {
 
     const upsertOne = async (label: string, display_order: number) => {
       const cur = map.get(label);
-      const payload = {
+      const payload: Record<string, unknown> = {
         category_label: label,
         video_url: cur?.video_url ?? null,
         video_poster_url: cur?.video_poster_url ?? null,
@@ -171,6 +200,9 @@ export async function POST(request: NextRequest) {
         catalog_cover_image_url: cur?.catalog_cover_image_url ?? null,
         display_order,
       };
+      if (schemaHasHomeGrid) {
+        payload.home_grid_cover_image_url = cur?.home_grid_cover_image_url ?? null;
+      }
       const { error } = await admin
         .from("category_showcase_settings")
         .upsert(payload, { onConflict: "category_label" });
