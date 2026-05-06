@@ -1,12 +1,7 @@
 import Link from "next/link";
+import { WHATSAPP_SELLERS } from "@/lib/sellers";
 
 const WA_BASE = "https://wa.me";
-
-const SELLERS = [
-  { name: "Diego", phone: "5511958936770" },
-  { name: "Paulo", phone: "5511916485901" },
-  { name: "Rafael", phone: "5511990041490" },
-] as const;
 
 export function SiteFooter() {
   return (
@@ -18,7 +13,7 @@ export function SiteFooter() {
               Vendedores
             </p>
             <ul className="mt-3 flex flex-col gap-2">
-              {SELLERS.map((s) => (
+              {WHATSAPP_SELLERS.map((s) => (
                 <li key={s.phone}>
                   <a
                     href={`${WA_BASE}/${s.phone}`}

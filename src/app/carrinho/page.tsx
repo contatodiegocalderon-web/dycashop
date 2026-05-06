@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCart } from "@/providers/cart-provider";
 import type { CartLine, ProductSize } from "@/types";
+import type { WhatsAppSeller } from "@/lib/sellers";
+import { WHATSAPP_SELLERS } from "@/lib/sellers";
 import { buildOrderWhatsAppText, waMeUrl } from "@/lib/whatsapp";
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
@@ -17,25 +20,130 @@ function groupBySize(lines: CartLine[]) {
   return m;
 }
 
+function WhatsAppGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={40}
+      height={40}
+      className={className}
+      aria-hidden
+    >
+      <path
+        fill="#ffffff"
+        d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.149-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.881 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"
+      />
+    </svg>
+  );
+}
+
+function WhatsAppBadgeTiny() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={14}
+      height={14}
+      className="block"
+      aria-hidden
+    >
+      <path
+        fill="#ffffff"
+        d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.149-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.881 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"
+      />
+    </svg>
+  );
+}
+
+function SellerChoiceAvatar({ seller }: { seller: WhatsAppSeller }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const src = seller.photoUrl?.trim();
+  const showPhoto = Boolean(src) && !imgFailed;
+  const initial = seller.name.trim().slice(0, 1).toUpperCase() || "?";
+
+  return (
+    <div className="relative h-14 w-14 shrink-0">
+      {showPhoto ? (
+        // eslint-disable-next-line @next/next/no-img-element -- URL dinâmica em public/
+        <img
+          src={src}
+          alt=""
+          width={56}
+          height={56}
+          className="h-14 w-14 rounded-full object-cover ring-2 ring-white/25"
+          onError={() => setImgFailed(true)}
+        />
+      ) : (
+        <div
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#25D366] to-[#075e54] text-xl font-bold text-white ring-2 ring-white/25"
+          aria-hidden
+        >
+          {initial}
+        </div>
+      )}
+      <div
+        className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-[#25D366] shadow-md ring-2 ring-zinc-900"
+        title="WhatsApp"
+      >
+        <WhatsAppBadgeTiny />
+      </div>
+    </div>
+  );
+}
+
 export default function CarrinhoPage() {
   const { lines, setLineQuantity, removeLine, clear } = useCart();
   const [cep, setCep] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  const phone = process.env.NEXT_PUBLIC_WHATSAPP_SELLER_NUMBER ?? "";
+  const [sellerModalOpen, setSellerModalOpen] = useState(false);
+  const [selectedSellerPhone, setSelectedSellerPhone] = useState<string | null>(
+    WHATSAPP_SELLERS[0]?.phone ?? null
+  );
+  const [portalReady, setPortalReady] = useState(false);
 
   const groups = useMemo(() => groupBySize(lines), [lines]);
 
-  async function finalize() {
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
+
+  const openSellerModal = useCallback(() => {
     setErr(null);
-    if (!phone.replace(/\D/g, "").length) {
-      setErr("Configure NEXT_PUBLIC_WHATSAPP_SELLER_NUMBER no .env");
+    if (!lines.length) return;
+    if (!WHATSAPP_SELLERS.length) {
+      setErr("Nenhum vendedor configurado.");
+      return;
+    }
+    setSelectedSellerPhone((prev) => {
+      if (prev && WHATSAPP_SELLERS.some((s) => s.phone === prev)) return prev;
+      return WHATSAPP_SELLERS[0]!.phone;
+    });
+    setSellerModalOpen(true);
+  }, [lines.length]);
+
+  const closeSellerModal = useCallback(() => {
+    if (!busy) setSellerModalOpen(false);
+  }, [busy]);
+
+  useEffect(() => {
+    if (!sellerModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeSellerModal();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sellerModalOpen, closeSellerModal]);
+
+  async function submitOrderToSeller(sellerPhone: string) {
+    const phone = sellerPhone.replace(/\D/g, "");
+    if (!phone.length) {
+      setErr("Telefone do vendedor inválido.");
       return;
     }
     if (!lines.length) return;
 
     setBusy(true);
+    setErr(null);
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -80,6 +188,7 @@ export default function CarrinhoPage() {
       const url = waMeUrl(phone, text);
       clear();
       setCep("");
+      setSellerModalOpen(false);
       window.location.assign(url);
     } catch (e) {
       setErr(
@@ -102,6 +211,106 @@ export default function CarrinhoPage() {
           {err}
         </div>
       )}
+
+      {portalReady && sellerModalOpen
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/75 p-4 sm:items-center"
+              style={{ touchAction: "manipulation" }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="seller-modal-title"
+              onClick={closeSellerModal}
+            >
+              <div
+                className="w-full max-w-md overflow-hidden rounded-2xl border border-white/15 bg-zinc-900 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="border-b border-white/10 bg-[#075e54] px-5 py-4 text-white">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#128c7e]">
+                      <WhatsAppGlyph />
+                    </div>
+                    <div className="min-w-0">
+                      <p
+                        id="seller-modal-title"
+                        className="text-base font-semibold leading-tight"
+                      >
+                        Enviar pedido no WhatsApp
+                      </p>
+                      <p className="mt-1 text-xs text-white/85">
+                        Veja a foto e o ícone do WhatsApp — depois toque em Enviar pedido
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="max-h-[min(52vh,360px)] overflow-y-auto overscroll-contain px-4 py-4">
+                  <ul className="space-y-2">
+                    {WHATSAPP_SELLERS.map((s) => {
+                      const checked = selectedSellerPhone === s.phone;
+                      return (
+                        <li key={s.phone}>
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={checked}
+                            aria-label={`Enviar para ${s.name} no WhatsApp`}
+                            onClick={() => setSelectedSellerPhone(s.phone)}
+                            className={`flex w-full min-h-[60px] items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors active:opacity-90 ${
+                              checked
+                                ? "border-emerald-400/70 bg-emerald-950/50 ring-1 ring-emerald-500/30"
+                                : "border-white/12 bg-zinc-950/60 hover:border-white/25"
+                            } `}
+                          >
+                            <SellerChoiceAvatar seller={s} />
+                            <span className="min-w-0 flex-1 text-base font-medium text-stone-100">
+                              {s.name}
+                            </span>
+                            <span
+                              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${
+                                checked
+                                  ? "border-emerald-400 bg-emerald-500"
+                                  : "border-stone-500 bg-transparent"
+                              }`}
+                              aria-hidden
+                            />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+
+                <div className="flex flex-col gap-2 border-t border-white/10 bg-zinc-950 px-4 py-4 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={closeSellerModal}
+                    className="order-2 min-h-[48px] rounded-xl border border-white/20 px-4 py-3 text-sm font-medium text-stone-200 hover:bg-white/10 disabled:opacity-50 sm:order-1"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      busy || !selectedSellerPhone || !WHATSAPP_SELLERS.length
+                    }
+                    onClick={() => {
+                      if (selectedSellerPhone) {
+                        void submitOrderToSeller(selectedSellerPhone);
+                      }
+                    }}
+                    className="order-1 min-h-[48px] rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 sm:order-2"
+                  >
+                    {busy ? "A enviar…" : "Enviar pedido"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
 
       {lines.length === 0 ? (
         <p className="mt-8 text-stone-400">
@@ -146,29 +355,61 @@ export default function CarrinhoPage() {
                           {line.product.brand} — {line.product.color}
                         </p>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <label className="text-xs text-stone-400">
-                            Qtd
-                            <input
-                              type="number"
-                              min={1}
-                              max={line.product.stock}
-                              value={line.quantity}
-                              onChange={(e) =>
+                          <span className="text-xs text-stone-400">Qtd</span>
+                          <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-zinc-600 bg-zinc-950 touch-manipulation">
+                            <button
+                              type="button"
+                              aria-label="Diminuir quantidade"
+                              className="flex min-h-[44px] min-w-[44px] items-center justify-center px-2 text-lg font-semibold text-stone-100 active:bg-zinc-800 disabled:opacity-40"
+                              disabled={busy}
+                              onClick={() =>
                                 setLineQuantity(
                                   line.productId,
-                                  Number.parseInt(e.target.value, 10) || 1
+                                  line.quantity - 1
                                 )
                               }
-                              className="ml-1 w-16 rounded border border-zinc-600 bg-zinc-950 px-2 py-1 text-sm text-stone-100"
+                            >
+                              −
+                            </button>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              aria-label="Quantidade"
+                              value={line.quantity}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/\D/g, "");
+                                if (raw === "") return;
+                                const n = Number.parseInt(raw, 10);
+                                if (!Number.isFinite(n)) return;
+                                setLineQuantity(line.productId, n);
+                              }}
+                              className="w-12 border-x border-zinc-600 bg-zinc-950 py-2 text-center text-sm tabular-nums text-stone-100 outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-600/40"
                             />
-                          </label>
+                            <button
+                              type="button"
+                              aria-label="Aumentar quantidade"
+                              className="flex min-h-[44px] min-w-[44px] items-center justify-center px-2 text-lg font-semibold text-stone-100 active:bg-zinc-800 disabled:opacity-40"
+                              disabled={
+                                busy || line.quantity >= line.product.stock
+                              }
+                              onClick={() =>
+                                setLineQuantity(
+                                  line.productId,
+                                  line.quantity + 1
+                                )
+                              }
+                            >
+                              +
+                            </button>
+                          </div>
                           <span className="text-xs text-stone-500">
                             máx. {line.product.stock}
                           </span>
                           <button
                             type="button"
                             onClick={() => removeLine(line.productId)}
-                            className="text-xs font-medium text-red-600 hover:underline"
+                            className="text-xs font-medium text-red-400 hover:underline"
                           >
                             Remover
                           </button>
@@ -208,10 +449,10 @@ export default function CarrinhoPage() {
             <button
               type="button"
               disabled={busy}
-              onClick={finalize}
+              onClick={openSellerModal}
               className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
             >
-              {busy ? "Abrindo…" : "Enviar pedido no WhatsApp"}
+              Enviar pedido no WhatsApp
             </button>
             <Link
               href="/"
