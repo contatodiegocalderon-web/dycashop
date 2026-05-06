@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAdminAuth } from "@/contexts/admin-auth";
-import { sortCategoryLabelsForCatalog } from "@/lib/catalog-categories";
+import {
+  DISPLAY_ORDER_DEFAULT_SENTINEL,
+  sortCategoryLabelsForCatalog,
+} from "@/lib/catalog-categories";
 import type { WholesaleTier } from "@/lib/category-showcase";
 
 type CostRow = {
@@ -105,7 +108,13 @@ export default function AdminCategoriasPage() {
       const orderVals = new Map<string, number | null | undefined>();
       for (const lab of allLabels) {
         const sh = showcaseRowsParsed.find((r) => r.category_label === lab);
-        orderVals.set(lab, sh?.display_order ?? null);
+        orderVals.set(
+          lab,
+          sh?.display_order != null &&
+            sh.display_order !== DISPLAY_ORDER_DEFAULT_SENTINEL
+            ? sh.display_order
+            : null
+        );
       }
       const sortedLabels = sortCategoryLabelsForCatalog(allLabels, orderVals);
 
@@ -205,7 +214,9 @@ export default function AdminCategoriasPage() {
       if (data.url) {
         setCoverEdits((prev) => ({ ...prev, [label]: data.url! }));
       }
-      setOk("Capa atualizada. A loja usa esta imagem na home e no topo da categoria.");
+      setOk(
+        "Capa atualizada — aparece no cartão desta categoria na página inicial (grelha) e no topo da página da categoria."
+      );
       await loadAll();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro no envio");
@@ -299,7 +310,7 @@ export default function AdminCategoriasPage() {
                 : "text-stone-500 hover:text-stone-800"
             }`}
           >
-            Capas do catálogo
+            Capas na página inicial
           </button>
         </div>
       )}
@@ -424,17 +435,19 @@ export default function AdminCategoriasPage() {
         </>
       ) : (
         <div className="space-y-6">
-          <div className="space-y-2 text-sm text-stone-600">
-            <p>
-              <span className="font-medium text-stone-800">Dimensões da capa (recomendado):</span>{" "}
-              imagem <strong>horizontal (banner)</strong> — por exemplo{" "}
-              <strong>1920 × 640 px</strong> (≈ 3:1) ou <strong>1920 × 1080 px</strong> (16:9).
-              Largura mínima aceitável: <strong>1200 px</strong>; ao enviar, o servidor reduz no máximo
-              até <strong>1920 px de largura</strong> (altura mantém proporção).
+          <div className="space-y-2 rounded-2xl border border-amber-300/40 bg-gradient-to-br from-amber-50/95 via-white to-stone-50 p-5 shadow-sm ring-1 ring-amber-400/20">
+            <p className="text-sm font-semibold text-stone-900">
+              Capa de cada categoria na página inicial
             </p>
-            <p>
-              Formatos: JPEG, PNG ou WebP até 6 MB. A imagem é otimizada e guardada no Storage
-              público.
+            <p className="text-sm text-stone-600">
+              É a <strong>imagem grande de fundo do cartão</strong> na grelha (onde antes aparecia só
+              uma foto automática de um produto). Uma capa por categoria — não há banner extra em
+              cima da página.
+            </p>
+            <p className="text-sm text-stone-600">
+              Recomendado: foto <strong>horizontal</strong>, por exemplo{" "}
+              <strong>1920 × 1080 px</strong> ou <strong>1600 × 900 px</strong>; largura máx.{" "}
+              <strong>1920 px</strong> após otimização. Formatos: JPEG, PNG ou WebP até 6 MB.
             </p>
           </div>
           {categories.map((label) => {
@@ -457,13 +470,14 @@ export default function AdminCategoriasPage() {
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center px-4 text-center text-sm text-stone-500">
-                        Sem capa — na loja usa-se a foto de um produto da pasta.
+                        Sem capa personalizada — na loja usa-se automaticamente uma foto de produto
+                        desta pasta.
                       </div>
                     )}
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col gap-2">
                     <label className="text-sm font-medium text-stone-700">
-                      Subir nova capa
+                      Capa do cartão na página inicial (subir imagem)
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"

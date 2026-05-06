@@ -4,8 +4,8 @@ import type { CategorySummary } from "@/lib/catalog-categories";
 type Props = { categories: CategorySummary[] };
 
 /**
- * Tiles estilo banner: fundo liso + camadas (gradiente, vinheta, textura leve).
- * Imagem = capa do admin ou fallback da primeira pré-visualização do catálogo.
+ * Cartões da página inicial: cada tile usa a capa definida no admin (por categoria)
+ * ou, se não houver, uma pré-visualização automática de produto dessa pasta.
  */
 export function CategoryGrid({ categories }: Props) {
   if (categories.length === 0) {

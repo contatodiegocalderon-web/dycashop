@@ -34,7 +34,13 @@ const PREVIEW_LIMIT = 5;
 const PAGE_SIZE = 1000;
 
 /**
- * Ordem na home: `display_order` da BD (menor primeiro); sem valor usa posição alfabética ×100.
+ * Valor default da coluna `display_order` na migração — tratado como «sem ordem personalizada»,
+ * para não empatar todas as categorias no mesmo número (senão ↑/↓ não altera nada).
+ */
+export const DISPLAY_ORDER_DEFAULT_SENTINEL = 100000;
+
+/**
+ * Ordem na home: `display_order` da BD (menor primeiro); sem valor ou sentinela usa posição alfabética ×100.
  */
 export function sortCategoryLabelsForCatalog(
   labels: string[],
@@ -46,11 +52,15 @@ export function sortCategoryLabelsForCatalog(
     const rawA = orderFromDb.get(a);
     const rawB = orderFromDb.get(b);
     const va =
-      rawA != null && Number.isFinite(Number(rawA))
+      rawA != null &&
+      Number.isFinite(Number(rawA)) &&
+      Number(rawA) !== DISPLAY_ORDER_DEFAULT_SENTINEL
         ? Number(rawA)
         : (alphaIdx.get(a)! + 1) * 100;
     const vb =
-      rawB != null && Number.isFinite(Number(rawB))
+      rawB != null &&
+      Number.isFinite(Number(rawB)) &&
+      Number(rawB) !== DISPLAY_ORDER_DEFAULT_SENTINEL
         ? Number(rawB)
         : (alphaIdx.get(b)! + 1) * 100;
     if (va !== vb) return va - vb;
@@ -123,9 +133,12 @@ export async function getCatalogCategories(): Promise<CategorySummary[]> {
           : "";
       if (!lab) continue;
       coverMap.set(lab, row.catalog_cover_image_url?.trim() || null);
+      const ord = row.display_order;
       orderMap.set(
         lab,
-        typeof row.display_order === "number" ? row.display_order : null
+        typeof ord === "number" && ord !== DISPLAY_ORDER_DEFAULT_SENTINEL
+          ? ord
+          : null
       );
     }
   }

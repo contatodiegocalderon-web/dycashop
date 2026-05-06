@@ -5,7 +5,10 @@ import {
   sanitizeWholesaleTiers,
   type WholesaleTier,
 } from "@/lib/category-showcase";
-import { sortCategoryLabelsForCatalog } from "@/lib/catalog-categories";
+import {
+  DISPLAY_ORDER_DEFAULT_SENTINEL,
+  sortCategoryLabelsForCatalog,
+} from "@/lib/catalog-categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -130,18 +133,29 @@ export async function POST(request: NextRequest) {
     const a = sorted[idx]!;
     const b = sorted[neighborIdx]!;
 
-    const alpha = [...labels].sort((x, y) => x.localeCompare(y, "pt-BR"));
-    const alphaIdx = new Map(alpha.map((l, i) => [l, i]));
-    const defaultOrd = (lab: string) => (alphaIdx.get(lab)! + 1) * 100;
+    /** Ordem efectiva: ignora sentinela 100000 para poder distinguir vizinhos ao trocar. */
+    const resolveDisplayOrder = (
+      label: string,
+      positionInSorted: number
+    ): number => {
+      const v = map.get(label)?.display_order;
+      if (
+        v != null &&
+        Number.isFinite(v) &&
+        v !== DISPLAY_ORDER_DEFAULT_SENTINEL
+      ) {
+        return v;
+      }
+      return (positionInSorted + 1) * 1000;
+    };
 
-    let oa =
-      map.get(a)?.display_order != null && Number.isFinite(map.get(a)!.display_order!)
-        ? map.get(a)!.display_order!
-        : defaultOrd(a);
-    let ob =
-      map.get(b)?.display_order != null && Number.isFinite(map.get(b)!.display_order!)
-        ? map.get(b)!.display_order!
-        : defaultOrd(b);
+    let oa = resolveDisplayOrder(a, idx);
+    let ob = resolveDisplayOrder(b, neighborIdx);
+
+    if (oa === ob) {
+      oa = (idx + 1) * 1000;
+      ob = (neighborIdx + 1) * 1000;
+    }
 
     const tmp = oa;
     oa = ob;

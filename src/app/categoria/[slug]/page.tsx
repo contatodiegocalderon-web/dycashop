@@ -35,16 +35,7 @@ export default async function CategoriaPage({ params }: Props) {
               alt=""
               className="absolute inset-0 h-full w-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/45 to-zinc-900/35" />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_85%_15%,rgba(255,255,255,0.12),transparent_50%)] opacity-90" />
-            <div className="absolute inset-x-0 bottom-0 px-4 pb-5 pt-12 sm:px-6 sm:pb-6">
-              <h1 className="text-2xl font-semibold tracking-tight text-white drop-shadow-lg sm:text-3xl">
-                {cat.label}
-              </h1>
-              <p className="mt-1 max-w-xl text-sm text-stone-300">
-                Filtros de tamanho, marca e cor abaixo — ou M / G / GG.
-              </p>
-            </div>
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-zinc-900/20" />
           </div>
         </div>
       ) : (
