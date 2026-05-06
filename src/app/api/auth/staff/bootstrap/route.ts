@@ -36,23 +36,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const usersInput =
-    "users" in body && Array.isArray(body.users) && body.users.length > 0
-      ? body.users
-      : [
-          {
-            email: body.owner?.email,
-            password: body.owner?.password,
-            role: "owner" as const,
-            fullName: body.owner?.fullName,
-          },
-          {
-            email: body.seller?.email,
-            password: body.seller?.password,
-            role: "seller" as const,
-            fullName: body.seller?.fullName,
-          },
-        ];
+  const usersInput = (() => {
+    if ("users" in body && Array.isArray(body.users) && body.users.length > 0) {
+      return body.users;
+    }
+    const legacyBody = body as {
+      owner?: { email?: string; password?: string; fullName?: string };
+      seller?: { email?: string; password?: string; fullName?: string };
+    };
+    return [
+      {
+        email: legacyBody.owner?.email,
+        password: legacyBody.owner?.password,
+        role: "owner" as const,
+        fullName: legacyBody.owner?.fullName,
+      },
+      {
+        email: legacyBody.seller?.email,
+        password: legacyBody.seller?.password,
+        role: "seller" as const,
+        fullName: legacyBody.seller?.fullName,
+      },
+    ];
+  })();
 
   const normalizedUsers = usersInput.map((u) => ({
     email: String(u.email ?? "")
