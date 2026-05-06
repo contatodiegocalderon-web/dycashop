@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useCart } from "@/providers/cart-provider";
+import { CART_STORAGE_KEY, useCart } from "@/providers/cart-provider";
 import type { CartLine, ProductSize } from "@/types";
 import type { WhatsAppSeller } from "@/lib/sellers";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
@@ -92,6 +92,8 @@ function SellerChoiceAvatar({ seller }: { seller: WhatsAppSeller }) {
 
 export default function CarrinhoPage() {
   const { lines, setLineQuantity, removeLine, clear } = useCart();
+  const [customerName, setCustomerName] = useState("");
+  const [customerWhatsApp, setCustomerWhatsApp] = useState("+55 ");
   const [cep, setCep] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -146,6 +148,7 @@ export default function CarrinhoPage() {
     setBusy(true);
     setErr(null);
     try {
+      const seller = WHATSAPP_SELLERS.find((s) => s.phone === sellerPhone) ?? null;
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -155,6 +158,10 @@ export default function CarrinhoPage() {
             quantity: l.quantity,
           })),
           customerNote: cep.trim() || undefined,
+          customerName: customerName.trim() || undefined,
+          customerWhatsApp: customerWhatsApp.trim() || undefined,
+          sellerName: seller?.name ?? undefined,
+          sellerPhone: seller?.phone ?? undefined,
         }),
       });
 
@@ -188,6 +195,13 @@ export default function CarrinhoPage() {
       });
       const url = waMeUrl(phone, text);
       clear();
+      try {
+        localStorage.removeItem(CART_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      setCustomerName("");
+      setCustomerWhatsApp("+55 ");
       setCep("");
       setSellerModalOpen(false);
       window.location.assign(url);
@@ -448,7 +462,63 @@ export default function CarrinhoPage() {
             );
           })}
 
-          <div>
+          <div className="max-w-xs">
+            <label
+              htmlFor="checkout-customer-name"
+              className="text-sm font-medium text-stone-300"
+            >
+              Seu nome
+            </label>
+            <p className="mt-0.5 text-xs text-stone-500">
+              Usado para identificar o pedido no painel administrativo.
+            </p>
+            <input
+              id="checkout-customer-name"
+              type="text"
+              autoComplete="name"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              maxLength={120}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
+              placeholder="Nome para identificar o pedido"
+            />
+          </div>
+
+          <div className="max-w-xs">
+            <label
+              htmlFor="checkout-customer-whatsapp"
+              className="text-sm font-medium text-stone-300"
+            >
+              WhatsApp
+            </label>
+            <p className="mt-0.5 text-xs text-stone-500">
+              Usado no admin para abrir direto sua conversa.
+            </p>
+            <input
+              id="checkout-customer-whatsapp"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={customerWhatsApp}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "");
+                const brDigits = digits.startsWith("55")
+                  ? digits
+                  : `55${digits}`;
+                const national = brDigits.slice(2, 13);
+                const ddd = national.slice(0, 2);
+                const first = national.slice(2, 7);
+                const second = national.slice(7, 11);
+                const formatted = `+55 ${ddd}${first ? ` ${first}` : ""}${second ? `-${second}` : ""}`;
+                setCustomerWhatsApp(formatted.trimEnd());
+              }}
+              maxLength={20}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
+              placeholder="+55 11 99999-9999"
+            />
+          </div>
+
+          <div className="max-w-xs">
             <label
               htmlFor="checkout-cep"
               className="text-sm font-medium text-stone-300"
@@ -466,7 +536,7 @@ export default function CarrinhoPage() {
               value={cep}
               onChange={(e) => setCep(e.target.value)}
               maxLength={9}
-              className="mt-2 w-full max-w-xs rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm tabular-nums text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
+              className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm tabular-nums text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
               placeholder="00000-000"
             />
           </div>

@@ -15,7 +15,17 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       items?: BodyItem[];
       customerNote?: string;
+      customerName?: string;
+      customerWhatsApp?: string;
+      sellerName?: string;
+      sellerPhone?: string;
     };
+    const rawCustomerWhatsappDigits = String(body.customerWhatsApp ?? "").replace(/\D/g, "");
+    const customerWhatsappDigits = rawCustomerWhatsappDigits
+      ? rawCustomerWhatsappDigits.startsWith("55")
+        ? rawCustomerWhatsappDigits
+        : `55${rawCustomerWhatsappDigits}`
+      : "";
     const items = body.items;
     if (!items?.length) {
       return NextResponse.json({ error: "items obrigatório" }, { status: 400 });
@@ -75,6 +85,11 @@ export async function POST(request: NextRequest) {
       .insert({
         status: "PENDENTE_PAGAMENTO",
         customer_note: body.customerNote ?? null,
+        customer_name: body.customerName?.trim() || null,
+        customer_whatsapp:
+          customerWhatsappDigits.length >= 10 ? customerWhatsappDigits : null,
+        requested_seller_name: body.sellerName?.trim() || null,
+        requested_seller_phone: body.sellerPhone?.trim() || null,
         public_token: publicToken,
       })
       .select("id")

@@ -15,6 +15,11 @@ export function ProductCard({ product, imagePriority }: Props) {
   const inCart = line?.quantity ?? 0;
   const available = Math.max(0, product.stock - inCart);
   const canAdd = available > 0;
+  const removeFromCart = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+    e.preventDefault();
+    e.stopPropagation();
+    removeLine(product.id);
+  };
 
   const imageSrc = product.drive_image_url;
 
@@ -57,12 +62,9 @@ export function ProductCard({ product, imagePriority }: Props) {
                 type="button"
                 aria-label="Remover do carrinho"
                 title="Remover do carrinho"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  removeLine(product.id);
-                }}
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-lg font-bold leading-none text-red-500 transition hover:bg-red-500/15 hover:text-red-400 active:scale-95"
+                onClick={removeFromCart}
+                onTouchEnd={removeFromCart}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xl font-bold leading-none text-red-500 transition hover:bg-red-500/15 hover:text-red-400 active:scale-95"
               >
                 ×
               </button>

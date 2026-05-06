@@ -75,6 +75,8 @@ export interface OrderRow {
   customer_name?: string | null;
   customer_whatsapp?: string | null;
   customer_segment?: CustomerSegment | null;
+  requested_seller_name?: string | null;
+  requested_seller_phone?: string | null;
   confirmed_at?: string | null;
   /** Quem confirmou o pagamento (vendedor/dono) quando sessão staff. */
   confirmed_by_staff_id?: string | null;

@@ -10,7 +10,7 @@ import React, {
 } from "react";
 import type { CartLine, Product } from "@/types";
 
-const STORAGE_KEY = "streetwear-cart-v1";
+export const CART_STORAGE_KEY = "streetwear-cart-v1";
 
 type CartContextValue = {
   lines: CartLine[];
@@ -43,7 +43,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(CART_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as CartLine[];
         if (Array.isArray(parsed)) setLines(parsed);
@@ -57,7 +57,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(lines));
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(lines));
     } catch {
       /* ignore */
     }
@@ -111,7 +111,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setLines((prev) => prev.filter((l) => l.productId !== productId));
   }, []);
 
-  const clear = useCallback(() => setLines([]), []);
+  const clear = useCallback(() => {
+    setLines([]);
+    try {
+      localStorage.removeItem(CART_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const value = useMemo(
     () => ({ lines, addProduct, setLineQuantity, removeLine, clear }),

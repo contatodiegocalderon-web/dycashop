@@ -7,45 +7,81 @@ export const runtime = "nodejs";
 
 /**
  * POST /api/auth/staff/bootstrap
- * Cria as primeiras contas (dono + vendedor). Exige cabeçalho x-admin-key = ADMIN_API_SECRET.
- * Corpo: { owner: { email, password }, seller: { email, password } }
+ * Cria as primeiras contas da equipa. Exige cabeçalho x-admin-key = ADMIN_API_SECRET.
+ * Corpo:
+ *  - novo formato: { users: [{ email, password, role, fullName? }] }
+ *  - legado: { owner: { email, password }, seller: { email, password } }
  */
 export async function POST(request: NextRequest) {
   if (!apiKeyMatches(request)) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
-  let body: {
-    owner?: { email?: string; password?: string };
-    seller?: { email?: string; password?: string };
-  };
+  let body:
+    | {
+        users?: Array<{
+          email?: string;
+          password?: string;
+          role?: "owner" | "seller";
+          fullName?: string;
+        }>;
+      }
+    | {
+        owner?: { email?: string; password?: string; fullName?: string };
+        seller?: { email?: string; password?: string; fullName?: string };
+      };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const ownerEmail = String(body.owner?.email ?? "")
-    .trim()
-    .toLowerCase();
-  const ownerPass = String(body.owner?.password ?? "");
-  const sellerEmail = String(body.seller?.email ?? "")
-    .trim()
-    .toLowerCase();
-  const sellerPass = String(body.seller?.password ?? "");
+  const usersInput =
+    "users" in body && Array.isArray(body.users) && body.users.length > 0
+      ? body.users
+      : [
+          {
+            email: body.owner?.email,
+            password: body.owner?.password,
+            role: "owner" as const,
+            fullName: body.owner?.fullName,
+          },
+          {
+            email: body.seller?.email,
+            password: body.seller?.password,
+            role: "seller" as const,
+            fullName: body.seller?.fullName,
+          },
+        ];
+
+  const normalizedUsers = usersInput.map((u) => ({
+    email: String(u.email ?? "")
+      .trim()
+      .toLowerCase(),
+    password: String(u.password ?? ""),
+    role: u.role === "owner" ? "owner" : "seller",
+    full_name: String(u.fullName ?? "").trim() || null,
+  }));
 
   if (
-    !ownerEmail ||
-    !ownerPass ||
-    !sellerEmail ||
-    !sellerPass ||
-    ownerEmail === sellerEmail
+    normalizedUsers.length === 0 ||
+    normalizedUsers.some((u) => !u.email || !u.password)
   ) {
     return NextResponse.json(
-      {
-        error:
-          "Informe owner e seller com emails distintos e senhas (JSON: owner, seller).",
-      },
+      { error: "Informe utilizadores com email e senha válidos." },
+      { status: 400 }
+    );
+  }
+  const uniqueEmails = new Set(normalizedUsers.map((u) => u.email));
+  if (uniqueEmails.size !== normalizedUsers.length) {
+    return NextResponse.json(
+      { error: "Há emails duplicados na lista de utilizadores." },
+      { status: 400 }
+    );
+  }
+  if (!normalizedUsers.some((u) => u.role === "owner")) {
+    return NextResponse.json(
+      { error: "Inclua ao menos 1 conta com role=owner." },
       { status: 400 }
     );
   }
@@ -66,22 +102,18 @@ export async function POST(request: NextRequest) {
   }
 
   const rounds = 10;
-  const ins = await admin.from("staff_users").insert([
-    {
-      email: ownerEmail,
-      password_hash: bcrypt.hashSync(ownerPass, rounds),
-      role: "owner",
-    },
-    {
-      email: sellerEmail,
-      password_hash: bcrypt.hashSync(sellerPass, rounds),
-      role: "seller",
-    },
-  ]);
+  const ins = await admin.from("staff_users").insert(
+    normalizedUsers.map((u) => ({
+      email: u.email,
+      password_hash: bcrypt.hashSync(u.password, rounds),
+      role: u.role,
+      full_name: u.full_name,
+    }))
+  );
 
   if (ins.error) {
     return NextResponse.json({ error: ins.error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, created: 2 });
+  return NextResponse.json({ ok: true, created: normalizedUsers.length });
 }

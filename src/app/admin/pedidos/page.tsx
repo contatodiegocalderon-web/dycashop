@@ -10,18 +10,6 @@ import type {
   ProductSize,
 } from "@/types";
 import { publicDriveImageUrl } from "@/lib/drive-image-url";
-import { formatSyncResultSummary } from "@/lib/format-sync-result";
-import { consumeSyncNdjsonStream } from "@/lib/sync-stream-client";
-import type { SyncResult } from "@/services/drive-sync";
-
-function errorFromResponseBody(text: string): Error {
-  try {
-    const j = JSON.parse(text) as { error?: string };
-    return new Error((j.error ?? text) || "Falha");
-  } catch {
-    return new Error(text || "Falha");
-  }
-}
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
 
@@ -41,8 +29,14 @@ function groupItems(items: OrderItemRow[]) {
   return m;
 }
 
+function waLinkFromDigits(raw: string | null | undefined): string | null {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  if (digits.length < 10) return null;
+  return `https://wa.me/${digits}`;
+}
+
 export default function AdminPedidosPage() {
-  const { adminFetch, isOwner } = useAdminAuth();
+  const { adminFetch } = useAdminAuth();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,14 +44,6 @@ export default function AdminPedidosPage() {
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [cancelOpenId, setCancelOpenId] = useState<string | null>(null);
   const [cancelPhrase, setCancelPhrase] = useState("");
-  const [importing, setImporting] = useState(false);
-  const [importMsg, setImportMsg] = useState<string | null>(null);
-  const [importProgress, setImportProgress] = useState<{
-    phase: string;
-    current: number;
-    total: number;
-    skipped: number;
-  } | null>(null);
   const [confirmOpenId, setConfirmOpenId] = useState<string | null>(null);
   const [saleAmount, setSaleAmount] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -88,93 +74,11 @@ export default function AdminPedidosPage() {
     void fetchOrders();
   }, [fetchOrders]);
 
-  async function runDriveImport() {
-    setImporting(true);
-    setImportMsg(null);
-    setImportProgress(null);
-    try {
-      const res = await adminFetch("/api/import-drive?stream=1", {
-        method: "POST",
-      });
-      const ct = res.headers.get("content-type") ?? "";
-      if (!res.ok) {
-        throw errorFromResponseBody(await res.text());
-      }
-      if (ct.includes("ndjson")) {
-        setImportProgress({
-          phase: "A iniciar…",
-          current: 0,
-          total: 0,
-          skipped: 0,
-        });
-        await consumeSyncNdjsonStream(res, (raw) => {
-          const o = raw as {
-            type?: string;
-            phase?: string;
-            current?: number;
-            total?: number;
-            skipped?: number;
-            result?: SyncResult;
-            message?: string;
-          };
-          if (o.type === "phase" && o.phase) {
-            const msg =
-              o.phase === "produtos"
-                ? "A atualizar produtos…"
-                : o.phase === "imagens"
-                  ? "A preparar imagens…"
-                  : o.phase === "drive_rename"
-                    ? "A alinhar nomes no Drive…"
-                    : o.phase;
-            setImportProgress((p) => ({
-              current: p?.current ?? 0,
-              total: p?.total ?? 0,
-              skipped: p?.skipped ?? 0,
-              phase: msg,
-            }));
-          }
-          if (o.type === "progress" && o.phase === "images") {
-            setImportProgress({
-              phase: "Imagens → Storage",
-              current: o.current ?? 0,
-              total: o.total ?? 0,
-              skipped: o.skipped ?? 0,
-            });
-          }
-          if (o.type === "complete" && o.result) {
-            setImportMsg(formatSyncResultSummary(o.result));
-            setImportProgress(null);
-          }
-          if (o.type === "fatal") {
-            setImportMsg(o.message ?? "Erro na importação");
-            setImportProgress(null);
-          }
-        });
-        return;
-      }
-      const data = (await res.json()) as {
-        imported?: number;
-        message?: string;
-        error?: string;
-      };
-      if (data.error) throw new Error(data.error);
-      setImportMsg(
-        typeof data.imported === "number"
-          ? `Importados/atualizados: ${data.imported} produtos.`
-          : (data.message as string)
-      );
-    } catch (e) {
-      setImportProgress(null);
-      setImportMsg(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setImporting(false);
-    }
-  }
-
   function openConfirmModal(orderId: string) {
     setConfirmSuccessMsg(null);
     setSaleAmount("");
-    setCustomerName("");
+    const found = orders.find((o) => o.id === orderId);
+    setCustomerName(found?.customer_name?.trim() ?? "");
     setCustomerWhatsApp("");
     setCustomerSegment("NOVO");
     setConfirmOpenId(orderId);
@@ -286,24 +190,6 @@ export default function AdminPedidosPage() {
           </button>
         </div>
       </div>
-      {isOwner && importProgress && (
-        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-950">
-          <p className="font-medium">{importProgress.phase}</p>
-          {importProgress.total > 0 ? (
-            <p className="mt-1 text-xs text-emerald-900/90">
-              Imagens: {importProgress.current} / {importProgress.total} ·
-              Ignoradas: {importProgress.skipped}
-            </p>
-          ) : (
-            <p className="mt-1 text-xs text-emerald-900/80">A calcular…</p>
-          )}
-        </div>
-      )}
-      {isOwner && importMsg && (
-        <p className="mb-4 text-sm text-stone-600 whitespace-pre-wrap">
-          {importMsg}
-        </p>
-      )}
       {confirmSuccessMsg && (
         <p className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           {confirmSuccessMsg}
@@ -324,6 +210,7 @@ export default function AdminPedidosPage() {
         {orders.map((order) => {
           const items = order.order_items ?? [];
           const bySize = groupItems(items);
+          const waHref = waLinkFromDigits(order.customer_whatsapp);
           return (
             <li
               key={order.id}
@@ -331,7 +218,22 @@ export default function AdminPedidosPage() {
             >
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="font-mono text-sm text-stone-500">{order.id}</p>
+                  <p className="text-lg font-bold uppercase tracking-wide text-stone-800">
+                    PEDIDO #{orders.length - orders.findIndex((o) => o.id === order.id)}
+                  </p>
+                  <p className="font-mono text-xs text-stone-500">{order.id}</p>
+                  {order.customer_name && (
+                    <p className="mt-1 text-sm text-stone-800">
+                      <span className="text-stone-500">Cliente: </span>
+                      {order.customer_name}
+                    </p>
+                  )}
+                  {order.requested_seller_name && (
+                    <p className="text-sm text-stone-700">
+                      <span className="text-stone-500">Vendedor escolhido: </span>
+                      {order.requested_seller_name}
+                    </p>
+                  )}
                   {order.public_token ? (
                     <p className="mt-1 text-xs">
                       <Link
@@ -355,6 +257,35 @@ export default function AdminPedidosPage() {
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {waHref ? (
+                    <a
+                      href={waHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Abrir conversa no WhatsApp"
+                      aria-label="Abrir conversa no WhatsApp"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#25D366] text-white shadow hover:bg-[#20bd5a]"
+                    >
+                      <svg viewBox="0 0 24 24" width={18} height={18} aria-hidden>
+                        <path
+                          fill="currentColor"
+                          d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.149-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"
+                        />
+                      </svg>
+                    </a>
+                  ) : (
+                    <span
+                      title="Cliente não informou WhatsApp no pedido"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-stone-200 text-stone-500"
+                    >
+                      <svg viewBox="0 0 24 24" width={18} height={18} aria-hidden>
+                        <path
+                          fill="currentColor"
+                          d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.149-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"
+                        />
+                      </svg>
+                    </span>
+                  )}
                   <button
                     type="button"
                     disabled={confirming === order.id || !!cancelling}

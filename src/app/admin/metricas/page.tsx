@@ -23,6 +23,19 @@ type MetricsPayload = {
   antigoCount: number;
 };
 
+type SellerBreakdownRow = {
+  staffId: string;
+  staffName: string;
+  staffEmail: string;
+  orderCount: number;
+  totalRevenue: number;
+  totalProfit: number;
+  topProduct: string | null;
+  topProductPieces: number;
+};
+
+type PeriodKey = "daily" | "weekly" | "monthly" | "yearly" | "last30" | "all";
+
 function money(n: number) {
   return n.toLocaleString("pt-BR", {
     style: "currency",
@@ -31,29 +44,50 @@ function money(n: number) {
 }
 
 export default function AdminMetricasPage() {
-  const { adminFetch } = useAdminAuth();
+  const { adminFetch, isOwner, session } = useAdminAuth();
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
+  const [sellerBreakdown, setSellerBreakdown] = useState<SellerBreakdownRow[]>([]);
+  const [period, setPeriod] = useState<PeriodKey>("all");
   const loadMetrics = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const mRes = await adminFetch("/api/admin/metrics");
+      const mRes = await adminFetch(`/api/admin/metrics?period=${period}`);
       const mJson = await mRes.json();
       if (!mRes.ok) throw new Error(mJson.error ?? "Falha nas métricas");
       setMetrics(mJson.metrics as MetricsPayload);
+      setSellerBreakdown((mJson.sellerBreakdown ?? []) as SellerBreakdownRow[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
       setMetrics(null);
+      setSellerBreakdown([]);
     } finally {
       setLoading(false);
     }
-  }, [adminFetch]);
+  }, [adminFetch, period]);
 
   useEffect(() => {
     void loadMetrics();
   }, [loadMetrics]);
+
+  async function resetMetrics() {
+    if (!isOwner) return;
+    setResetting(true);
+    setError(null);
+    try {
+      const res = await adminFetch("/api/admin/metrics/reset", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Falha ao zerar métricas");
+      await loadMetrics();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setResetting(false);
+    }
+  }
 
   const sortedCategories = Object.entries(metrics?.piecesByCategory ?? {}).sort(
     (a, b) => b[1] - a[1]
@@ -103,15 +137,44 @@ export default function AdminMetricasPage() {
               Clientes registados
             </Link>
           </div>
+          {!isOwner && (
+            <p className="mt-2 text-xs text-stone-500">
+              Sessão vendedor: {session?.email}. Esta tela mostra apenas suas vendas.
+            </p>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={loadMetrics}
-          disabled={loading}
-          className="rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-stone-900/15 hover:bg-stone-800 disabled:opacity-50"
-        >
-          {loading ? "A atualizar…" : "Atualizar dados"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={period}
+            onChange={(e) => setPeriod(e.target.value as PeriodKey)}
+            className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+          >
+            <option value="all">Todo período</option>
+            <option value="daily">Diário</option>
+            <option value="weekly">Semanal</option>
+            <option value="monthly">Mensal</option>
+            <option value="yearly">Anual</option>
+            <option value="last30">Últimos 30 dias</option>
+          </select>
+          <button
+            type="button"
+            onClick={loadMetrics}
+            disabled={loading}
+            className="rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-stone-900/15 hover:bg-stone-800 disabled:opacity-50"
+          >
+            {loading ? "A atualizar…" : "Atualizar dados"}
+          </button>
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() => void resetMetrics()}
+              disabled={resetting}
+              className="rounded-xl border border-red-300 bg-red-50 px-5 py-2.5 text-sm font-semibold text-red-900 hover:bg-red-100 disabled:opacity-50"
+            >
+              {resetting ? "A zerar…" : "Zerar métricas"}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -230,6 +293,46 @@ export default function AdminMetricasPage() {
                     </td>
                     <td className="px-6 py-3">
                       {money(metrics.profitByCategory[cat] ?? 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {isOwner && sellerBreakdown.length > 0 && (
+        <div className="mb-10 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-lg shadow-stone-900/5">
+          <div className="border-b border-stone-100 bg-stone-50/80 px-6 py-4">
+            <h2 className="font-bold text-stone-900">Desempenho por vendedor</h2>
+            <p className="text-xs text-stone-500">
+              Faturamento, lucro e produto mais vendido por vendedor.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="text-xs uppercase text-stone-500">
+                <tr className="border-b border-stone-100">
+                  <th className="px-6 py-3">Vendedor</th>
+                  <th className="px-6 py-3">Vendas</th>
+                  <th className="px-6 py-3">Faturamento</th>
+                  <th className="px-6 py-3">Lucro</th>
+                  <th className="px-6 py-3">Produto mais vendido</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sellerBreakdown.map((s) => (
+                  <tr key={s.staffId} className="border-b border-stone-50 last:border-0">
+                    <td className="px-6 py-3">
+                      <p className="font-medium text-stone-900">{s.staffName}</p>
+                      <p className="text-xs text-stone-500">{s.staffEmail}</p>
+                    </td>
+                    <td className="px-6 py-3">{s.orderCount}</td>
+                    <td className="px-6 py-3">{money(s.totalRevenue)}</td>
+                    <td className="px-6 py-3">{money(s.totalProfit)}</td>
+                    <td className="px-6 py-3">
+                      {s.topProduct ? `${s.topProduct} (${s.topProductPieces})` : "—"}
                     </td>
                   </tr>
                 ))}
