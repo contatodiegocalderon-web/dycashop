@@ -498,7 +498,7 @@ export default function CarrinhoPage() {
               WhatsApp
             </label>
             <p className="mt-0.5 text-xs text-stone-500">
-              Usado no admin para abrir direto sua conversa.
+              IMPORTANTE, confira antes de enviar o pedido
             </p>
             <input
               id="checkout-customer-whatsapp"

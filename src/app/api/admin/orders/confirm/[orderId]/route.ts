@@ -22,7 +22,7 @@ function parseConfirmBody(raw: unknown): {
     throw new Error("Body JSON inválido");
   }
   const o = raw as Record<string, unknown>;
-  const saleAmount = Number(o.saleAmount ?? o.sale_amount);
+  const saleAmountRaw = Number(o.saleAmount ?? o.sale_amount ?? 0);
   const saleByCategoryRaw = o.saleByCategory ?? o.sale_by_category;
   const customerName = String(o.customerName ?? o.customer_name ?? "").trim();
   const customerWhatsApp = String(
@@ -32,9 +32,7 @@ function parseConfirmBody(raw: unknown): {
     o.customerSegment ?? o.customer_segment ?? ""
   ).toUpperCase();
 
-  if (Number.isNaN(saleAmount) || saleAmount <= 0) {
-    throw new Error("Informe saleAmount (valor do pedido) maior que zero");
-  }
+  const saleAmount = Number.isNaN(saleAmountRaw) ? 0 : saleAmountRaw;
   const saleByCategory: Record<string, number> = {};
   if (saleByCategoryRaw && typeof saleByCategoryRaw === "object") {
     for (const [k, v] of Object.entries(saleByCategoryRaw as Record<string, unknown>)) {
@@ -42,7 +40,7 @@ function parseConfirmBody(raw: unknown): {
       if (!label) continue;
       const n = Number(v);
       if (Number.isNaN(n) || n < 0) {
-        throw new Error(`Valor inválido em saleByCategory para ${label}`);
+        throw new Error(`Preço por peça inválido em saleByCategory para ${label}`);
       }
       saleByCategory[label] = n;
     }
@@ -70,6 +68,7 @@ function parseConfirmBody(raw: unknown): {
 /**
  * POST /api/admin/orders/confirm/[orderId]
  * Corpo: { saleAmount, saleByCategory, customerName, customerWhatsApp, customerSegment }
+ * `saleByCategory` recebe PREÇO POR PEÇA; o servidor multiplica pela quantidade.
  */
 export async function POST(
   request: NextRequest,
@@ -140,9 +139,12 @@ export async function POST(
     }
 
     const categoriesInOrder = new Set<string>();
+    const qtyByCategory: Record<string, number> = {};
     const totals = new Map<string, number>();
     for (const it of items) {
-      categoriesInOrder.add(it.snapshot_category?.trim() || "Sem categoria");
+      const cat = it.snapshot_category?.trim() || "Sem categoria";
+      categoriesInOrder.add(cat);
+      qtyByCategory[cat] = (qtyByCategory[cat] ?? 0) + it.quantity;
       if (!it.product_id) continue;
       totals.set(
         it.product_id,
@@ -190,23 +192,40 @@ export async function POST(
 
     const confirmedAt = new Date().toISOString();
 
-    const orderUpdate: Record<string, unknown> = {
-      status: "PAGO",
-      sale_amount: bodyParsed.saleAmount,
-      sale_amount_by_category: bodyParsed.saleByCategory,
-      customer_name: bodyParsed.customerName,
-      customer_whatsapp: bodyParsed.customerWhatsApp,
-      customer_segment: bodyParsed.customerSegment,
-      confirmed_at: confirmedAt,
-    };
+    const saleAmountByCategoryTotal: Record<
+      string,
+      { unit_price: number; total: number; qty: number }
+    > = {};
+    let computedSaleAmount = 0;
     for (const cat of Array.from(categoriesInOrder)) {
-      if (bodyParsed.saleByCategory[cat] == null) {
+      const pricePerPiece = bodyParsed.saleByCategory[cat];
+      if (pricePerPiece == null) {
         return NextResponse.json(
           { error: `Informe o valor vendido para a categoria ${cat}` },
           { status: 400 }
         );
       }
+      const qty = qtyByCategory[cat] ?? 0;
+      const totalCat = Number((pricePerPiece * qty).toFixed(2));
+      saleAmountByCategoryTotal[cat] = {
+        unit_price: pricePerPiece,
+        total: totalCat,
+        qty,
+      };
+      computedSaleAmount += totalCat;
     }
+    if (computedSaleAmount <= 0 && bodyParsed.saleAmount > 0) {
+      computedSaleAmount = bodyParsed.saleAmount;
+    }
+    const orderUpdate: Record<string, unknown> = {
+      status: "PAGO",
+      sale_amount: Number(computedSaleAmount.toFixed(2)),
+      sale_amount_by_category: saleAmountByCategoryTotal,
+      customer_name: bodyParsed.customerName,
+      customer_whatsapp: bodyParsed.customerWhatsApp,
+      customer_segment: bodyParsed.customerSegment,
+      confirmed_at: confirmedAt,
+    };
     if (confirmedByStaffId) {
       orderUpdate.confirmed_by_staff_id = confirmedByStaffId;
     }

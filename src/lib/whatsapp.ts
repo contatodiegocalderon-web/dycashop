@@ -14,30 +14,34 @@ export function buildOrderWhatsAppText(
   const totals = totalsByCategoryFromCartLines(lines);
 
   const receiptUrl = opts?.receiptUrl?.trim();
-  const header = receiptUrl
-    ? `*Novo pedido*\n📎 Ver sua seleção com fotos:\n${receiptUrl}\n`
-    : `*Novo pedido*\n`;
+  const hasOrderNumber =
+    opts?.orderDisplayNumber != null && Number.isFinite(opts.orderDisplayNumber);
+  const header = hasOrderNumber
+    ? `*Novo pedido - Pedido #${opts!.orderDisplayNumber}*`
+    : "*Novo pedido*";
 
-  const parts: string[] = [header];
-  if (opts?.orderDisplayNumber && Number.isFinite(opts.orderDisplayNumber)) {
-    parts.push(`*Pedido #${opts.orderDisplayNumber}*`);
+  const parts: string[] = [header, ""];
+
+  if (receiptUrl) {
+    parts.push("📎 Ver sua seleção com fotos:");
+    parts.push(receiptUrl);
     parts.push("");
   }
 
   const name = opts?.customerName?.trim();
   if (name) {
-    parts.push(`*Nome:* ${name}`);
+    parts.push(`Nome: ${name}`);
     parts.push("");
   }
 
   const cep = opts?.customerCep?.trim();
   if (cep) {
-    parts.push(`*CEP (frete):* ${cep}`);
+    parts.push(`CEP (frete): ${cep}`);
     parts.push("");
   }
 
   for (const { label, qty } of totals) {
-    parts.push(`*x${qty} ${label}*`);
+    parts.push(`x${qty} ${label}`);
   }
   if (totals.length) parts.push("");
 

@@ -7,7 +7,17 @@ export type CategoryCostMap = Record<string, number>;
 export interface OrderSaleRow {
   id: string;
   sale_amount: number | null;
-  sale_amount_by_category?: Record<string, number> | null;
+  sale_amount_by_category?:
+    | Record<
+        string,
+        | number
+        | {
+            unit_price?: number;
+            total?: number;
+            qty?: number;
+          }
+      >
+    | null;
   customer_segment: string | null;
 }
 
@@ -19,6 +29,15 @@ export interface OrderItemSaleRow {
     | { category: string | null }
     | { category: string | null }[]
     | null;
+}
+
+function normalizeKey(raw: string | null | undefined): string {
+  return String(raw ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 function productCategoryFromEmbed(
@@ -83,12 +102,14 @@ export function aggregateSalesMetrics(
   let novoCount = 0;
   let antigoCount = 0;
 
+  const normalizedCosts: Record<string, number> = {};
+  for (const [label, c] of Object.entries(costs)) {
+    normalizedCosts[normalizeKey(label)] = Number(c || 0);
+  }
+
   for (const o of paidWithSale) {
     const sale = Number(o.sale_amount);
-    totalRevenue += sale;
-
     const items = itemsByOrderId.get(o.id) ?? [];
-    totalProfit += profitForOrder(sale, items, costs);
 
     if (o.customer_segment === "NOVO") novoCount += 1;
     else if (o.customer_segment === "ANTIGO") antigoCount += 1;
@@ -97,7 +118,8 @@ export function aggregateSalesMetrics(
     const qtyByCategory: Record<string, number> = {};
     for (const it of items) {
       const cat = resolveCategory(it);
-      qtyByCategory[cat] = (qtyByCategory[cat] ?? 0) + it.quantity;
+      const catKey = normalizeKey(cat);
+      qtyByCategory[catKey] = (qtyByCategory[catKey] ?? 0) + it.quantity;
     }
     const saleByCategory =
       o.sale_amount_by_category && typeof o.sale_amount_by_category === "object"
@@ -105,23 +127,57 @@ export function aggregateSalesMetrics(
         : null;
     const hasExplicitCategorySale =
       saleByCategory != null && Object.keys(saleByCategory).length > 0;
+    const explicitRevenueByCategory: Record<string, number> = {};
+    if (hasExplicitCategorySale) {
+      for (const [catLabel, raw] of Object.entries(saleByCategory!)) {
+        const key = normalizeKey(catLabel);
+        const qty = qtyByCategory[key] ?? 0;
+        if (typeof raw === "number") {
+          // Legado: número é preço por peça.
+          explicitRevenueByCategory[key] = Number((raw * qty).toFixed(2));
+          continue;
+        }
+        if (raw && typeof raw === "object") {
+          const r = raw as { total?: unknown; unit_price?: unknown };
+          if (typeof r.total === "number") {
+            explicitRevenueByCategory[key] = Number(r.total.toFixed(2));
+          } else if (typeof r.unit_price === "number") {
+            explicitRevenueByCategory[key] = Number((r.unit_price * qty).toFixed(2));
+          }
+        }
+      }
+    }
+    const explicitOrderRevenue = Object.values(explicitRevenueByCategory).reduce(
+      (acc, n) => acc + Number(n || 0),
+      0
+    );
+    const orderRevenue = explicitOrderRevenue > 0 ? explicitOrderRevenue : sale;
+    totalRevenue += orderRevenue;
+    let orderProfit = 0;
 
     for (const it of items) {
       const cat = resolveCategory(it);
+      const catKey = normalizeKey(cat);
       const qty = it.quantity;
       piecesByCategory[cat] = (piecesByCategory[cat] ?? 0) + qty;
 
-      const allocatedRev = hasExplicitCategorySale
-        ? Number(saleByCategory?.[cat] ?? 0) *
-          (qtyByCategory[cat] > 0 ? qty / qtyByCategory[cat]! : 0)
-        : sale * (qty / totalPieces);
-      const unitCost = costs[cat] ?? costs["Sem categoria"] ?? 0;
+      const categoryRevenue = explicitRevenueByCategory[catKey] ?? 0;
+      const allocatedRev =
+        categoryRevenue > 0
+          ? categoryRevenue * (qtyByCategory[catKey] > 0 ? qty / qtyByCategory[catKey]! : 0)
+          : orderRevenue * (qty / totalPieces);
+      const unitCost =
+        normalizedCosts[catKey] ??
+        normalizedCosts[normalizeKey("Sem categoria")] ??
+        0;
       const lineCost = qty * unitCost;
       const allocatedProfit = allocatedRev - lineCost;
+      orderProfit += allocatedProfit;
 
       revenueByCategory[cat] = (revenueByCategory[cat] ?? 0) + allocatedRev;
       profitByCategory[cat] = (profitByCategory[cat] ?? 0) + allocatedProfit;
     }
+    totalProfit += orderProfit;
   }
 
   const orderCount = paidWithSale.length;

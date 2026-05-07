@@ -396,7 +396,7 @@ export default function AdminPedidosClient() {
                         key={`cat-amount-${order.id}-${cat}`}
                         className="block text-xs font-medium text-stone-600"
                       >
-                        {`Valor vendido — ${cat} (R$)`}
+                        {`Preço por peça — ${cat} (R$)`}
                         <input
                           type="text"
                           inputMode="decimal"
@@ -407,7 +407,7 @@ export default function AdminPedidosClient() {
                               [cat]: e.target.value,
                             }))
                           }
-                          placeholder="0,00"
+                          placeholder="ex.: 27,00"
                           className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-stone-900"
                         />
                       </label>

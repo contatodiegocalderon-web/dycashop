@@ -31,6 +31,7 @@ type AdminAuthContextValue = {
   /** Compat: cabeçalhos JSON (a sessão é o cookie, não chave no storage). */
   adminHeaders: HeadersInit;
   isOwner: boolean;
+  pendingOrdersCount: number | null;
 };
 
 const AdminAuthContext = createContext<AdminAuthContextValue | null>(null);
@@ -44,7 +45,7 @@ export function useAdminAuth(): AdminAuthContextValue {
 }
 
 function AdminChrome({ children }: { children: ReactNode }) {
-  const { logout, session, isOwner } = useAdminAuth();
+  const { logout, session, isOwner, pendingOrdersCount } = useAdminAuth();
   const pathname = usePathname();
 
   const allNav = useMemo(
@@ -95,7 +96,9 @@ function AdminChrome({ children }: { children: ReactNode }) {
                         : "text-stone-300 hover:bg-stone-800 hover:text-white"
                     }`}
                   >
-                    {item.label}
+                    {item.href === "/admin/pedidos" && pendingOrdersCount != null
+                      ? `${item.label} (${pendingOrdersCount})`
+                      : item.label}
                   </Link>
                 );
               })}
@@ -134,6 +137,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [session, setSession] = useState<StaffSession | null>(null);
   const [ready, setReady] = useState(false);
+  const [pendingOrdersCount, setPendingOrdersCount] = useState<number | null>(null);
 
   const adminFetch = useCallback((input: RequestInfo, init?: RequestInit) => {
     const h = new Headers(init?.headers);
@@ -185,6 +189,20 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
   }, [adminFetch]);
 
+  const refreshPendingOrdersCount = useCallback(async () => {
+    try {
+      const r = await adminFetch("/api/admin/orders?status=PENDENTE_PAGAMENTO");
+      if (!r.ok) {
+        setPendingOrdersCount(null);
+        return;
+      }
+      const j = (await r.json()) as { orders?: unknown[] };
+      setPendingOrdersCount(Array.isArray(j.orders) ? j.orders.length : 0);
+    } catch {
+      setPendingOrdersCount(null);
+    }
+  }, [adminFetch]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -195,6 +213,11 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [refreshSession]);
+
+  useEffect(() => {
+    if (!ready || !session) return;
+    void refreshPendingOrdersCount();
+  }, [ready, session, pathname, refreshPendingOrdersCount]);
 
   const logout = useCallback(async () => {
     try {
@@ -222,8 +245,18 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       adminFetch,
       adminHeaders,
       isOwner,
+      pendingOrdersCount,
     }),
-    [session, ready, logout, refreshSession, adminFetch, adminHeaders, isOwner]
+    [
+      session,
+      ready,
+      logout,
+      refreshSession,
+      adminFetch,
+      adminHeaders,
+      isOwner,
+      pendingOrdersCount,
+    ]
   );
 
   const isLogin = pathname === "/admin/login";

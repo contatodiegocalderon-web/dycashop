@@ -27,6 +27,145 @@ function aggregateByCategory(items: OrderItemRow[]): Array<{ label: string; qty:
     .map(([label, qty]) => ({ label, qty }));
 }
 
+function normalizeKey(raw: string | null | undefined): string {
+  return String(raw ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function displayOrderAmount(order: OrderRow): number {
+  const rawMap = order.sale_amount_by_category;
+  const lines = aggregateByCategory(order.order_items ?? []);
+  const saleAmount = Number(order.sale_amount ?? 0);
+
+  if (!rawMap || typeof rawMap !== "object") {
+    // Legado sem mapa:
+    // - alguns pedidos antigos gravaram total em `sale_amount`
+    // - outros gravaram preço por peça
+    if (lines.length === 1 && lines[0] && lines[0].qty > 1 && saleAmount > 0) {
+      // Regra conservadora: só interpreta como preço por peça quando o valor é baixo.
+      if (saleAmount <= 120) return Number((saleAmount * lines[0].qty).toFixed(2));
+    }
+    return Number(saleAmount.toFixed(2));
+  }
+  const map = rawMap as Record<
+    string,
+    | number
+    | {
+        unit_price?: number;
+        total?: number;
+        qty?: number;
+      }
+  >;
+  const qtyByCategory = new Map(lines.map((l) => [l.label, l.qty]));
+
+  let sumFromStructured = 0;
+  for (const [cat, raw] of Object.entries(map)) {
+    if (typeof raw === "number") {
+      // Legado: número = preço por peça da categoria.
+      sumFromStructured += raw * (qtyByCategory.get(cat) ?? 0);
+      continue;
+    }
+    if (raw && typeof raw === "object") {
+      const total = typeof raw.total === "number" ? raw.total : null;
+      const unit = typeof raw.unit_price === "number" ? raw.unit_price : null;
+      if (total !== null) {
+        sumFromStructured += total;
+      } else if (unit !== null) {
+        sumFromStructured += unit * (qtyByCategory.get(cat) ?? 0);
+      }
+    }
+  }
+
+  if (sumFromStructured > 0) {
+    if (saleAmount > 0) {
+      // Compatibilidade: existem registros antigos em que o mapa foi salvo com semântica diferente.
+      // Quando divergir muito, prioriza `sale_amount` (total final do pedido).
+      const diffStructured = Math.abs(sumFromStructured - saleAmount);
+      const relDiff = diffStructured / Math.max(1, saleAmount);
+      if (relDiff > 0.25) return Number(saleAmount.toFixed(2));
+    }
+    return Number(sumFromStructured.toFixed(2));
+  }
+
+  if (saleAmount > 0 && lines.length === 1 && lines[0].qty > 1 && saleAmount <= 120) {
+    return Number((saleAmount * lines[0].qty).toFixed(2));
+  }
+  return Number(saleAmount.toFixed(2));
+}
+
+function resolveOrderRevenueByCategory(order: OrderRow): Record<string, number> {
+  const lines = aggregateByCategory(order.order_items ?? []);
+  const qtyByCategory: Record<string, number> = {};
+  const labelByKey: Record<string, string> = {};
+  for (const l of lines) {
+    const key = normalizeKey(l.label);
+    qtyByCategory[key] = (qtyByCategory[key] ?? 0) + l.qty;
+    labelByKey[key] = l.label;
+  }
+
+  const byCategory: Record<string, number> = {};
+  const rawMap = order.sale_amount_by_category;
+  if (rawMap && typeof rawMap === "object") {
+    const map = rawMap as Record<
+      string,
+      | number
+      | {
+          unit_price?: number;
+          total?: number;
+          qty?: number;
+        }
+    >;
+    for (const [catLabel, raw] of Object.entries(map)) {
+      const key = normalizeKey(catLabel);
+      const qty = qtyByCategory[key] ?? 0;
+      const label = labelByKey[key] ?? catLabel;
+      if (typeof raw === "number") {
+        byCategory[label] = Number((raw * qty).toFixed(2));
+      } else if (raw && typeof raw === "object") {
+        const total = typeof raw.total === "number" ? raw.total : null;
+        const unit = typeof raw.unit_price === "number" ? raw.unit_price : null;
+        if (total !== null) byCategory[label] = Number(total.toFixed(2));
+        else if (unit !== null) byCategory[label] = Number((unit * qty).toFixed(2));
+      }
+    }
+  }
+
+  const sumExplicit = Object.values(byCategory).reduce((s, n) => s + Number(n || 0), 0);
+  if (sumExplicit > 0) return byCategory;
+
+  const total = displayOrderAmount(order);
+  if (lines.length === 1) {
+    const label = lines[0]?.label ?? "Sem categoria";
+    return { [label]: total };
+  }
+  return {};
+}
+
+function calculateOrderProfit(order: OrderRow, costs: Record<string, number>): number {
+  const lines = aggregateByCategory(order.order_items ?? []);
+  const revenueByCategory = resolveOrderRevenueByCategory(order);
+  const totalRevenue = Object.values(revenueByCategory).reduce((s, n) => s + Number(n || 0), 0);
+  const fallbackRevenue = totalRevenue > 0 ? totalRevenue : displayOrderAmount(order);
+  const totalPieces = lines.reduce((s, l) => s + l.qty, 0) || 1;
+
+  let profit = 0;
+  for (const line of lines) {
+    const key = normalizeKey(line.label);
+    const unitCost = costs[key] ?? costs[normalizeKey("Sem categoria")] ?? 0;
+    const lineCost = line.qty * unitCost;
+    const lineRevenue =
+      revenueByCategory[line.label] != null
+        ? revenueByCategory[line.label]
+        : fallbackRevenue * (line.qty / totalPieces);
+    profit += lineRevenue - lineCost;
+  }
+  return Number(profit.toFixed(2));
+}
+
 function waLink(raw: string | null | undefined): string | null {
   const digits = String(raw ?? "").replace(/\D/g, "");
   if (digits.length < 10) return null;
@@ -36,6 +175,7 @@ function waLink(raw: string | null | undefined): string | null {
 export default function AdminHistoricoPage() {
   const { adminFetch } = useAdminAuth();
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [costs, setCosts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<PeriodKey>("last30");
@@ -58,6 +198,24 @@ export default function AdminHistoricoPage() {
       }
       if (!res.ok) throw new Error(data.error ?? "Falha ao carregar histórico");
       setOrders(data.orders ?? []);
+
+      const cRes = await adminFetch("/api/admin/category-costs");
+      const cText = await cRes.text();
+      let cData: {
+        error?: string;
+        rows?: Array<{ category_label: string; cost_per_piece: number }>;
+      } = {};
+      try {
+        cData = cText ? (JSON.parse(cText) as typeof cData) : {};
+      } catch {
+        throw new Error("Resposta inválida ao carregar custos por categoria.");
+      }
+      if (!cRes.ok) throw new Error(cData.error ?? "Falha ao carregar custos por categoria");
+      const nextCosts: Record<string, number> = {};
+      for (const row of cData.rows ?? []) {
+        nextCosts[normalizeKey(row.category_label)] = Number(row.cost_per_piece ?? 0);
+      }
+      setCosts(nextCosts);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
       setOrders([]);
@@ -122,6 +280,16 @@ export default function AdminHistoricoPage() {
         {orders.map((order) => {
           const lines = aggregateByCategory(order.order_items ?? []);
           const waHref = waLink(order.customer_whatsapp);
+          const revenueByCategory = resolveOrderRevenueByCategory(order);
+          const totalValueFromCategories = Object.values(revenueByCategory).reduce(
+            (sum, n) => sum + Number(n || 0),
+            0
+          );
+          const totalValue =
+            totalValueFromCategories > 0
+              ? Number(totalValueFromCategories.toFixed(2))
+              : displayOrderAmount(order);
+          const profit = calculateOrderProfit(order, costs);
           return (
             <li
               key={order.id}
@@ -152,20 +320,23 @@ export default function AdminHistoricoPage() {
                 ))}
               </ul>
             )}
-            {order.customer_whatsapp?.trim() ? (
-              <p className="text-sm text-stone-700">
-                <span className="text-stone-500">WhatsApp: </span>
-                {order.customer_whatsapp}
-              </p>
-            ) : null}
-            {order.sale_amount != null ? (
-              <p className="text-sm text-stone-700">
-                <span className="text-stone-500">Valor: </span>
-                {order.sale_amount.toLocaleString("pt-BR", {
-                  style: "currency",
-                  currency: "BRL",
-                })}
-              </p>
+            {order.sale_amount != null || order.sale_amount_by_category ? (
+              <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                <p className="text-base font-semibold text-emerald-900">
+                  <span className="text-emerald-700">Valor total: </span>
+                  {totalValue.toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  })}
+                </p>
+                <p className="text-base font-semibold text-blue-900">
+                  <span className="text-blue-700">Lucro: </span>
+                  {profit.toLocaleString("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  })}
+                </p>
+              </div>
             ) : null}
             <p className="mt-2 text-xs text-stone-400">
               {new Date(order.updated_at).toLocaleString("pt-BR")}
