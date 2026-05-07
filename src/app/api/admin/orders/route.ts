@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  attachDisplayNumbers,
+  fetchAllOrderIdsNewestFirst,
+} from "@/lib/order-display-number";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
 import { resolvePrincipal } from "@/lib/access";
@@ -52,7 +56,10 @@ export async function GET(request: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    return NextResponse.json({ orders: data ?? [] });
+    const rows = data ?? [];
+    const idsGlobal = await fetchAllOrderIdsNewestFirst();
+    const orders = attachDisplayNumbers(rows, idsGlobal);
+    return NextResponse.json({ orders });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";
     return NextResponse.json({ error: msg }, { status: 500 });

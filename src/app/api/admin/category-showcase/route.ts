@@ -5,6 +5,7 @@ import {
   sanitizeWholesaleTiers,
   type WholesaleTier,
 } from "@/lib/category-showcase";
+import { categoryLookupKey } from "@/lib/catalog-categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 
@@ -94,7 +95,8 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient();
     const labels = await loadCatalogCategoryLabels(admin);
     const data = await fetchShowcaseRows(admin);
-    const map = new Map<string, ShowcaseRow>();
+    const mapExact = new Map<string, ShowcaseRow>();
+    const mapNormalized = new Map<string, ShowcaseRow>();
     for (const row of data ?? []) {
       const label = String(row.category_label ?? "").trim();
       if (!label) continue;
@@ -107,7 +109,7 @@ export async function GET(request: NextRequest) {
         home_grid_cover_image_url?: string | null;
         display_order?: number | null;
       };
-      map.set(label, {
+      const parsed: ShowcaseRow = {
         category_label: label,
         video_url: r.video_url?.trim() || null,
         video_poster_url: r.video_poster_url?.trim() || null,
@@ -116,10 +118,15 @@ export async function GET(request: NextRequest) {
         catalog_cover_image_url: r.catalog_cover_image_url?.trim() || null,
         display_order:
           typeof r.display_order === "number" ? r.display_order : null,
-      });
+      };
+      mapExact.set(label, parsed);
+      const nk = categoryLookupKey(label);
+      if (!mapNormalized.has(nk)) mapNormalized.set(nk, parsed);
     }
     const rows = labels.map((category_label) => {
-      const found = map.get(category_label);
+      const found =
+        mapExact.get(category_label) ??
+        mapNormalized.get(categoryLookupKey(category_label));
       return (
         found ?? {
           category_label,

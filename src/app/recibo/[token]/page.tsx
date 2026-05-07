@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { fetchOrderDisplayNumberPublic } from "@/lib/order-display-number";
 import { getOrderReceiptByToken, isValidReceiptToken } from "@/lib/order-receipt";
+import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
 import { publicDriveImageUrl } from "@/lib/drive-image-url";
 import type { OrderItemRow, OrderStatus, ProductSize } from "@/types";
 
@@ -47,7 +49,9 @@ export default async function ReciboPage({ params }: Props) {
   if (!receipt) notFound();
 
   const { order, items } = receipt;
+  const displayNumber = await fetchOrderDisplayNumberPublic(order.id);
   const bySize = groupItems(items);
+  const categoryTotals = totalsByCategoryFromOrderItems(items);
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -57,29 +61,59 @@ export default async function ReciboPage({ params }: Props) {
         </Link>
       </nav>
 
-      <header className="mb-8 border-b border-white/[0.06] pb-6">
-        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-stone-500">
-          Recibo do pedido
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold text-stone-50">
-          Resumo da sua seleção
-        </h1>
-        <p className="mt-2 text-sm text-stone-500">{statusLabel(order.status)}</p>
-        <p className="mt-1 text-xs text-stone-600">
-          {new Date(order.created_at).toLocaleString("pt-BR")}
-        </p>
-        {order.customer_note?.trim() ? (
-          <p className="mt-3 text-sm text-stone-400">
-            <span className="text-stone-600">CEP: </span>
-            {order.customer_note}
+      <header className="mb-8 space-y-4 border-b border-white/[0.06] pb-6">
+        <div>
+          <p className="text-lg font-semibold uppercase tracking-wide text-stone-100">
+            {`PEDIDO #${displayNumber}`}
+          </p>
+        </div>
+
+        {order.customer_name?.trim() ? (
+          <p className="text-sm text-stone-300">
+            <span className="text-stone-500">Nome: </span>
+            {order.customer_name.trim()}
           </p>
         ) : null}
+
+        {order.customer_note?.trim() ? (
+          <p className="text-sm text-stone-300">
+            <span className="text-stone-500">CEP (frete): </span>
+            {order.customer_note.trim()}
+          </p>
+        ) : null}
+
+        {categoryTotals.length > 0 ? (
+          <div className="rounded-xl border border-white/[0.06] bg-zinc-900/50 px-4 py-3 ring-1 ring-white/[0.03]">
+            <ul className="space-y-1.5 text-sm font-medium italic text-stone-200">
+              {categoryTotals.map(({ label, qty }) => (
+                <li key={label}>
+                  x{qty} {label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <p className="text-sm leading-relaxed text-stone-400">
+          O vendedor vai calcular seu frete e finalizar seu pedido o quanto antes,
+          aguarde só um momento!
+        </p>
+
+        <div className="border-t border-white/[0.06] pt-4">
+          <p className="text-sm text-stone-500">{statusLabel(order.status)}</p>
+          <p className="mt-1 text-xs text-stone-600">
+            {new Date(order.created_at).toLocaleString("pt-BR")}
+          </p>
+        </div>
       </header>
 
       {items.length === 0 ? (
         <p className="text-stone-500">Sem itens registados.</p>
       ) : (
         <div className="space-y-8">
+          <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
+            Detalhe por produto
+          </p>
           {SIZE_ORDER.map((size) => {
             const list = bySize.get(size) ?? [];
             if (!list.length) return null;

@@ -21,6 +21,7 @@ export async function getOrderReceiptByToken(
       id,
       status,
       customer_note,
+      customer_name,
       created_at,
       updated_at,
       order_items (
@@ -34,6 +35,7 @@ export async function getOrderReceiptByToken(
         snapshot_color,
         snapshot_size,
         snapshot_drive_file_id,
+        snapshot_category,
         created_at
       )
     `
@@ -53,6 +55,7 @@ export async function getOrderReceiptByToken(
       id: row.id,
       status: row.status,
       customer_note: row.customer_note,
+      customer_name: row.customer_name ?? null,
       created_at: row.created_at,
       updated_at: row.updated_at,
     },

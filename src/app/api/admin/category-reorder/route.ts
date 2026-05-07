@@ -6,6 +6,7 @@ import {
   type WholesaleTier,
 } from "@/lib/category-showcase";
 import {
+  categoryLookupKey,
   DISPLAY_ORDER_DEFAULT_SENTINEL,
   sortCategoryLabelsForCatalog,
 } from "@/lib/catalog-categories";
@@ -120,11 +121,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: fullSel.error.message }, { status: 500 });
     }
 
-    const map = new Map<string, RowLite>();
+    const mapExact = new Map<string, RowLite>();
+    const mapNormalized = new Map<string, RowLite>();
     for (const raw of rows ?? []) {
       const label = String(raw.category_label ?? "").trim();
       if (!label) continue;
-      map.set(label, {
+      const row: RowLite = {
         category_label: label,
         video_url: raw.video_url?.trim() || null,
         video_poster_url: raw.video_poster_url?.trim() || null,
@@ -140,12 +142,19 @@ export async function POST(request: NextRequest) {
           typeof (raw as { display_order?: number }).display_order === "number"
             ? (raw as { display_order: number }).display_order
             : null,
-      });
+      };
+      mapExact.set(label, row);
+      const nk = categoryLookupKey(label);
+      if (!mapNormalized.has(nk)) mapNormalized.set(nk, row);
     }
+
+    const rowForProductLabel = (productLabel: string): RowLite | undefined =>
+      mapExact.get(productLabel) ??
+      mapNormalized.get(categoryLookupKey(productLabel));
 
     const orderVals = new Map<string, number | null | undefined>();
     for (const l of labels) {
-      orderVals.set(l, map.get(l)?.display_order ?? null);
+      orderVals.set(l, rowForProductLabel(l)?.display_order ?? null);
     }
 
     const sorted = sortCategoryLabelsForCatalog(labels, orderVals);
@@ -167,7 +176,7 @@ export async function POST(request: NextRequest) {
       label: string,
       positionInSorted: number
     ): number => {
-      const v = map.get(label)?.display_order;
+      const v = rowForProductLabel(label)?.display_order;
       if (
         v != null &&
         Number.isFinite(v) &&
@@ -191,7 +200,7 @@ export async function POST(request: NextRequest) {
     ob = tmp;
 
     const upsertOne = async (label: string, display_order: number) => {
-      const cur = map.get(label);
+      const cur = rowForProductLabel(label);
       const payload: Record<string, unknown> = {
         category_label: label,
         video_url: cur?.video_url ?? null,

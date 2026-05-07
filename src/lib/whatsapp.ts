@@ -1,6 +1,5 @@
 import type { CartLine } from "@/types";
-
-const SIZE_ORDER: Record<string, number> = { M: 0, G: 1, GG: 2 };
+import { totalsByCategoryFromCartLines } from "@/lib/order-category-totals";
 
 export function buildOrderWhatsAppText(
   lines: CartLine[],
@@ -8,25 +7,23 @@ export function buildOrderWhatsAppText(
     /** URL do recibo com fotos (substitui o ID técnico no WhatsApp). */
     receiptUrl?: string;
     customerCep?: string;
+    customerName?: string;
   }
 ): string {
-  const bySize = [...lines].sort(
-    (a, b) => SIZE_ORDER[a.product.size] - SIZE_ORDER[b.product.size]
-  );
-
-  const groups = new Map<string, CartLine[]>();
-  for (const line of bySize) {
-    const k = line.product.size;
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k)!.push(line);
-  }
+  const totals = totalsByCategoryFromCartLines(lines);
 
   const receiptUrl = opts?.receiptUrl?.trim();
   const header = receiptUrl
-    ? `*Novo pedido*\n📎 Ver seleção com fotos:\n${receiptUrl}\n`
+    ? `*Novo pedido*\n📎 Ver sua seleção com fotos:\n${receiptUrl}\n`
     : `*Novo pedido*\n`;
 
   const parts: string[] = [header];
+
+  const name = opts?.customerName?.trim();
+  if (name) {
+    parts.push(`*Nome:* ${name}`);
+    parts.push("");
+  }
 
   const cep = opts?.customerCep?.trim();
   if (cep) {
@@ -34,18 +31,15 @@ export function buildOrderWhatsAppText(
     parts.push("");
   }
 
-  for (const size of ["M", "G", "GG"] as const) {
-    const g = groups.get(size);
-    if (!g?.length) continue;
-    parts.push(`*Tamanho ${size}*`);
-    for (const line of g) {
-      const p = line.product;
-      parts.push(`• ${line.quantity}x ${p.brand} — ${p.color}`);
-    }
-    parts.push("");
+  for (const { label, qty } of totals) {
+    parts.push(`*x${qty} ${label}*`);
   }
+  if (totals.length) parts.push("");
 
-  parts.push("_Catálogo — enviar para finalização._");
+  parts.push(
+    "O vendedor vai calcular seu frete e finalizar seu pedido o quanto antes, aguarde só um momento!"
+  );
+
   return parts.join("\n").trim();
 }
 

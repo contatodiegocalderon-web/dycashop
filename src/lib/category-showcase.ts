@@ -67,6 +67,11 @@ function normalizeShowcaseRow(row: {
   };
 }
 
+/** ILIKE sem `%`: igualdade sem distinguir maiúsculas; escapa metacaracteres. */
+function ilikeExactPattern(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 export async function getCategoryShowcaseConfig(
   categoryLabel: string
 ): Promise<CategoryShowcaseConfig> {
@@ -74,23 +79,39 @@ export async function getCategoryShowcaseConfig(
   if (!label) return DEFAULT_SHOWCASE;
   const supabase = supabaseAnon();
 
-  let q = await supabase
-    .from("category_showcase_settings")
-    .select(
-      "video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url"
-    )
-    .eq("category_label", label)
-    .maybeSingle();
-
-  if (q.error && isMissingSchemaColumnError(q.error)) {
-    q = await supabase
+  async function pickRow(cols: string) {
+    const exact = await supabase
       .from("category_showcase_settings")
-      .select("video_url, video_poster_url, wholesale_tiers")
+      .select(cols)
       .eq("category_label", label)
+      .maybeSingle();
+    if (exact.data) return exact;
+    if (exact.error) return exact;
+    return supabase
+      .from("category_showcase_settings")
+      .select(cols)
+      .ilike("category_label", ilikeExactPattern(label))
       .maybeSingle();
   }
 
-  const { data, error } = q;
-  if (error || !data) return DEFAULT_SHOWCASE;
-  return normalizeShowcaseRow(data);
+  let q = await pickRow(
+    "video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url"
+  );
+
+  if (q.error && isMissingSchemaColumnError(q.error)) {
+    q = await pickRow("video_url, video_poster_url, wholesale_tiers");
+  }
+
+  const row = q.data;
+  if (q.error || row == null || typeof row !== "object") {
+    return DEFAULT_SHOWCASE;
+  }
+  return normalizeShowcaseRow(
+    row as {
+      video_url?: string | null;
+      video_poster_url?: string | null;
+      wholesale_tiers?: unknown;
+      catalog_cover_image_url?: string | null;
+    }
+  );
 }

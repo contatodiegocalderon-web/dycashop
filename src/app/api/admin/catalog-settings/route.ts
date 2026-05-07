@@ -96,13 +96,19 @@ export async function POST(request: NextRequest) {
         const { syncProductsFromDriveFolderStreaming } = await import(
           "@/services/drive-sync"
         );
-        const streamBody = syncProductsFromDriveFolderStreaming(id);
+        const streamBody = syncProductsFromDriveFolderStreaming(id, {
+          preserveExistingStock: false,
+          renameDriveFiles: false,
+        });
         return new Response(streamBody, { headers: ndjsonHeaders });
       }
       const { syncProductsFromDriveFolder } = await import(
         "@/services/drive-sync"
       );
-      const result = await syncProductsFromDriveFolder(id);
+      const result = await syncProductsFromDriveFolder(id, {
+        preserveExistingStock: false,
+        renameDriveFiles: false,
+      });
       return NextResponse.json({ folderId: id, ...result });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro na sincronização";
@@ -169,13 +175,19 @@ export async function POST(request: NextRequest) {
       const { syncProductsFromDriveFolderStreaming } = await import(
         "@/services/drive-sync"
       );
-      const streamBody = syncProductsFromDriveFolderStreaming(folderId);
+      const streamBody = syncProductsFromDriveFolderStreaming(folderId, {
+        preserveExistingStock: false,
+        renameDriveFiles: false,
+      });
       return new Response(streamBody, { headers: ndjsonHeaders });
     }
     const { syncProductsFromDriveFolder } = await import(
       "@/services/drive-sync"
     );
-    const result = await syncProductsFromDriveFolder(folderId);
+    const result = await syncProductsFromDriveFolder(folderId, {
+      preserveExistingStock: false,
+      renameDriveFiles: false,
+    });
     return NextResponse.json({
       saved: true,
       folderId,

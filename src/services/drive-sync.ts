@@ -40,6 +40,12 @@ export type SyncProgressEvent =
   | { type: "complete"; result: SyncResult }
   | { type: "fatal"; message: string };
 
+type SyncOptions = {
+  preserveExistingStock?: boolean;
+  /** Se true, renomeia ficheiros no Drive ao final para refletir stock atual da app. */
+  renameDriveFiles?: boolean;
+};
+
 function rowForUpsert(row: DriveImportRow): DriveImportUpsert {
   const { drive_modified_at, ...rest } = row;
   void drive_modified_at;
@@ -291,7 +297,7 @@ async function processImageQueue(
 async function runSync(
   rootFolderId: string,
   emit?: (e: SyncProgressEvent) => void,
-  opts?: { preserveExistingStock?: boolean }
+  opts?: SyncOptions
 ): Promise<SyncResult> {
   const fromDrive = await fetchDriveProductRows(rootFolderId);
   if (!fromDrive.length) {
@@ -350,10 +356,16 @@ async function runSync(
     skippedCount
   );
 
-  emit?.({ type: "phase", phase: "drive_rename" });
-
-  const targets = await fetchMirrorTargetsByDriveIds(admin, ids);
-  const rename = await renameDriveFilesToCurrentStock(targets.map((t) => t.id));
+  const shouldRenameDrive = opts?.renameDriveFiles !== false;
+  let driveRenameOk = 0;
+  let driveRenameErrors: { productId: string; message: string }[] = [];
+  if (shouldRenameDrive) {
+    emit?.({ type: "phase", phase: "drive_rename" });
+    const targets = await fetchMirrorTargetsByDriveIds(admin, ids);
+    const rename = await renameDriveFilesToCurrentStock(targets.map((t) => t.id));
+    driveRenameOk = rename.ok.length;
+    driveRenameErrors = rename.errors;
+  }
 
   return {
     imported: totalUpserted,
@@ -362,14 +374,14 @@ async function runSync(
     storageUploaded: uploaded,
     storageSkipped: skippedCount,
     storageErrors: errors,
-    driveRenameOk: rename.ok.length,
-    driveRenameErrors: rename.errors,
+    driveRenameOk,
+    driveRenameErrors,
   };
 }
 
 export async function syncProductsFromDriveFolder(
   rootFolderId: string,
-  opts?: { preserveExistingStock?: boolean }
+  opts?: SyncOptions
 ): Promise<SyncResult> {
   return runSync(rootFolderId, undefined, opts);
 }
@@ -377,7 +389,7 @@ export async function syncProductsFromDriveFolder(
 /** NDJSON: uma linha JSON por evento (progresso + resultado final). */
 export function syncProductsFromDriveFolderStreaming(
   rootFolderId: string,
-  opts?: { preserveExistingStock?: boolean }
+  opts?: SyncOptions
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream({

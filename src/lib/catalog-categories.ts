@@ -18,6 +18,18 @@ function supabaseAnon() {
   return createClient(url, key);
 }
 
+/**
+ * Casamento estável entre `products.category` e `category_showcase_settings.category_label`
+ * (evita perder vídeo/capas quando a BD tem capitalização diferente da pasta no Drive).
+ */
+export function categoryLookupKey(label: string): string {
+  return label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
 /** Gera slug estável para URL a partir do rótulo da pasta no Drive. */
 export function categorySlugFromLabel(label: string): string {
   const base = label

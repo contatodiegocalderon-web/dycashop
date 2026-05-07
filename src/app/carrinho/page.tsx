@@ -192,6 +192,7 @@ export default function CarrinhoPage() {
       const text = buildOrderWhatsAppText(lines, {
         receiptUrl: receiptUrl || undefined,
         customerCep: cep,
+        customerName: customerName.trim() || undefined,
       });
       const url = waMeUrl(phone, text);
       clear();

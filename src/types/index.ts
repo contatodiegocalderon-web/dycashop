@@ -67,6 +67,8 @@ export type CustomerSegment = "NOVO" | "ANTIGO";
 
 export interface OrderRow {
   id: string;
+  /** Número de vitrine (único, conta todos os pedidos por ordem de criação). */
+  display_number?: number;
   status: OrderStatus;
   customer_note: string | null;
   /** Token para o cliente abrir /recibo/[token]. */

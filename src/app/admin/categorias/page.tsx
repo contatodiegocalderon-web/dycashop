@@ -425,7 +425,7 @@ export default function AdminCategoriasPage() {
                         setVideoEdits((prev) => ({ ...prev, [label]: e.target.value }))
                       }
                       className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 disabled:bg-stone-100"
-                      placeholder="https://..."
+                      placeholder="Link do YouTube ou ficheiro .mp4…"
                     />
                   </label>
                   <label className="text-sm text-stone-700">
