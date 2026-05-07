@@ -92,7 +92,7 @@ export default function AdminPedidosClient() {
     setSaleAmount("");
     const found = orders.find((o) => o.id === orderId);
     setCustomerName(found?.customer_name?.trim() ?? "");
-    setCustomerWhatsApp("");
+    setCustomerWhatsApp(found?.customer_whatsapp?.trim() ?? "");
     setCustomerSegment("NOVO");
     setConfirmOpenId(orderId);
     setError(null);
@@ -208,6 +208,12 @@ export default function AdminPedidosClient() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link
+            href="/admin/historico"
+            className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50"
+          >
+            Ver histórico
+          </Link>
           <button
             type="button"
             onClick={fetchOrders}

@@ -82,6 +82,8 @@ export interface OrderRow {
   confirmed_at?: string | null;
   /** Quem confirmou o pagamento (vendedor/dono) quando sessão staff. */
   confirmed_by_staff_id?: string | null;
+  /** Nome amigável do vendedor que confirmou o pedido. */
+  confirmed_by_staff_name?: string | null;
   created_at: string;
   updated_at: string;
   order_items?: OrderItemRow[];

@@ -189,30 +189,11 @@ export async function GET(request: NextRequest) {
         for (const staffId of staffIds) {
           const sellerOrders = orderRows.filter((o) => o.confirmed_by_staff_id === staffId);
           const sellerItemsByOrder = new Map<string, OrderItemSaleRow[]>();
-          const productPieces: Record<string, number> = {};
           for (const o of sellerOrders) {
             const list = itemsByOrderId.get(o.id) ?? [];
             sellerItemsByOrder.set(o.id, list);
-            for (const it of list as Array<
-              OrderItemSaleRow & {
-                snapshot_brand?: string | null;
-                snapshot_color?: string | null;
-                snapshot_size?: string | null;
-              }
-            >) {
-              const label = `${it.snapshot_brand ?? "Produto"} — ${it.snapshot_color ?? ""} ${it.snapshot_size ?? ""}`.trim();
-              productPieces[label] = (productPieces[label] ?? 0) + it.quantity;
-            }
           }
           const sellerMetrics = aggregateSalesMetrics(sellerOrders, sellerItemsByOrder, costs);
-          let topProduct: string | null = null;
-          let topProductPieces = 0;
-          for (const [label, qty] of Object.entries(productPieces)) {
-            if (qty > topProductPieces) {
-              topProductPieces = qty;
-              topProduct = label;
-            }
-          }
           const st = staffMap.get(staffId);
           sellerBreakdown.push({
             staffId,
@@ -221,8 +202,11 @@ export async function GET(request: NextRequest) {
             orderCount: sellerMetrics.orderCount,
             totalRevenue: sellerMetrics.totalRevenue,
             totalProfit: sellerMetrics.totalProfit,
-            topProduct,
-            topProductPieces,
+            topProduct: sellerMetrics.topCategoryByPieces,
+            topProductPieces:
+              sellerMetrics.topCategoryByPieces != null
+                ? (sellerMetrics.piecesByCategory[sellerMetrics.topCategoryByPieces] ?? 0)
+                : 0,
           });
         }
       }

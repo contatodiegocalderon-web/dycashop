@@ -20,6 +20,12 @@ const PALETTE = [
   "#64748b",
 ];
 
+function colorByName(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i += 1) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return PALETTE[h % PALETTE.length]!;
+}
+
 export type NamedValue = { name: string; value: number };
 
 function formatInt(n: number) {
@@ -29,6 +35,8 @@ function formatInt(n: number) {
 export function SegmentPieChart({ data }: { data: NamedValue[] }) {
   const filtered = data.filter((d) => d.value > 0);
   if (filtered.length === 0) return null;
+  const segmentColor = (name: string) =>
+    /novo/i.test(name) ? "#2563eb" : /antigo/i.test(name) ? "#dc2626" : "#64748b";
   return (
     <div className="h-[280px] w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -45,8 +53,8 @@ export function SegmentPieChart({ data }: { data: NamedValue[] }) {
             stroke="#fff"
             strokeWidth={2}
           >
-            {filtered.map((_, i) => (
-              <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+            {filtered.map((d) => (
+              <Cell key={d.name} fill={segmentColor(d.name)} />
             ))}
           </Pie>
           <Tooltip
@@ -120,8 +128,8 @@ export function CategoryPieChart({
               stroke="#fff"
               strokeWidth={2}
             >
-              {filtered.map((_, i) => (
-                <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+              {filtered.map((d) => (
+                <Cell key={d.name} fill={colorByName(d.name)} />
               ))}
             </Pie>
             <Tooltip

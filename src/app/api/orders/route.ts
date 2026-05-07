@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchOrderDisplayNumberPublic } from "@/lib/order-display-number";
 import { productPublicImageUrl } from "@/lib/product-image-url";
 import type { Product } from "@/types";
 
@@ -139,8 +140,10 @@ export async function POST(request: NextRequest) {
       ? `${siteBase}/recibo/${publicToken}`
       : null;
 
+    const orderDisplayNumber = await fetchOrderDisplayNumberPublic(order.id);
     return NextResponse.json({
       orderId: order.id,
+      orderDisplayNumber,
       publicToken,
       /** Absoluto se NEXT_PUBLIC_SITE_URL estiver definido; senão o cliente monta com window.location.origin */
       receiptUrl,

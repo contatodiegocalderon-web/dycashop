@@ -169,6 +169,7 @@ export default function CarrinhoPage() {
       let data: {
         error?: string;
         publicToken?: string;
+        orderDisplayNumber?: number;
         receiptUrl?: string | null;
       } = {};
       try {
@@ -193,6 +194,10 @@ export default function CarrinhoPage() {
         receiptUrl: receiptUrl || undefined,
         customerCep: cep,
         customerName: customerName.trim() || undefined,
+        orderDisplayNumber:
+          typeof data.orderDisplayNumber === "number"
+            ? data.orderDisplayNumber
+            : undefined,
       });
       const url = waMeUrl(phone, text);
       clear();

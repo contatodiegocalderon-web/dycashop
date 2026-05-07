@@ -9,6 +9,12 @@ const cards = [
     accent: "from-emerald-600 to-teal-700",
   },
   {
+    href: "/admin/historico",
+    title: "Histórico",
+    desc: "Pedidos confirmados e registos de vendas concluídas.",
+    accent: "from-slate-600 to-zinc-800",
+  },
+  {
     href: "/admin/metricas",
     title: "Métricas",
     desc: "Ticket médio, lucro e gráficos por categoria.",

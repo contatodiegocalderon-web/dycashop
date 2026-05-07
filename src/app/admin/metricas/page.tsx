@@ -30,8 +30,8 @@ type SellerBreakdownRow = {
   orderCount: number;
   totalRevenue: number;
   totalProfit: number;
-  topProduct: string | null;
-  topProductPieces: number;
+  topCategory: string | null;
+  topCategoryPieces: number;
 };
 
 type PeriodKey = "daily" | "weekly" | "monthly" | "yearly" | "last30" | "all";
@@ -59,7 +59,28 @@ export default function AdminMetricasPage() {
       const mJson = await mRes.json();
       if (!mRes.ok) throw new Error(mJson.error ?? "Falha nas métricas");
       setMetrics(mJson.metrics as MetricsPayload);
-      setSellerBreakdown((mJson.sellerBreakdown ?? []) as SellerBreakdownRow[]);
+      const rows = (mJson.sellerBreakdown ?? []) as Array<{
+        staffId: string;
+        staffName: string;
+        staffEmail: string;
+        orderCount: number;
+        totalRevenue: number;
+        totalProfit: number;
+        topProduct?: string | null;
+        topProductPieces?: number;
+      }>;
+      setSellerBreakdown(
+        rows.map((r) => ({
+          staffId: r.staffId,
+          staffName: r.staffName,
+          staffEmail: r.staffEmail,
+          orderCount: r.orderCount,
+          totalRevenue: r.totalRevenue,
+          totalProfit: r.totalProfit,
+          topCategory: r.topProduct ?? null,
+          topCategoryPieces: r.topProductPieces ?? 0,
+        }))
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
       setMetrics(null);
@@ -221,7 +242,9 @@ export default function AdminMetricasPage() {
               <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">
                 {card.label}
               </p>
-              <p className="mt-2 text-2xl font-bold text-stone-900">{card.value}</p>
+              <p className="mt-2 text-3xl font-extrabold tracking-tight text-stone-950">
+                {card.value}
+              </p>
               <p className="mt-1 text-xs text-stone-500">{card.sub}</p>
             </div>
           ))}
@@ -267,16 +290,16 @@ export default function AdminMetricasPage() {
 
       {metrics && sortedCategories.length > 0 && (
         <div className="mb-10 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-lg shadow-stone-900/5">
-          <div className="border-b border-stone-100 bg-stone-50/80 px-6 py-4">
-            <h2 className="font-bold text-stone-900">Detalhe por categoria</h2>
-            <p className="text-xs text-stone-500">
+          <div className="border-b border-stone-200 bg-stone-100 px-6 py-4">
+            <h2 className="font-bold text-stone-950">Detalhe por categoria</h2>
+            <p className="text-xs text-stone-700">
               Faturamento repartido pelo número de peças no pedido.
             </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="text-xs uppercase text-stone-500">
-                <tr className="border-b border-stone-100">
+              <thead className="text-xs uppercase text-stone-700">
+                <tr className="border-b border-stone-200">
                   <th className="px-6 py-3">Categoria</th>
                   <th className="px-6 py-3">Peças</th>
                   <th className="px-6 py-3">Faturado</th>
@@ -285,13 +308,13 @@ export default function AdminMetricasPage() {
               </thead>
               <tbody>
                 {sortedCategories.map(([cat, pieces]) => (
-                  <tr key={cat} className="border-b border-stone-50 last:border-0">
-                    <td className="px-6 py-3 font-medium text-stone-900">{cat}</td>
-                    <td className="px-6 py-3">{pieces}</td>
-                    <td className="px-6 py-3">
+                  <tr key={cat} className="border-b border-stone-100 last:border-0">
+                    <td className="px-6 py-3 font-semibold text-stone-950">{cat}</td>
+                    <td className="px-6 py-3 font-medium text-stone-900">{pieces}</td>
+                    <td className="px-6 py-3 font-medium text-stone-900">
                       {money(metrics.revenueByCategory[cat] ?? 0)}
                     </td>
-                    <td className="px-6 py-3">
+                    <td className="px-6 py-3 font-medium text-stone-900">
                       {money(metrics.profitByCategory[cat] ?? 0)}
                     </td>
                   </tr>
@@ -304,35 +327,35 @@ export default function AdminMetricasPage() {
 
       {isOwner && sellerBreakdown.length > 0 && (
         <div className="mb-10 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-lg shadow-stone-900/5">
-          <div className="border-b border-stone-100 bg-stone-50/80 px-6 py-4">
-            <h2 className="font-bold text-stone-900">Desempenho por vendedor</h2>
-            <p className="text-xs text-stone-500">
-              Faturamento, lucro e produto mais vendido por vendedor.
+          <div className="border-b border-stone-200 bg-stone-100 px-6 py-4">
+            <h2 className="font-bold text-stone-950">Desempenho por vendedor</h2>
+            <p className="text-xs text-stone-700">
+              Faturamento, lucro e categoria mais vendida por vendedor.
             </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="text-xs uppercase text-stone-500">
-                <tr className="border-b border-stone-100">
+              <thead className="text-xs uppercase text-stone-700">
+                <tr className="border-b border-stone-200">
                   <th className="px-6 py-3">Vendedor</th>
                   <th className="px-6 py-3">Vendas</th>
                   <th className="px-6 py-3">Faturamento</th>
                   <th className="px-6 py-3">Lucro</th>
-                  <th className="px-6 py-3">Produto mais vendido</th>
+                  <th className="px-6 py-3">Categoria mais vendida</th>
                 </tr>
               </thead>
               <tbody>
                 {sellerBreakdown.map((s) => (
-                  <tr key={s.staffId} className="border-b border-stone-50 last:border-0">
+                  <tr key={s.staffId} className="border-b border-stone-100 last:border-0">
                     <td className="px-6 py-3">
-                      <p className="font-medium text-stone-900">{s.staffName}</p>
-                      <p className="text-xs text-stone-500">{s.staffEmail}</p>
+                      <p className="font-semibold text-stone-950">{s.staffName}</p>
+                      <p className="text-xs text-stone-700">{s.staffEmail}</p>
                     </td>
-                    <td className="px-6 py-3">{s.orderCount}</td>
-                    <td className="px-6 py-3">{money(s.totalRevenue)}</td>
-                    <td className="px-6 py-3">{money(s.totalProfit)}</td>
-                    <td className="px-6 py-3">
-                      {s.topProduct ? `${s.topProduct} (${s.topProductPieces})` : "—"}
+                    <td className="px-6 py-3 font-medium text-stone-900">{s.orderCount}</td>
+                    <td className="px-6 py-3 font-medium text-stone-900">{money(s.totalRevenue)}</td>
+                    <td className="px-6 py-3 font-medium text-stone-900">{money(s.totalProfit)}</td>
+                    <td className="px-6 py-3 font-medium text-stone-900">
+                      {s.topCategory ? `${s.topCategory} (${s.topCategoryPieces})` : "—"}
                     </td>
                   </tr>
                 ))}

@@ -8,6 +8,7 @@ export function buildOrderWhatsAppText(
     receiptUrl?: string;
     customerCep?: string;
     customerName?: string;
+    orderDisplayNumber?: number;
   }
 ): string {
   const totals = totalsByCategoryFromCartLines(lines);
@@ -18,6 +19,10 @@ export function buildOrderWhatsAppText(
     : `*Novo pedido*\n`;
 
   const parts: string[] = [header];
+  if (opts?.orderDisplayNumber && Number.isFinite(opts.orderDisplayNumber)) {
+    parts.push(`*Pedido #${opts.orderDisplayNumber}*`);
+    parts.push("");
+  }
 
   const name = opts?.customerName?.trim();
   if (name) {
