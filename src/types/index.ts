@@ -74,6 +74,7 @@ export interface OrderRow {
   /** Token para o cliente abrir /recibo/[token]. */
   public_token?: string | null;
   sale_amount?: number | null;
+  sale_amount_by_category?: Record<string, number> | null;
   customer_name?: string | null;
   customer_whatsapp?: string | null;
   customer_segment?: CustomerSegment | null;

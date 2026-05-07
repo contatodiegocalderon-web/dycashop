@@ -42,6 +42,16 @@ function waLinkFromDigits(raw: string | null | undefined): string | null {
   return `https://wa.me/${digits}`;
 }
 
+function categoriesInOrder(order: OrderRow | undefined): string[] {
+  if (!order?.order_items?.length) return [];
+  const set = new Set<string>();
+  for (const it of order.order_items) {
+    const cat = it.snapshot_category?.trim() || "Sem categoria";
+    set.add(cat);
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
 export default function AdminPedidosClient() {
   const { adminFetch } = useAdminAuth();
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -52,7 +62,9 @@ export default function AdminPedidosClient() {
   const [cancelOpenId, setCancelOpenId] = useState<string | null>(null);
   const [cancelPhrase, setCancelPhrase] = useState("");
   const [confirmOpenId, setConfirmOpenId] = useState<string | null>(null);
-  const [saleAmount, setSaleAmount] = useState("");
+  const [categoryAmounts, setCategoryAmounts] = useState<Record<string, string>>(
+    {}
+  );
   const [customerName, setCustomerName] = useState("");
   const [customerWhatsApp, setCustomerWhatsApp] = useState("");
   const [customerSegment, setCustomerSegment] =
@@ -89,8 +101,9 @@ export default function AdminPedidosClient() {
 
   function openConfirmModal(orderId: string) {
     setConfirmSuccessMsg(null);
-    setSaleAmount("");
     const found = orders.find((o) => o.id === orderId);
+    const cats = categoriesInOrder(found);
+    setCategoryAmounts(Object.fromEntries(cats.map((c) => [c, ""])));
     setCustomerName(found?.customer_name?.trim() ?? "");
     setCustomerWhatsApp(found?.customer_whatsapp?.trim() ?? "");
     setCustomerSegment("NOVO");
@@ -102,9 +115,27 @@ export default function AdminPedidosClient() {
     setConfirming(orderId);
     setError(null);
     setConfirmSuccessMsg(null);
-    const amount = Number(String(saleAmount).replace(",", "."));
-    if (Number.isNaN(amount) || amount <= 0) {
-      setError("Informe um valor de venda válido");
+    const found = orders.find((o) => o.id === orderId);
+    const cats = categoriesInOrder(found);
+    if (!cats.length) {
+      setError("Pedido sem categorias para confirmação.");
+      setConfirming(null);
+      return;
+    }
+    const saleByCategory: Record<string, number> = {};
+    let amount = 0;
+    for (const cat of cats) {
+      const n = Number(String(categoryAmounts[cat] ?? "").replace(",", "."));
+      if (Number.isNaN(n) || n < 0) {
+        setError(`Informe um valor válido para a categoria ${cat}`);
+        setConfirming(null);
+        return;
+      }
+      saleByCategory[cat] = n;
+      amount += n;
+    }
+    if (amount <= 0) {
+      setError("Informe ao menos um valor de venda por categoria.");
       setConfirming(null);
       return;
     }
@@ -126,6 +157,7 @@ export default function AdminPedidosClient() {
           method: "POST",
           body: JSON.stringify({
             saleAmount: amount,
+            saleByCategory,
             customerName: customerName.trim(),
             customerWhatsApp: waDigits,
             customerSegment,
@@ -359,17 +391,27 @@ export default function AdminPedidosClient() {
                     Os dados abaixo entram nas métricas e disparam a renomeação das fotos no Drive.
                   </p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <label className="block text-xs font-medium text-stone-600">
-                      Valor do pedido (R$)
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={saleAmount}
-                        onChange={(e) => setSaleAmount(e.target.value)}
-                        placeholder="199,90"
-                        className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-stone-900"
-                      />
-                    </label>
+                    {categoriesInOrder(order).map((cat) => (
+                      <label
+                        key={`cat-amount-${order.id}-${cat}`}
+                        className="block text-xs font-medium text-stone-600"
+                      >
+                        {`Valor vendido — ${cat} (R$)`}
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={categoryAmounts[cat] ?? ""}
+                          onChange={(e) =>
+                            setCategoryAmounts((prev) => ({
+                              ...prev,
+                              [cat]: e.target.value,
+                            }))
+                          }
+                          placeholder="0,00"
+                          className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-stone-900"
+                        />
+                      </label>
+                    ))}
                     <label className="block text-xs font-medium text-stone-600">
                       Nome do cliente
                       <input

@@ -118,11 +118,25 @@ export async function GET(request: NextRequest) {
     const rows = (data ?? []) as Array<{
       id: string;
       confirmed_by_staff_id?: string | null;
+      requested_seller_name?: string | null;
       [k: string]: unknown;
     }>;
     const staffIds = Array.from(
       new Set(rows.map((r) => r.confirmed_by_staff_id).filter(Boolean))
     ) as string[];
+    let ownerName = "Dono";
+    const { data: ownerRow } = await admin
+      .from("staff_users")
+      .select("email, full_name")
+      .eq("role", "owner")
+      .limit(1)
+      .maybeSingle();
+    if (ownerRow) {
+      ownerName =
+        String(ownerRow.full_name ?? "").trim() ||
+        nameFromEmail(String(ownerRow.email ?? "")) ||
+        ownerName;
+    }
     const staffMap = new Map<string, string>();
     if (staffIds.length) {
       const { data: staffRows } = await admin
@@ -138,8 +152,8 @@ export async function GET(request: NextRequest) {
     const withStaffName = rows.map((r) => ({
       ...r,
       confirmed_by_staff_name: r.confirmed_by_staff_id
-        ? (staffMap.get(r.confirmed_by_staff_id) ?? null)
-        : null,
+        ? (staffMap.get(r.confirmed_by_staff_id) ?? ownerName)
+        : ownerName,
     }));
     const idsGlobal = await fetchAllOrderIdsNewestFirst();
     const orders = attachDisplayNumbers(withStaffName, idsGlobal);

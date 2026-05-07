@@ -43,6 +43,7 @@ create table if not exists public.orders (
   customer_note text,
   public_token text unique,
   sale_amount numeric(12,2),
+  sale_amount_by_category jsonb,
   customer_name text,
   customer_whatsapp text,
   customer_segment text,

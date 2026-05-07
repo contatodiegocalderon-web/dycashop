@@ -52,6 +52,7 @@ function AdminChrome({ children }: { children: ReactNode }) {
       [
         { href: "/admin", label: "Início", exact: true, ownerOnly: false },
         { href: "/admin/pedidos", label: "Pedidos", exact: false, ownerOnly: false },
+        { href: "/admin/historico", label: "Histórico", exact: false, ownerOnly: false },
         { href: "/admin/metricas", label: "Métricas", exact: false, ownerOnly: false },
         { href: "/admin/categorias", label: "Categorias", exact: false, ownerOnly: false },
         { href: "/admin/clientes", label: "Clientes", exact: false, ownerOnly: false },

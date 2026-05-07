@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       .from("orders")
       .update({
         sale_amount: null,
+        sale_amount_by_category: null,
         customer_segment: null,
         confirmed_at: null,
         confirmed_by_staff_id: null,

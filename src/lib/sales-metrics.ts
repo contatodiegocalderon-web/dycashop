@@ -7,6 +7,7 @@ export type CategoryCostMap = Record<string, number>;
 export interface OrderSaleRow {
   id: string;
   sale_amount: number | null;
+  sale_amount_by_category?: Record<string, number> | null;
   customer_segment: string | null;
 }
 
@@ -93,14 +94,27 @@ export function aggregateSalesMetrics(
     else if (o.customer_segment === "ANTIGO") antigoCount += 1;
 
     const totalPieces = items.reduce((s, it) => s + it.quantity, 0) || 1;
+    const qtyByCategory: Record<string, number> = {};
+    for (const it of items) {
+      const cat = resolveCategory(it);
+      qtyByCategory[cat] = (qtyByCategory[cat] ?? 0) + it.quantity;
+    }
+    const saleByCategory =
+      o.sale_amount_by_category && typeof o.sale_amount_by_category === "object"
+        ? o.sale_amount_by_category
+        : null;
+    const hasExplicitCategorySale =
+      saleByCategory != null && Object.keys(saleByCategory).length > 0;
 
     for (const it of items) {
       const cat = resolveCategory(it);
       const qty = it.quantity;
       piecesByCategory[cat] = (piecesByCategory[cat] ?? 0) + qty;
 
-      const share = qty / totalPieces;
-      const allocatedRev = sale * share;
+      const allocatedRev = hasExplicitCategorySale
+        ? Number(saleByCategory?.[cat] ?? 0) *
+          (qtyByCategory[cat] > 0 ? qty / qtyByCategory[cat]! : 0)
+        : sale * (qty / totalPieces);
       const unitCost = costs[cat] ?? costs["Sem categoria"] ?? 0;
       const lineCost = qty * unitCost;
       const allocatedProfit = allocatedRev - lineCost;

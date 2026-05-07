@@ -9,6 +9,7 @@ export type AdminClientRow = {
   customer_whatsapp: string;
   customer_name: string | null;
   customer_segment: string | null;
+  is_new: boolean;
   order_count: number;
   total_spent: number;
   last_confirmed_at: string | null;
@@ -103,14 +104,13 @@ export async function GET(request: NextRequest) {
       ([wa, agg]) => {
         const name =
           agg.names.length > 0 ? agg.names[agg.names.length - 1] : null;
-        const segment =
-          agg.segments.length > 0
-            ? agg.segments[agg.segments.length - 1]
-            : null;
+        const isNew = agg.order_count <= 1;
+        const segment = isNew ? "NOVO" : "ANTIGO";
         return {
           customer_whatsapp: wa,
           customer_name: name,
           customer_segment: segment,
+          is_new: isNew,
           order_count: agg.order_count,
           total_spent: agg.total_spent,
           last_confirmed_at: agg.last_at,

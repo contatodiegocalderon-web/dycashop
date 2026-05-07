@@ -10,20 +10,29 @@ import {
 } from "recharts";
 
 const PALETTE = [
-  "#059669",
-  "#0d9488",
-  "#6366f1",
-  "#d97706",
+  "#2563eb",
   "#dc2626",
   "#7c3aed",
-  "#2563eb",
+  "#d97706",
+  "#0891b2",
+  "#f59e0b",
+  "#16a34a",
+  "#ea580c",
   "#64748b",
 ];
 
-function colorByName(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i += 1) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return PALETTE[h % PALETTE.length]!;
+function distinctColors(n: number): string[] {
+  if (n <= 0) return [];
+  const out: string[] = [];
+  for (let i = 0; i < n; i += 1) {
+    if (i < PALETTE.length) {
+      out.push(PALETTE[i]!);
+    } else {
+      const h = Math.round((360 * i) / n);
+      out.push(`hsl(${h} 72% 46%)`);
+    }
+  }
+  return out;
 }
 
 export type NamedValue = { name: string; value: number };
@@ -101,6 +110,7 @@ export function CategoryPieChart({
   }
   const filtered = data.filter((d) => d.value > 0);
   if (filtered.length === 0) return null;
+  const colors = distinctColors(filtered.length);
 
   const money =
     valuePrefix === "R$"
@@ -128,8 +138,8 @@ export function CategoryPieChart({
               stroke="#fff"
               strokeWidth={2}
             >
-              {filtered.map((d) => (
-                <Cell key={d.name} fill={colorByName(d.name)} />
+              {filtered.map((d, i) => (
+                <Cell key={d.name} fill={colors[i] ?? PALETTE[0]} />
               ))}
             </Pie>
             <Tooltip

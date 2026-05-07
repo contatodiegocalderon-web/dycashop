@@ -8,6 +8,7 @@ type ClientRow = {
   customer_whatsapp: string;
   customer_name: string | null;
   customer_segment: string | null;
+  is_new: boolean;
   order_count: number;
   total_spent: number;
   last_confirmed_at: string | null;
@@ -217,11 +218,7 @@ export default function AdminClientesPage() {
                 <p className="font-semibold text-stone-900">{c.customer_name ?? "—"}</p>
                 <p className="text-sm text-stone-500">{waDisplay(c.customer_whatsapp)}</p>
                 <p className="mt-1 text-xs text-stone-400">
-                  {c.customer_segment === "NOVO"
-                    ? "Novo"
-                    : c.customer_segment === "ANTIGO"
-                      ? "Antigo"
-                      : "—"}{" "}
+                  {c.is_new ? "🆕 Novo" : "Antigo"}{" "}
                   · {c.order_count} pedido(s) · Total {money(c.total_spent)}
                   {c.last_confirmed_at && (
                     <>

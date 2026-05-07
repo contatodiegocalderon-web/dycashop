@@ -13,6 +13,7 @@ function normalizeDigits(s: string): string {
 
 function parseConfirmBody(raw: unknown): {
   saleAmount: number;
+  saleByCategory: Record<string, number>;
   customerName: string;
   customerWhatsApp: string;
   customerSegment: CustomerSegment;
@@ -22,6 +23,7 @@ function parseConfirmBody(raw: unknown): {
   }
   const o = raw as Record<string, unknown>;
   const saleAmount = Number(o.saleAmount ?? o.sale_amount);
+  const saleByCategoryRaw = o.saleByCategory ?? o.sale_by_category;
   const customerName = String(o.customerName ?? o.customer_name ?? "").trim();
   const customerWhatsApp = String(
     o.customerWhatsApp ?? o.customer_whatsapp ?? ""
@@ -32,6 +34,18 @@ function parseConfirmBody(raw: unknown): {
 
   if (Number.isNaN(saleAmount) || saleAmount <= 0) {
     throw new Error("Informe saleAmount (valor do pedido) maior que zero");
+  }
+  const saleByCategory: Record<string, number> = {};
+  if (saleByCategoryRaw && typeof saleByCategoryRaw === "object") {
+    for (const [k, v] of Object.entries(saleByCategoryRaw as Record<string, unknown>)) {
+      const label = String(k).trim();
+      if (!label) continue;
+      const n = Number(v);
+      if (Number.isNaN(n) || n < 0) {
+        throw new Error(`Valor inválido em saleByCategory para ${label}`);
+      }
+      saleByCategory[label] = n;
+    }
   }
   if (!customerName) {
     throw new Error("Informe o nome do cliente");
@@ -46,6 +60,7 @@ function parseConfirmBody(raw: unknown): {
 
   return {
     saleAmount,
+    saleByCategory,
     customerName,
     customerWhatsApp: wa,
     customerSegment: segRaw as CustomerSegment,
@@ -54,7 +69,7 @@ function parseConfirmBody(raw: unknown): {
 
 /**
  * POST /api/admin/orders/confirm/[orderId]
- * Corpo: { saleAmount, customerName, customerWhatsApp, customerSegment }
+ * Corpo: { saleAmount, saleByCategory, customerName, customerWhatsApp, customerSegment }
  */
 export async function POST(
   request: NextRequest,
@@ -84,11 +99,20 @@ export async function POST(
   }
 
   const principal = await resolvePrincipal(request);
-  const confirmedByStaffId =
-    principal?.kind === "staff" ? principal.staff.staffId : null;
 
   try {
     const admin = createAdminClient();
+    let confirmedByStaffId: string | null =
+      principal?.kind === "staff" ? principal.staff.staffId : null;
+    if (!confirmedByStaffId && principal?.kind === "api_key") {
+      const { data: ownerRow } = await admin
+        .from("staff_users")
+        .select("id")
+        .eq("role", "owner")
+        .limit(1)
+        .maybeSingle();
+      confirmedByStaffId = (ownerRow?.id as string | undefined) ?? null;
+    }
 
     const { data: order, error: oErr } = await admin
       .from("orders")
@@ -108,15 +132,17 @@ export async function POST(
 
     const { data: items, error: iErr } = await admin
       .from("order_items")
-      .select("product_id, quantity")
+      .select("product_id, quantity, snapshot_category")
       .eq("order_id", orderId);
 
     if (iErr || !items?.length) {
       return NextResponse.json({ error: "Itens não encontrados" }, { status: 400 });
     }
 
+    const categoriesInOrder = new Set<string>();
     const totals = new Map<string, number>();
     for (const it of items) {
+      categoriesInOrder.add(it.snapshot_category?.trim() || "Sem categoria");
       if (!it.product_id) continue;
       totals.set(
         it.product_id,
@@ -167,11 +193,20 @@ export async function POST(
     const orderUpdate: Record<string, unknown> = {
       status: "PAGO",
       sale_amount: bodyParsed.saleAmount,
+      sale_amount_by_category: bodyParsed.saleByCategory,
       customer_name: bodyParsed.customerName,
       customer_whatsapp: bodyParsed.customerWhatsApp,
       customer_segment: bodyParsed.customerSegment,
       confirmed_at: confirmedAt,
     };
+    for (const cat of Array.from(categoriesInOrder)) {
+      if (bodyParsed.saleByCategory[cat] == null) {
+        return NextResponse.json(
+          { error: `Informe o valor vendido para a categoria ${cat}` },
+          { status: 400 }
+        );
+      }
+    }
     if (confirmedByStaffId) {
       orderUpdate.confirmed_by_staff_id = confirmedByStaffId;
     }

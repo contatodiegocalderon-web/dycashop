@@ -23,7 +23,9 @@ function uniqueSuffixFromFileId(fileId: string): string {
 }
 
 /**
- * Após venda, alinha o nome do ficheiro no Drive ao stock atual (último número no padrão MARCA COR N).
+ * Após venda:
+ * - stock > 0: alinha o nome do ficheiro no Drive ao stock atual (MARCA COR N)
+ * - stock <= 0: remove o ficheiro do Drive (produto esgotado)
  */
 export async function renameDriveFilesToCurrentStock(
   productIds: string[]
@@ -125,6 +127,14 @@ export async function renameDriveFilesToCurrentStock(
       }
 
       const product = p as Product;
+      if (product.stock <= 0) {
+        await drive.files.delete({
+          fileId: product.drive_file_id,
+          supportsAllDrives: true,
+        });
+        ok.push(productId);
+        continue;
+      }
 
       // #region agent log
       fetch("http://127.0.0.1:7446/ingest/24af6af5-b59d-45ad-acbf-6e5e9842079c", {
