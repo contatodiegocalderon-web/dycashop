@@ -345,9 +345,9 @@ export default function AdminHistoricoPage() {
               </ul>
             )}
             {order.sale_amount != null || order.sale_amount_by_category ? (
-              <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2">
-                <p className="text-base font-semibold text-violet-900">
-                  <span className="text-violet-700">Valor total: </span>
+              <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                <p className="text-base font-semibold text-emerald-900">
+                  <span className="text-emerald-700">Valor total: </span>
                   {totalValue.toLocaleString("pt-BR", {
                     style: "currency",
                     currency: "BRL",
