@@ -77,15 +77,9 @@ function AdminChrome({ children }: { children: ReactNode }) {
           <div className="flex flex-wrap items-center gap-6">
             <Link
               href="/admin"
-              className="inline-flex items-center"
-              aria-label="Admin"
+              className="text-lg font-bold tracking-tight bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent drop-shadow-sm"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/api/admin/logo"
-                alt="Logo D&Y"
-                className="h-6 w-auto object-contain"
-              />
+              Admin
             </Link>
             <nav className="flex flex-wrap gap-1">
               {nav.map((item) => {
