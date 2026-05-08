@@ -68,6 +68,7 @@ export async function GET(request: NextRequest) {
     storageUploaded: syncResult.storageUploaded,
     storageSkipped: syncResult.storageSkipped,
     storageErrorCount: syncResult.storageErrors?.length ?? 0,
+    storageErrors: (syncResult.storageErrors ?? []).slice(0, 30),
     driveRenameOk: syncResult.driveRenameOk,
     driveRenameErrorCount: syncResult.driveRenameErrors?.length ?? 0,
     driveRenameErrorsSample: (syncResult.driveRenameErrors ?? []).slice(0, 5),

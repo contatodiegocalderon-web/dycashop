@@ -310,7 +310,9 @@ export default function AdminCategoriasPage() {
     <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-stone-900">Categorias</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
+            Categorias
+          </h1>
           <p className="mt-1 text-sm text-stone-600">
             Custos, vídeo, atacado, ordem na home e capa da vitrine.
           </p>
@@ -332,7 +334,7 @@ export default function AdminCategoriasPage() {
             onClick={() => setTab("operacao")}
             className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
               tab === "operacao"
-                ? "border-b-2 border-emerald-600 text-emerald-800"
+                ? "border-b-2 border-violet-600 text-violet-800"
                 : "text-stone-500 hover:text-stone-800"
             }`}
           >
@@ -343,7 +345,7 @@ export default function AdminCategoriasPage() {
             onClick={() => setTab("capas")}
             className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
               tab === "capas"
-                ? "border-b-2 border-emerald-600 text-emerald-800"
+                ? "border-b-2 border-violet-600 text-violet-800"
                 : "text-stone-500 hover:text-stone-800"
             }`}
           >
@@ -358,7 +360,7 @@ export default function AdminCategoriasPage() {
         </div>
       )}
       {ok && (
-        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
           {ok}
         </div>
       )}
@@ -464,7 +466,7 @@ export default function AdminCategoriasPage() {
               type="button"
               onClick={saveAll}
               disabled={saving}
-              className="mt-6 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              className="mt-6 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
             >
               {saving ? "A guardar…" : "Guardar categorias"}
             </button>

@@ -233,7 +233,9 @@ export default function AdminPedidosClient() {
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">Pedidos pendentes</h1>
+          <h1 className="text-2xl font-bold text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
+            Pedidos pendentes
+          </h1>
           <p className="text-sm text-stone-600">
             Confirme pagamento para baixar estoque; após confirmar, o sistema já
             aplica automaticamente os nomes atualizados no Drive.
@@ -257,7 +259,7 @@ export default function AdminPedidosClient() {
         </div>
       </div>
       {confirmSuccessMsg && (
-        <p className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <p className="mb-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
           {confirmSuccessMsg}
         </p>
       )}
@@ -312,7 +314,7 @@ export default function AdminPedidosClient() {
                         href={`/recibo/${order.public_token}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="font-medium text-emerald-800 underline hover:text-emerald-900"
+                        className="font-medium text-violet-800 underline hover:text-violet-900"
                       >
                         Abrir recibo do cliente
                       </Link>
@@ -383,11 +385,11 @@ export default function AdminPedidosClient() {
               </div>
 
               {confirmOpenId === order.id && (
-                <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/90 px-4 py-4 text-sm text-stone-900">
-                  <p className="font-semibold text-emerald-950">
+                <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50/90 px-4 py-4 text-sm text-stone-900">
+                  <p className="font-semibold text-violet-950">
                     Confirmar venda e baixar estoque
                   </p>
-                  <p className="mt-1 text-emerald-900/90">
+                  <p className="mt-1 text-violet-900/90">
                     Os dados abaixo entram nas métricas e disparam a renomeação das fotos no Drive.
                   </p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">

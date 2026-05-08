@@ -8,6 +8,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -76,9 +77,15 @@ function AdminChrome({ children }: { children: ReactNode }) {
           <div className="flex flex-wrap items-center gap-6">
             <Link
               href="/admin"
-              className="text-lg font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent drop-shadow-sm"
+              className="inline-flex items-center"
+              aria-label="Admin"
             >
-              Admin
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/api/admin/logo"
+                alt="Logo D&Y"
+                className="h-6 w-auto object-contain"
+              />
             </Link>
             <nav className="flex flex-wrap gap-1">
               {nav.map((item) => {
@@ -92,7 +99,7 @@ function AdminChrome({ children }: { children: ReactNode }) {
                     href={item.href}
                     className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                       active
-                        ? "bg-emerald-600 text-white"
+                        ? "bg-violet-600 text-white"
                         : "text-stone-300 hover:bg-stone-800 hover:text-white"
                     }`}
                   >
@@ -138,6 +145,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<StaffSession | null>(null);
   const [ready, setReady] = useState(false);
   const [pendingOrdersCount, setPendingOrdersCount] = useState<number | null>(null);
+  const lastPendingCountRef = useRef<number | null>(null);
 
   const adminFetch = useCallback((input: RequestInfo, init?: RequestInit) => {
     const h = new Headers(init?.headers);
@@ -189,19 +197,33 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
   }, [adminFetch]);
 
-  const refreshPendingOrdersCount = useCallback(async () => {
+  const refreshPendingOrdersCount = useCallback(async (): Promise<number | null> => {
     try {
       const r = await adminFetch("/api/admin/orders?status=PENDENTE_PAGAMENTO");
       if (!r.ok) {
         setPendingOrdersCount(null);
-        return;
+        return null;
       }
       const j = (await r.json()) as { orders?: unknown[] };
-      setPendingOrdersCount(Array.isArray(j.orders) ? j.orders.length : 0);
+      const next = Array.isArray(j.orders) ? j.orders.length : 0;
+      setPendingOrdersCount(next);
+      return next;
     } catch {
       setPendingOrdersCount(null);
+      return null;
     }
   }, [adminFetch]);
+
+  const notifyNewOrder = useCallback((nextCount: number, prevCount: number) => {
+    const delta = Math.max(1, nextCount - prevCount);
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    const body =
+      delta > 1
+        ? `${delta} novos pedidos pendentes.`
+        : "Novo pedido pendente no admin.";
+    void new Notification("Novo pedido realizado! 💰", { body });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,6 +240,35 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     if (!ready || !session) return;
     void refreshPendingOrdersCount();
   }, [ready, session, pathname, refreshPendingOrdersCount]);
+
+  useEffect(() => {
+    if (!ready || !session || pathname === "/admin/login") return;
+
+    if (
+      typeof window !== "undefined" &&
+      "Notification" in window &&
+      window.isSecureContext &&
+      Notification.permission === "default"
+    ) {
+      void Notification.requestPermission();
+    }
+
+    const tick = async () => {
+      const next = await refreshPendingOrdersCount();
+      if (next == null) return;
+      const prev = lastPendingCountRef.current;
+      if (prev != null && next > prev) {
+        notifyNewOrder(next, prev);
+      }
+      lastPendingCountRef.current = next;
+    };
+
+    void tick();
+    const id = window.setInterval(() => {
+      void tick();
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [ready, session, pathname, refreshPendingOrdersCount, notifyNewOrder]);
 
   const logout = useCallback(async () => {
     try {

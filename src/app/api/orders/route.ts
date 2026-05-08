@@ -3,7 +3,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchOrderDisplayNumberPublic } from "@/lib/order-display-number";
 import { productPublicImageUrl } from "@/lib/product-image-url";
+import { getClientIp, rateLimitAllow } from "@/lib/rate-limit-ip";
 import type { Product } from "@/types";
+
+/** Limites para reduzir abuso / payloads enormes */
+const MAX_DISTINCT_PRODUCTS = 80;
+const MAX_QTY_PER_LINE = 500;
+const MAX_TOTAL_QTY = 5000;
+const MAX_NOTE_LEN = 4000;
+const MAX_NAME_LEN = 120;
+const MAX_SELLER_LEN = 100;
 
 function snapshotImageUrl(p: Product): string {
   return productPublicImageUrl(p);
@@ -13,6 +22,33 @@ type BodyItem = { productId: string; quantity: number };
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = getClientIp(request);
+    const rlMax = Math.min(
+      200,
+      Math.max(5, Number(process.env.ORDER_RATE_LIMIT_MAX ?? "30") || 30)
+    );
+    const rlWindow = Math.min(
+      86_400_000,
+      Math.max(60_000, Number(process.env.ORDER_RATE_LIMIT_WINDOW_MS ?? "") || 900_000)
+    );
+    if (
+      !rateLimitAllow(`order:${ip}`, "orders_post", {
+        max: rlMax,
+        windowMs: rlWindow,
+      })
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Muitos pedidos a partir desta rede. Aguarde alguns minutos e tente novamente.",
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(Math.ceil(rlWindow / 1000)) },
+        }
+      );
+    }
+
     const body = (await request.json()) as {
       items?: BodyItem[];
       customerNote?: string;
@@ -31,6 +67,37 @@ export async function POST(request: NextRequest) {
     if (!items?.length) {
       return NextResponse.json({ error: "items obrigatório" }, { status: 400 });
     }
+    if (items.length > MAX_DISTINCT_PRODUCTS) {
+      return NextResponse.json(
+        {
+          error: `No máximo ${MAX_DISTINCT_PRODUCTS} linhas por pedido. Divida em dois pedidos.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const noteRaw = String(body.customerNote ?? "");
+    if (noteRaw.length > MAX_NOTE_LEN) {
+      return NextResponse.json(
+        { error: `Observação demasiado longa (máx. ${MAX_NOTE_LEN} caracteres).` },
+        { status: 400 }
+      );
+    }
+    const nameRaw = String(body.customerName ?? "").trim();
+    if (nameRaw.length > MAX_NAME_LEN) {
+      return NextResponse.json(
+        { error: `Nome demasiado longo (máx. ${MAX_NAME_LEN} caracteres).` },
+        { status: 400 }
+      );
+    }
+    const sellerNameRaw = String(body.sellerName ?? "").trim();
+    if (sellerNameRaw.length > MAX_SELLER_LEN) {
+      return NextResponse.json(
+        { error: `Nome do vendedor demasiado longo (máx. ${MAX_SELLER_LEN}).` },
+        { status: 400 }
+      );
+    }
+    const sellerPhoneRaw = String(body.sellerPhone ?? "").trim().slice(0, 40);
 
     const admin = createAdminClient();
 
@@ -53,9 +120,27 @@ export async function POST(request: NextRequest) {
       if (!it.productId || !Number.isFinite(it.quantity) || it.quantity < 1) {
         return NextResponse.json({ error: "Item inválido" }, { status: 400 });
       }
+      if (it.quantity > MAX_QTY_PER_LINE) {
+        return NextResponse.json(
+          {
+            error: `Quantidade por linha demasiado alta (máx. ${MAX_QTY_PER_LINE}).`,
+          },
+          { status: 400 }
+        );
+      }
       qtyByProduct.set(
         it.productId,
         (qtyByProduct.get(it.productId) ?? 0) + it.quantity
+      );
+    }
+
+    const totalQtyOrdered = Array.from(qtyByProduct.values()).reduce((a, b) => a + b, 0);
+    if (totalQtyOrdered > MAX_TOTAL_QTY) {
+      return NextResponse.json(
+        {
+          error: `Total de peças por pedido demasiado alto (máx. ${MAX_TOTAL_QTY}).`,
+        },
+        { status: 400 }
       );
     }
 
@@ -85,12 +170,12 @@ export async function POST(request: NextRequest) {
       .from("orders")
       .insert({
         status: "PENDENTE_PAGAMENTO",
-        customer_note: body.customerNote ?? null,
-        customer_name: body.customerName?.trim() || null,
+        customer_note: noteRaw.trim() || null,
+        customer_name: nameRaw || null,
         customer_whatsapp:
           customerWhatsappDigits.length >= 10 ? customerWhatsappDigits : null,
-        requested_seller_name: body.sellerName?.trim() || null,
-        requested_seller_phone: body.sellerPhone?.trim() || null,
+        requested_seller_name: sellerNameRaw || null,
+        requested_seller_phone: sellerPhoneRaw || null,
         public_token: publicToken,
       })
       .select("id")

@@ -171,3 +171,17 @@ insert into public.catalog_settings (id) values (1)
 
 alter table public.catalog_settings enable row level security;
 
+-- Lista admin Clientes: ocultar número sem eliminar pedidos
+create table if not exists public.crm_hidden_contacts (
+  whatsapp_digits text primary key
+    check (length(whatsapp_digits) >= 10),
+  hidden_at timestamptz not null default now()
+);
+
+alter table public.crm_hidden_contacts enable row level security;
+
+create policy "crm_hidden_contacts_deny_all_anon"
+  on public.crm_hidden_contacts for all
+  using (false)
+  with check (false);
+

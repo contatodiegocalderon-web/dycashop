@@ -226,7 +226,7 @@ function ConfiguracaoInner() {
     <div className="mx-auto max-w-xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">
+          <h1 className="text-2xl font-bold text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
             Configuração do catálogo
           </h1>
           <p className="text-sm text-stone-600">
@@ -259,7 +259,7 @@ function ConfiguracaoInner() {
         <p className="mt-2 text-xs text-amber-900/80">
           Estado:{" "}
           {googleConnected ? (
-            <span className="font-semibold text-emerald-800">ligado</span>
+            <span className="font-semibold text-violet-800">ligado</span>
           ) : (
             <span className="font-semibold text-red-800">não ligado</span>
           )}
@@ -320,22 +320,22 @@ function ConfiguracaoInner() {
           type="button"
           disabled={loading}
           onClick={() => void pushDriveToMatchAppStock()}
-          className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100 disabled:opacity-40"
+          className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-40"
         >
           Igualar Drive com app
         </button>
       </div>
 
       {syncProg && (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-950">
+        <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/80 px-4 py-3 text-sm text-violet-950">
           <p className="font-medium">{syncProg.phase}</p>
           {syncProg.total > 0 ? (
-            <p className="mt-1 text-xs text-emerald-900/90">
+            <p className="mt-1 text-xs text-violet-900/90">
               Imagens a processar: {syncProg.current} / {syncProg.total} · Ignoradas
               (já atualizadas): {syncProg.skipped}
             </p>
           ) : (
-            <p className="mt-1 text-xs text-emerald-900/80">A calcular…</p>
+            <p className="mt-1 text-xs text-violet-900/80">A calcular…</p>
           )}
         </div>
       )}

@@ -11,6 +11,18 @@ export function formatSyncResultSummary(r: SyncResult): string {
   ];
   if (r.storageErrors?.length) {
     parts.push(`Erros de imagem: ${r.storageErrors.length}.`);
+    const sample = r.storageErrors.slice(0, 20);
+    for (const er of sample) {
+      const file = er.drive_file_id
+        ? ` drive ${er.drive_file_id}`
+        : "";
+      parts.push(`- produto ${er.id}${file}: ${er.message}`);
+    }
+    if (r.storageErrors.length > sample.length) {
+      parts.push(
+        `- … e mais ${r.storageErrors.length - sample.length} erro(s).`
+      );
+    }
   }
   parts.push(
     `Renomeação no Drive: ${r.driveRenameOk} ok${r.driveRenameErrors?.length ? `, ${r.driveRenameErrors.length} falhas.` : "."}`

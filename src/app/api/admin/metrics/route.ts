@@ -10,7 +10,14 @@ import {
 
 export const runtime = "nodejs";
 
-type PeriodKey = "daily" | "weekly" | "monthly" | "yearly" | "last30" | "all";
+type PeriodKey =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "yearly"
+  | "last30"
+  | "all"
+  | "selectedDate";
 
 function periodStartIso(period: PeriodKey): string | null {
   const now = new Date();
@@ -39,6 +46,25 @@ function periodStartIso(period: PeriodKey): string | null {
   }
   d.setDate(d.getDate() - 30);
   return d.toISOString();
+}
+
+function parseSelectedDateUtcRange(
+  raw: string | null,
+  tzOffsetMinutesRaw: string | null
+): { startIso: string; endIso: string } | null {
+  if (!raw) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const [yRaw, mRaw, dRaw] = raw.split("-");
+  const y = Number(yRaw);
+  const m = Number(mRaw);
+  const d = Number(dRaw);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+  const tzOffsetMinutes = Number(tzOffsetMinutesRaw ?? "0");
+  if (!Number.isFinite(tzOffsetMinutes)) return null;
+  // Converte o "dia local" selecionado no browser para janela UTC exata [início, fim).
+  const startUtcMs = Date.UTC(y, m - 1, d, 0, 0, 0, 0) + tzOffsetMinutes * 60_000;
+  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
+  return { startIso: new Date(startUtcMs).toISOString(), endIso: new Date(endUtcMs).toISOString() };
 }
 
 function nameFromEmail(email: string): string {
@@ -91,10 +117,18 @@ export async function GET(request: NextRequest) {
       rawPeriod === "weekly" ||
       rawPeriod === "monthly" ||
       rawPeriod === "yearly" ||
-      rawPeriod === "last30"
+      rawPeriod === "last30" ||
+      rawPeriod === "selectedDate"
         ? rawPeriod
         : "all";
     const startIso = periodStartIso(period);
+    const selectedDateRange =
+      period === "selectedDate"
+        ? parseSelectedDateUtcRange(
+            searchParams.get("selectedDate"),
+            searchParams.get("tzOffsetMinutes")
+          )
+        : null;
 
     const admin = createAdminClient();
 
@@ -122,7 +156,11 @@ export async function GET(request: NextRequest) {
     if (sellerId) {
       orderQuery = orderQuery.eq("confirmed_by_staff_id", sellerId);
     }
-    if (startIso) {
+    if (selectedDateRange) {
+      orderQuery = orderQuery
+        .gte("confirmed_at", selectedDateRange.startIso)
+        .lt("confirmed_at", selectedDateRange.endIso);
+    } else if (startIso) {
       orderQuery = orderQuery.gte("confirmed_at", startIso);
     }
 

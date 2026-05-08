@@ -34,7 +34,22 @@ type SellerBreakdownRow = {
   topCategoryPieces: number;
 };
 
-type PeriodKey = "daily" | "weekly" | "monthly" | "yearly" | "last30" | "all";
+type PeriodKey =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "yearly"
+  | "last30"
+  | "all"
+  | "selectedDate";
+
+function todayYmd(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function money(n: number) {
   return n.toLocaleString("pt-BR", {
@@ -51,11 +66,17 @@ export default function AdminMetricasPage() {
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
   const [sellerBreakdown, setSellerBreakdown] = useState<SellerBreakdownRow[]>([]);
   const [period, setPeriod] = useState<PeriodKey>("all");
+  const [selectedDate, setSelectedDate] = useState<string>(todayYmd());
   const loadMetrics = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const mRes = await adminFetch(`/api/admin/metrics?period=${period}`);
+      const q = new URLSearchParams({ period });
+      if (period === "selectedDate" && selectedDate) {
+        q.set("selectedDate", selectedDate);
+        q.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
+      }
+      const mRes = await adminFetch(`/api/admin/metrics?${q.toString()}`);
       const mJson = await mRes.json();
       if (!mRes.ok) throw new Error(mJson.error ?? "Falha nas métricas");
       setMetrics(mJson.metrics as MetricsPayload);
@@ -88,7 +109,7 @@ export default function AdminMetricasPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch, period]);
+  }, [adminFetch, period, selectedDate]);
 
   useEffect(() => {
     void loadMetrics();
@@ -139,22 +160,22 @@ export default function AdminMetricasPage() {
     <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-stone-900">
+          <h1 className="text-3xl font-bold tracking-tight text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
             Métricas de vendas
           </h1>
           <p className="mt-1 max-w-xl text-sm text-stone-600">
             Lucro = valor da venda menos (peças × custo da categoria). Configure custos e
             conteúdo por categoria na aba{" "}
-            <Link href="/admin/categorias" className="font-medium text-emerald-800 underline">
+            <Link href="/admin/categorias" className="font-medium text-violet-800 underline">
               Categorias
             </Link>
             .
           </p>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <Link href="/admin/pedidos" className="font-medium text-emerald-800 underline">
+            <Link href="/admin/pedidos" className="font-medium text-violet-800 underline">
               Pedidos pendentes
             </Link>
-            <Link href="/admin/clientes" className="font-medium text-emerald-800 underline">
+            <Link href="/admin/clientes" className="font-medium text-violet-800 underline">
               Clientes registados
             </Link>
           </div>
@@ -176,7 +197,16 @@ export default function AdminMetricasPage() {
             <option value="monthly">Mensal</option>
             <option value="yearly">Anual</option>
             <option value="last30">Últimos 30 dias</option>
+            <option value="selectedDate">Data específica</option>
           </select>
+          {period === "selectedDate" && (
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+            />
+          )}
           <button
             type="button"
             onClick={loadMetrics}
@@ -211,7 +241,7 @@ export default function AdminMetricasPage() {
               label: "Vendas",
               value: String(metrics.orderCount),
               sub: "Pedidos com valor registado",
-              gradient: "from-emerald-500/90 to-teal-600",
+              gradient: "from-violet-500/90 to-fuchsia-600",
             },
             {
               label: "Ticket médio",

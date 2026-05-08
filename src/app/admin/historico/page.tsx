@@ -6,7 +6,7 @@ import { useAdminAuth } from "@/contexts/admin-auth";
 import { displayNumberFromOrderedIds } from "@/lib/order-display-number";
 import type { OrderItemRow, OrderRow } from "@/types";
 
-type PeriodKey = "daily" | "weekly" | "monthly" | "yearly" | "last30";
+type PeriodKey = "daily" | "weekly" | "monthly" | "yearly" | "last30" | "selectedDate";
 
 const PERIOD_OPTIONS: Array<{ value: PeriodKey; label: string }> = [
   { value: "daily", label: "Diário" },
@@ -14,7 +14,16 @@ const PERIOD_OPTIONS: Array<{ value: PeriodKey; label: string }> = [
   { value: "monthly", label: "Mensal" },
   { value: "yearly", label: "Anual" },
   { value: "last30", label: "Últimos 30 dias" },
+  { value: "selectedDate", label: "Data específica" },
 ];
+
+function todayYmd(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function aggregateByCategory(items: OrderItemRow[]): Array<{ label: string; qty: number }> {
   const m = new Map<string, number>();
@@ -179,6 +188,7 @@ export default function AdminHistoricoPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<PeriodKey>("last30");
+  const [selectedDate, setSelectedDate] = useState<string>(todayYmd());
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -188,6 +198,10 @@ export default function AdminHistoricoPage() {
         status: "PAGO",
         period,
       });
+      if (period === "selectedDate" && selectedDate) {
+        q.set("selectedDate", selectedDate);
+        q.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
+      }
       const res = await adminFetch(`/api/admin/orders?${q.toString()}`);
       const text = await res.text();
       let data: { error?: string; orders?: OrderRow[] } = {};
@@ -222,7 +236,7 @@ export default function AdminHistoricoPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch, period]);
+  }, [adminFetch, period, selectedDate]);
 
   useEffect(() => {
     void fetchOrders();
@@ -232,7 +246,9 @@ export default function AdminHistoricoPage() {
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">Histórico</h1>
+          <h1 className="text-2xl font-bold text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
+            Histórico
+          </h1>
           <p className="text-sm text-stone-600">
             Pedidos confirmados e registados como pagos.
           </p>
@@ -249,6 +265,14 @@ export default function AdminHistoricoPage() {
               </option>
             ))}
           </select>
+          {period === "selectedDate" && (
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+            />
+          )}
           <Link
             href="/admin/pedidos"
             className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50"
@@ -321,9 +345,9 @@ export default function AdminHistoricoPage() {
               </ul>
             )}
             {order.sale_amount != null || order.sale_amount_by_category ? (
-              <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                <p className="text-base font-semibold text-emerald-900">
-                  <span className="text-emerald-700">Valor total: </span>
+              <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2">
+                <p className="text-base font-semibold text-violet-900">
+                  <span className="text-violet-700">Valor total: </span>
                   {totalValue.toLocaleString("pt-BR", {
                     style: "currency",
                     currency: "BRL",

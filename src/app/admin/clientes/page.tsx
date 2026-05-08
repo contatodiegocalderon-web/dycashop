@@ -82,6 +82,7 @@ export default function AdminClientesPage() {
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [removingWa, setRemovingWa] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,6 +113,29 @@ export default function AdminClientesPage() {
       }),
     [clients]
   );
+
+  async function removeContact(customerWhatsapp: string) {
+    const ok = window.confirm(
+      "Remover este contacto da lista de clientes? Os pedidos confirmados e as métricas mantêm-se no sistema — apenas deixa de aparecer aqui."
+    );
+    if (!ok) return;
+    setRemovingWa(customerWhatsapp);
+    setError(null);
+    try {
+      const res = await adminFetch("/api/admin/clients", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_whatsapp: customerWhatsapp }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Falha ao remover");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setRemovingWa(null);
+    }
+  }
 
   function exportCsv() {
     if (!sorted.length) return;
@@ -145,7 +169,9 @@ export default function AdminClientesPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-stone-900">Clientes registados</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
+          Clientes registados
+        </h1>
         <p className="mt-2 max-w-2xl text-sm text-stone-600">
           Leads e compradores com pedido confirmado. Use a lista para follow-up, campanhas e
           acompanhamento de vendas. A exportação abre no Excel ou no Google Sheets.
@@ -153,13 +179,13 @@ export default function AdminClientesPage() {
         <div className="mt-4 flex flex-wrap gap-3">
           <Link
             href="/admin/metricas"
-            className="text-sm font-medium text-emerald-800 underline hover:text-emerald-900"
+            className="text-sm font-medium text-violet-800 underline hover:text-violet-900"
           >
             ← Métricas
           </Link>
           <Link
             href="/admin/pedidos"
-            className="text-sm font-medium text-emerald-800 underline hover:text-emerald-900"
+            className="text-sm font-medium text-violet-800 underline hover:text-violet-900"
           >
             Pedidos pendentes
           </Link>
@@ -229,14 +255,24 @@ export default function AdminClientesPage() {
                   )}
                 </p>
               </div>
-              <a
-                href={waLink(c.customer_whatsapp)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#20bd5a]"
-              >
-                WhatsApp
-              </a>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void removeContact(c.customer_whatsapp)}
+                  disabled={removingWa === c.customer_whatsapp}
+                  className="inline-flex items-center rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-50 disabled:opacity-50"
+                >
+                  {removingWa === c.customer_whatsapp ? "A remover…" : "Remover da lista"}
+                </button>
+                <a
+                  href={waLink(c.customer_whatsapp)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#20bd5a]"
+                >
+                  WhatsApp
+                </a>
+              </div>
             </li>
           ))}
         </ul>

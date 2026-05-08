@@ -17,6 +17,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
+  const allowBootstrap =
+    process.env.NODE_ENV !== "production" ||
+    process.env.ALLOW_STAFF_BOOTSTRAP === "1";
+  if (!allowBootstrap) {
+    return NextResponse.json(
+      {
+        error:
+          "Bootstrap desativado em produção. Para criar a primeira equipa, defina temporariamente ALLOW_STAFF_BOOTSTRAP=1 nas variáveis da Vercel e volte a remover após usar.",
+      },
+      { status: 403 }
+    );
+  }
+
   let body:
     | {
         users?: Array<{

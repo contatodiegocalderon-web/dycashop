@@ -23,7 +23,7 @@ export type SyncResult = {
   message?: string;
   storageUploaded: number;
   storageSkipped: number;
-  storageErrors: { id: string; message: string }[];
+  storageErrors: { id: string; drive_file_id?: string; message: string }[];
   driveRenameOk: number;
   driveRenameErrors: { productId: string; message: string }[];
 };
@@ -258,8 +258,11 @@ async function processImageQueue(
   queue: ImageSyncItem[],
   emit: ((e: SyncProgressEvent) => void) | undefined,
   skippedCount: number
-): Promise<{ uploaded: number; errors: { id: string; message: string }[] }> {
-  const errors: { id: string; message: string }[] = [];
+): Promise<{
+  uploaded: number;
+  errors: { id: string; drive_file_id?: string; message: string }[];
+}> {
+  const errors: { id: string; drive_file_id?: string; message: string }[] = [];
   let uploaded = 0;
   let completed = 0;
   const total = queue.length;
@@ -273,7 +276,11 @@ async function processImageQueue(
           uploaded++;
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Erro";
-          errors.push({ id: item.id, message: msg });
+          errors.push({
+            id: item.id,
+            drive_file_id: item.drive_file_id,
+            message: msg,
+          });
           await markProductImageSyncError(admin, item.id).catch(() => {});
         }
       })
