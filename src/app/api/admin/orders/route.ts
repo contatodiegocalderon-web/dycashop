@@ -124,8 +124,7 @@ export async function GET(request: NextRequest) {
         *,
         order_items (*)
       `
-      )
-      .order("created_at", { ascending: false });
+      );
 
     if (statusFilter !== "all") {
       q = q.eq("status", statusFilter);
@@ -149,6 +148,15 @@ export async function GET(request: NextRequest) {
       } else {
         q = q.gte("created_at", startIso);
       }
+    }
+
+    if (statusFilter === "PAGO") {
+      q = q
+        .order("confirmed_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
+    } else {
+      q = q.order("created_at", { ascending: false }).order("id", { ascending: false });
     }
 
     const { data, error } = await q;

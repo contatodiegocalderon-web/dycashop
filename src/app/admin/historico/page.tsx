@@ -363,7 +363,7 @@ export default function AdminHistoricoPage() {
               </div>
             ) : null}
             <p className="mt-2 text-xs text-stone-400">
-              {new Date(order.updated_at).toLocaleString("pt-BR")}
+              {new Date(order.confirmed_at ?? order.updated_at).toLocaleString("pt-BR")}
             </p>
             {waHref && (
               <a

@@ -30,9 +30,17 @@ export async function fetchAllOrderIdsNewestFirst(): Promise<string[]> {
 export async function fetchOrderDisplayNumberPublic(
   orderId: string
 ): Promise<number> {
-  const ids = await fetchAllOrderIdsNewestFirst();
-  const n = displayNumberFromOrderedIds(ids, orderId);
-  return n > 0 ? n : 1;
+  // Em alguns cenários logo após o insert o pedido ainda não aparece na lista global.
+  // Faz pequenas tentativas para evitar número divergente no WhatsApp/recibo/admin.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const ids = await fetchAllOrderIdsNewestFirst();
+    const n = displayNumberFromOrderedIds(ids, orderId);
+    if (n > 0) return n;
+    if (attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+  }
+  return 1;
 }
 
 /** Anexa `display_number` a cada pedido (recibo e admin alinhados). */
