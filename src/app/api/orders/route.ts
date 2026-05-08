@@ -7,9 +7,9 @@ import { getClientIp, rateLimitAllow } from "@/lib/rate-limit-ip";
 import type { Product } from "@/types";
 
 /** Limites para reduzir abuso / payloads enormes */
-const MAX_DISTINCT_PRODUCTS = 80;
+const MAX_DISTINCT_PRODUCTS = 200;
 const MAX_QTY_PER_LINE = 500;
-const MAX_TOTAL_QTY = 5000;
+const MAX_TOTAL_QTY = 200;
 const MAX_NOTE_LEN = 4000;
 const MAX_NAME_LEN = 120;
 const MAX_SELLER_LEN = 100;

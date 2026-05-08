@@ -72,6 +72,9 @@ export default function AdminPedidosClient() {
   const [confirmSuccessMsg, setConfirmSuccessMsg] = useState<string | null>(
     null
   );
+  const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>(
+    {}
+  );
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -329,6 +332,20 @@ export default function AdminPedidosClient() {
                       {order.customer_note}
                     </p>
                   )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedOrders((prev) => ({
+                        ...prev,
+                        [order.id]: !prev[order.id],
+                      }))
+                    }
+                    className="mt-2 text-sm font-medium text-violet-800 underline hover:text-violet-900"
+                  >
+                    {expandedOrders[order.id]
+                      ? "Ocultar pedido completo"
+                      : "Ver pedido completo"}
+                  </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {waHref ? (
@@ -529,42 +546,43 @@ export default function AdminPedidosClient() {
                 </div>
               )}
 
-              {SIZE_ORDER.map((size) => {
-                const list = bySize.get(size) ?? [];
-                if (!list.length) return null;
-                return (
-                  <div key={size} className="mb-4 last:mb-0">
-                    <h3 className="mb-2 text-sm font-semibold text-stone-800">
-                      Tamanho {size}
-                    </h3>
-                    <ul className="grid gap-3 sm:grid-cols-2">
-                      {list.map((it) => (
-                        <li
-                          key={it.id}
-                          className="flex gap-3 rounded-xl border border-stone-100 bg-stone-50/80 p-2"
-                        >
-                          <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-lg bg-stone-200">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={adminThumbSrc(it)}
-                              alt=""
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                              decoding="async"
-                            />
-                          </div>
-                          <div className="min-w-0 text-sm">
-                            <p className="font-medium text-stone-900">
-                              {it.snapshot_brand} — {it.snapshot_color}{" "}
-                              <span className="text-stone-500">×{it.quantity}</span>
-                            </p>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                );
-              })}
+              {expandedOrders[order.id] &&
+                SIZE_ORDER.map((size) => {
+                  const list = bySize.get(size) ?? [];
+                  if (!list.length) return null;
+                  return (
+                    <div key={size} className="mb-4 last:mb-0">
+                      <h3 className="mb-2 text-sm font-semibold text-stone-800">
+                        Tamanho {size}
+                      </h3>
+                      <ul className="grid gap-3 sm:grid-cols-2">
+                        {list.map((it) => (
+                          <li
+                            key={it.id}
+                            className="flex gap-3 rounded-xl border border-stone-100 bg-stone-50/80 p-2"
+                          >
+                            <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-lg bg-stone-200">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={adminThumbSrc(it)}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                                decoding="async"
+                              />
+                            </div>
+                            <div className="min-w-0 text-sm">
+                              <p className="font-medium text-stone-900">
+                                {it.snapshot_brand} — {it.snapshot_color}{" "}
+                                <span className="text-stone-500">×{it.quantity}</span>
+                              </p>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
             </li>
           );
         })}
