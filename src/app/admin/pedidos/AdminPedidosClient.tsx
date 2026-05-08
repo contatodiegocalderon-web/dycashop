@@ -52,6 +52,12 @@ function categoriesInOrder(order: OrderRow | undefined): string[] {
   return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
+function isDriveConfirmLocked(order: OrderRow): boolean {
+  const raw = order.sale_amount_by_category;
+  if (!raw || typeof raw !== "object") return false;
+  return "_confirm_lock" in (raw as Record<string, unknown>);
+}
+
 export default function AdminPedidosClient() {
   const { adminFetch } = useAdminAuth();
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -321,6 +327,7 @@ export default function AdminPedidosClient() {
           const items = order.order_items ?? [];
           const bySize = groupItems(items);
           const waHref = waLinkFromDigits(order.customer_whatsapp);
+          const driveLocked = isDriveConfirmLocked(order);
           return (
             <li
               key={order.id}
@@ -338,6 +345,11 @@ export default function AdminPedidosClient() {
                     }`}
                   </p>
                   <p className="font-mono text-xs text-stone-500">{order.id}</p>
+                  {driveLocked && (
+                    <p className="mt-2 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                      Bloqueado por falha no Drive
+                    </p>
+                  )}
                   {order.customer_name && (
                     <p className="mt-1 text-sm text-stone-800">
                       <span className="text-stone-500">Cliente: </span>
