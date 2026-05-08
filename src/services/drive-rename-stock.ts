@@ -119,10 +119,9 @@ export async function renameDriveFilesToCurrentStock(
           }
         ).catch(() => {});
         // #endregion
-        errors.push({
-          productId,
-          message: error?.message ?? "Produto não encontrado",
-        });
+        // Se o produto já não existe na BD, tratamos como "já processado"
+        // (caso comum quando o stock chegou a 0 e o item foi removido).
+        ok.push(productId);
         continue;
       }
 

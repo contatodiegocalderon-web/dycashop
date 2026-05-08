@@ -115,7 +115,7 @@ export async function POST(
 
     const { data: order, error: oErr } = await admin
       .from("orders")
-      .select("id, status")
+      .select("id, status, sale_amount_by_category")
       .eq("id", orderId)
       .single();
 
@@ -128,6 +128,19 @@ export async function POST(
         { status: 400 }
       );
     }
+    const existingLock =
+      order.sale_amount_by_category &&
+      typeof order.sale_amount_by_category === "object" &&
+      "_confirm_lock" in (order.sale_amount_by_category as Record<string, unknown>);
+    if (existingLock) {
+      return NextResponse.json(
+        {
+          error:
+            "Este pedido está bloqueado após uma falha de sincronização com o Drive. Não é permitido confirmar novamente para evitar renomeações duplicadas.",
+        },
+        { status: 409 }
+      );
+    }
 
     const { data: items, error: iErr } = await admin
       .from("order_items")
@@ -137,6 +150,41 @@ export async function POST(
     if (iErr || !items?.length) {
       return NextResponse.json({ error: "Itens não encontrados" }, { status: 400 });
     }
+
+    // Lock pessimista no próprio pedido para impedir dupla confirmação/dupla renomeação.
+    const confirmLock = {
+      _confirm_lock: {
+        at: new Date().toISOString(),
+        by: confirmedByStaffId ?? "api_key",
+        reason: "confirm_in_progress",
+      },
+    };
+    const { data: lockRows, error: lockErr } = await admin
+      .from("orders")
+      .update({ sale_amount_by_category: confirmLock })
+      .eq("id", orderId)
+      .eq("status", "PENDENTE_PAGAMENTO")
+      .is("sale_amount_by_category", null)
+      .select("id");
+    if (lockErr) {
+      return NextResponse.json({ error: lockErr.message }, { status: 500 });
+    }
+    if (!lockRows || lockRows.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Este pedido já está em processamento ou bloqueado por tentativa anterior. Atualize a lista.",
+        },
+        { status: 409 }
+      );
+    }
+    const releaseLock = async () => {
+      await admin
+        .from("orders")
+        .update({ sale_amount_by_category: null })
+        .eq("id", orderId)
+        .eq("status", "PENDENTE_PAGAMENTO");
+    };
 
     const categoriesInOrder = new Set<string>();
     const qtyByCategory: Record<string, number> = {};
@@ -153,6 +201,16 @@ export async function POST(
     }
 
     const productIdList = Array.from(totals.keys());
+    const originalByProductId = new Map<
+      string,
+      {
+        stock: number;
+        status: "ATIVO" | "ESGOTADO";
+      }
+    >();
+    const nextStockByProductId = new Map<string, number>();
+    const zeroAfterConfirm: string[] = [];
+
     for (const productId of productIdList) {
       const qty = totals.get(productId)!;
       const { data: product, error: pErr } = await admin
@@ -162,12 +220,23 @@ export async function POST(
         .single();
 
       if (pErr || !product) {
+        await releaseLock();
         return NextResponse.json(
           { error: `Produto ${productId} não encontrado` },
           { status: 500 }
         );
       }
+      if (product.stock <= 0) {
+        await releaseLock();
+        return NextResponse.json(
+          {
+            error: `Produto ${productId} está com estoque 0. Atualize os pedidos pendentes para remover itens indisponíveis.`,
+          },
+          { status: 400 }
+        );
+      }
       if (product.stock < qty) {
+        await releaseLock();
         return NextResponse.json(
           {
             error: `Estoque insuficiente no produto ${productId}. Atual: ${product.stock}, necessário: ${qty}`,
@@ -177,15 +246,26 @@ export async function POST(
       }
 
       const newStock = product.stock - qty;
+      originalByProductId.set(productId, {
+        stock: Number(product.stock),
+        status: (product.status as "ATIVO" | "ESGOTADO") ?? "ATIVO",
+      });
+      nextStockByProductId.set(productId, newStock);
+      if (newStock <= 0) zeroAfterConfirm.push(productId);
+    }
+
+    // 1) Aplica novo stock na BD (ainda sem confirmar o pedido).
+    for (const productId of productIdList) {
+      const newStock = nextStockByProductId.get(productId) ?? 0;
       const { error: uErr } = await admin
         .from("products")
         .update({
-          stock: newStock,
+          stock: Math.max(0, newStock),
           status: newStock <= 0 ? "ESGOTADO" : "ATIVO",
         })
         .eq("id", productId);
-
       if (uErr) {
+        await releaseLock();
         return NextResponse.json({ error: uErr.message }, { status: 500 });
       }
     }
@@ -217,6 +297,39 @@ export async function POST(
     if (computedSaleAmount <= 0 && bodyParsed.saleAmount > 0) {
       computedSaleAmount = bodyParsed.saleAmount;
     }
+    // 2) Renomeia/apaga no Drive conforme novo stock. Se falhar, desfaz tudo.
+    const driveRename = await renameDriveFilesToCurrentStock(productIdList);
+    if (driveRename.errors.length > 0) {
+      // Rollback de stock/status
+      for (const productId of productIdList) {
+        const prev = originalByProductId.get(productId);
+        if (!prev) continue;
+        await admin
+          .from("products")
+          .update({
+            stock: prev.stock,
+            status: prev.status,
+          })
+          .eq("id", productId);
+      }
+      const details = driveRename.errors
+        .map((e) => `${e.productId}: ${e.message}`)
+        .join(" | ");
+      return NextResponse.json(
+        {
+          error:
+            "Falha ao atualizar nomes no Drive. Pedido NÃO foi confirmado e o estoque foi restaurado. Pedido bloqueado para evitar nova renomeação duplicada.",
+          driveRename: {
+            renamed: driveRename.ok.length,
+            errors: driveRename.errors,
+            details,
+          },
+        },
+        { status: 409 }
+      );
+    }
+
+    // 3) Pedido confirmado somente após Drive OK.
     const orderUpdate: Record<string, unknown> = {
       status: "PAGO",
       sale_amount: Number(computedSaleAmount.toFixed(2)),
@@ -229,19 +342,31 @@ export async function POST(
     if (confirmedByStaffId) {
       orderUpdate.confirmed_by_staff_id = confirmedByStaffId;
     }
-
     const { error: fErr } = await admin
       .from("orders")
       .update(orderUpdate)
       .eq("id", orderId);
-
     if (fErr) {
+      // rollback de stock/status se falhar confirmação do pedido
+      for (const productId of productIdList) {
+        const prev = originalByProductId.get(productId);
+        if (!prev) continue;
+        await admin
+          .from("products")
+          .update({
+            stock: prev.stock,
+            status: prev.status,
+          })
+          .eq("id", productId);
+      }
+      await releaseLock();
       return NextResponse.json({ error: fErr.message }, { status: 500 });
     }
 
-    // Só renomeia no Drive os produtos deste pedido (rápido). Sincronização completa
-    // catálogo ↔ Drive corre no job diário /api/cron/daily-catalog-sync.
-    const driveRename = await renameDriveFilesToCurrentStock(productIdList);
+    // 4) Limpeza final: remove produtos que zeraram.
+    for (const productId of zeroAfterConfirm) {
+      await admin.from("products").delete().eq("id", productId);
+    }
 
     return NextResponse.json({
       ok: true,

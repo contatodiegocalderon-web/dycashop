@@ -57,6 +57,9 @@ export default function AdminPedidosClient() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorItems, setErrorItems] = useState<Array<{ productId: string; message: string }>>(
+    []
+  );
   const [confirming, setConfirming] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [cancelOpenId, setCancelOpenId] = useState<string | null>(null);
@@ -79,6 +82,7 @@ export default function AdminPedidosClient() {
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setErrorItems([]);
     try {
       const res = await adminFetch("/api/admin/orders?status=PENDENTE_PAGAMENTO");
       const text = await res.text();
@@ -117,6 +121,7 @@ export default function AdminPedidosClient() {
   async function submitConfirmPayment(orderId: string) {
     setConfirming(orderId);
     setError(null);
+    setErrorItems([]);
     setConfirmSuccessMsg(null);
     const found = orders.find((o) => o.id === orderId);
     const cats = categoriesInOrder(found);
@@ -170,14 +175,37 @@ export default function AdminPedidosClient() {
       const text = await res.text();
       let data: {
         error?: string;
-        driveRename?: { errors?: unknown };
+        driveRename?: {
+          errors?: Array<{ productId?: string; message?: string }>;
+          details?: string;
+        };
       } = {};
       try {
         data = text ? (JSON.parse(text) as typeof data) : {};
       } catch {
         throw new Error("Resposta inválida do servidor.");
       }
-      if (!res.ok) throw new Error(data.error ?? "Falha ao confirmar");
+      if (!res.ok) {
+        const structuredErrors = Array.isArray(data.driveRename?.errors)
+          ? data.driveRename!.errors
+              .map((it) => ({
+                productId: String(it.productId ?? "").trim(),
+                message: String(it.message ?? "").trim(),
+              }))
+              .filter((it) => it.productId || it.message)
+          : [];
+        setErrorItems(
+          structuredErrors.map((it) => ({
+            productId: it.productId || "desconhecido",
+            message: it.message || "Falha ao renomear no Drive",
+          }))
+        );
+        const details =
+          structuredErrors.length === 0 && typeof data.driveRename?.details === "string"
+            ? ` Detalhes: ${data.driveRename.details}`
+            : "";
+        throw new Error((data.error ?? "Falha ao confirmar") + details);
+      }
 
       const renameErrors = data.driveRename?.errors as
         | { productId: string; message: string }[]
@@ -207,6 +235,7 @@ export default function AdminPedidosClient() {
     if (!cancelConfirmEnabled) return;
     setCancelling(orderId);
     setError(null);
+    setErrorItems([]);
     try {
       const res = await adminFetch(
         `/api/admin/orders/cancel/${encodeURIComponent(orderId)}`,
@@ -269,7 +298,17 @@ export default function AdminPedidosClient() {
 
       {error && (
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {error}
+          <p>{error}</p>
+          {errorItems.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {errorItems.map((it, idx) => (
+                <li key={`${it.productId}-${idx}`}>
+                  <span className="font-semibold">Produto {it.productId}:</span>{" "}
+                  {it.message}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
