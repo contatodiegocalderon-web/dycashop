@@ -6,10 +6,18 @@ import { useAdminAuth } from "@/contexts/admin-auth";
 import { displayNumberFromOrderedIds } from "@/lib/order-display-number";
 import type { OrderItemRow, OrderRow } from "@/types";
 
-type PeriodKey = "daily" | "weekly" | "monthly" | "yearly" | "last30" | "selectedDate";
+type PeriodKey =
+  | "today"
+  | "yesterday"
+  | "weekly"
+  | "monthly"
+  | "yearly"
+  | "last30"
+  | "selectedDate";
 
 const PERIOD_OPTIONS: Array<{ value: PeriodKey; label: string }> = [
-  { value: "daily", label: "Diário" },
+  { value: "today", label: "Hoje" },
+  { value: "yesterday", label: "Ontem" },
   { value: "weekly", label: "Semanal" },
   { value: "monthly", label: "Mensal" },
   { value: "yearly", label: "Anual" },
@@ -181,14 +189,21 @@ function waLink(raw: string | null | undefined): string | null {
   return `https://wa.me/${digits}`;
 }
 
+type SellerFilterOption = { value: string; label: string };
+
 export default function AdminHistoricoPage() {
-  const { adminFetch } = useAdminAuth();
+  const { adminFetch, session } = useAdminAuth();
+  /** Dono com login staff (não sessão derivada só da chave API no browser). */
+  const isDiegoOwnerUi = session?.role === "owner" && session?.fromApiKey !== true;
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [costs, setCosts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<PeriodKey>("last30");
   const [selectedDate, setSelectedDate] = useState<string>(todayYmd());
+  const [sellerScope, setSellerScope] = useState<string>("all");
+  const [sellerFilterOptions, setSellerFilterOptions] = useState<SellerFilterOption[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -201,6 +216,9 @@ export default function AdminHistoricoPage() {
       if (period === "selectedDate" && selectedDate) {
         q.set("selectedDate", selectedDate);
         q.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
+      }
+      if (isDiegoOwnerUi && sellerScope && sellerScope !== "all") {
+        q.set("sellerScope", sellerScope);
       }
       const res = await adminFetch(`/api/admin/orders?${q.toString()}`);
       const text = await res.text();
@@ -236,11 +254,80 @@ export default function AdminHistoricoPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch, period, selectedDate]);
+  }, [adminFetch, period, selectedDate, isDiegoOwnerUi, sellerScope]);
+
+  useEffect(() => {
+    if (!isDiegoOwnerUi) {
+      setSellerScope("all");
+      setSellerFilterOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await adminFetch("/api/admin/staff-seller-filters");
+        if (!r.ok || cancelled) return;
+        const j = (await r.json()) as {
+          ownerStaffId?: string | null;
+          ownerDisplayName?: string;
+          sellers?: Array<{ id: string; displayName: string }>;
+        };
+        const opts: SellerFilterOption[] = [{ value: "all", label: "Todos" }];
+        if (j.ownerStaffId) {
+          opts.push({
+            value: "me",
+            label: String(j.ownerDisplayName ?? "Dono").trim() || "Dono",
+          });
+        }
+        for (const s of j.sellers ?? []) {
+          opts.push({
+            value: s.id,
+            label: String(s.displayName ?? "").trim() || "Vendedor",
+          });
+        }
+        if (!cancelled) setSellerFilterOptions(opts);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [adminFetch, isDiegoOwnerUi]);
 
   useEffect(() => {
     void fetchOrders();
   }, [fetchOrders]);
+
+  async function deleteOrder(orderId: string) {
+    if (!isDiegoOwnerUi) return;
+    const firstConfirm = window.confirm(
+      "Excluir este pedido do histórico? Deixa de contar nas métricas. O stock na loja e os nomes no Drive mantêm-se como ficaram na confirmação (nada é revertido)."
+    );
+    if (!firstConfirm) return;
+    const secondConfirm = window.confirm(
+      `Confirma novamente a exclusão permanente do pedido ${orderId}?`
+    );
+    if (!secondConfirm) return;
+    setDeletingId(orderId);
+    setError(null);
+    try {
+      const res = await adminFetch(`/api/admin/orders/${orderId}`, { method: "DELETE" });
+      const text = await res.text();
+      let data: { error?: string } = {};
+      try {
+        data = text ? (JSON.parse(text) as typeof data) : {};
+      } catch {
+        throw new Error("Resposta inválida do servidor.");
+      }
+      if (!res.ok) throw new Error(data.error ?? "Falha ao excluir pedido");
+      await fetchOrders();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao excluir");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
@@ -254,6 +341,20 @@ export default function AdminHistoricoPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {isDiegoOwnerUi && sellerFilterOptions.length > 0 && (
+            <select
+              value={sellerScope}
+              onChange={(e) => setSellerScope(e.target.value)}
+              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+              aria-label="Filtrar por vendedor"
+            >
+              {sellerFilterOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          )}
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value as PeriodKey)}
@@ -374,6 +475,16 @@ export default function AdminHistoricoPage() {
               >
                 Chamar no WhatsApp
               </a>
+            )}
+            {isDiegoOwnerUi && (
+              <button
+                type="button"
+                onClick={() => void deleteOrder(order.id)}
+                disabled={deletingId === order.id}
+                className="mt-3 ml-0 inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-900 hover:bg-red-100 disabled:opacity-50 sm:ml-2"
+              >
+                {deletingId === order.id ? "A excluir…" : "Excluir pedido"}
+              </button>
             )}
             </li>
           );

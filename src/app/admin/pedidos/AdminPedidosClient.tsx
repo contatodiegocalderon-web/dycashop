@@ -12,6 +12,8 @@ import type {
 } from "@/types";
 import { publicDriveImageUrl } from "@/lib/drive-image-url";
 
+type SellerFilterOption = { value: string; label: string };
+
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
 
 /** Placeholder 1×1 transparente — evita `<img src="">` quando falta ficheiro no snapshot. */
@@ -52,6 +54,18 @@ function categoriesInOrder(order: OrderRow | undefined): string[] {
   return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
+/** Igual ao histórico: totais por categoria (snapshot) para o resumo no cartão. */
+function aggregateByCategory(items: OrderItemRow[]): Array<{ label: string; qty: number }> {
+  const m = new Map<string, number>();
+  for (const it of items) {
+    const cat = it.snapshot_category?.trim() || "Sem categoria";
+    m.set(cat, (m.get(cat) ?? 0) + it.quantity);
+  }
+  return Array.from(m.entries())
+    .sort((a, b) => a[0].localeCompare(b[0], "pt-BR"))
+    .map(([label, qty]) => ({ label, qty }));
+}
+
 function isDriveConfirmLocked(order: OrderRow): boolean {
   const raw = order.sale_amount_by_category;
   if (!raw || typeof raw !== "object") return false;
@@ -59,7 +73,8 @@ function isDriveConfirmLocked(order: OrderRow): boolean {
 }
 
 export default function AdminPedidosClient() {
-  const { adminFetch } = useAdminAuth();
+  const { adminFetch, session } = useAdminAuth();
+  const isDiegoOwnerUi = session?.role === "owner" && session?.fromApiKey !== true;
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,13 +99,19 @@ export default function AdminPedidosClient() {
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>(
     {}
   );
+  const [sellerScope, setSellerScope] = useState<string>("all");
+  const [sellerFilterOptions, setSellerFilterOptions] = useState<SellerFilterOption[]>([]);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
     setErrorItems([]);
     try {
-      const res = await adminFetch("/api/admin/orders?status=PENDENTE_PAGAMENTO");
+      const q = new URLSearchParams({ status: "PENDENTE_PAGAMENTO" });
+      if (isDiegoOwnerUi && sellerScope && sellerScope !== "all") {
+        q.set("sellerScope", sellerScope);
+      }
+      const res = await adminFetch(`/api/admin/orders?${q.toString()}`);
       const text = await res.text();
       let data: { error?: string; orders?: OrderRow[] } = {};
       try {
@@ -106,7 +127,46 @@ export default function AdminPedidosClient() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch]);
+  }, [adminFetch, isDiegoOwnerUi, sellerScope]);
+
+  useEffect(() => {
+    if (!isDiegoOwnerUi) {
+      setSellerScope("all");
+      setSellerFilterOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await adminFetch("/api/admin/staff-seller-filters");
+        if (!r.ok || cancelled) return;
+        const j = (await r.json()) as {
+          ownerStaffId?: string | null;
+          ownerDisplayName?: string;
+          sellers?: Array<{ id: string; displayName: string }>;
+        };
+        const opts: SellerFilterOption[] = [{ value: "all", label: "Todos" }];
+        if (j.ownerStaffId) {
+          opts.push({
+            value: "me",
+            label: String(j.ownerDisplayName ?? "Dono").trim() || "Dono",
+          });
+        }
+        for (const s of j.sellers ?? []) {
+          opts.push({
+            value: s.id,
+            label: String(s.displayName ?? "").trim() || "Vendedor",
+          });
+        }
+        if (!cancelled) setSellerFilterOptions(opts);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [adminFetch, isDiegoOwnerUi]);
 
   useEffect(() => {
     void fetchOrders();
@@ -280,6 +340,20 @@ export default function AdminPedidosClient() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {isDiegoOwnerUi && sellerFilterOptions.length > 0 && (
+            <select
+              value={sellerScope}
+              onChange={(e) => setSellerScope(e.target.value)}
+              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+              aria-label="Filtrar pedidos por vendedor"
+            >
+              {sellerFilterOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          )}
           <Link
             href="/admin/historico"
             className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50"
@@ -325,6 +399,7 @@ export default function AdminPedidosClient() {
       <ul className="space-y-6">
         {orders.map((order) => {
           const items = order.order_items ?? [];
+          const categoryLines = aggregateByCategory(items);
           const bySize = groupItems(items);
           const waHref = waLinkFromDigits(order.customer_whatsapp);
           const driveLocked = isDriveConfirmLocked(order);
@@ -377,6 +452,15 @@ export default function AdminPedidosClient() {
                   <p className="text-xs text-stone-400">
                     {new Date(order.created_at).toLocaleString("pt-BR")}
                   </p>
+                  {categoryLines.length > 0 && (
+                    <ul className="mt-2 space-y-1 text-sm italic text-stone-700">
+                      {categoryLines.map((line) => (
+                        <li key={`${order.id}:${line.label}`}>
+                          {`x${line.qty} ${line.label}`}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {order.customer_note && (
                     <p className="mt-2 text-sm text-stone-700">
                       <span className="text-stone-500">CEP: </span>

@@ -35,7 +35,8 @@ type SellerBreakdownRow = {
 };
 
 type PeriodKey =
-  | "daily"
+  | "today"
+  | "yesterday"
   | "weekly"
   | "monthly"
   | "yearly"
@@ -58,15 +59,19 @@ function money(n: number) {
   });
 }
 
+type SellerFilterOption = { value: string; label: string };
+
 export default function AdminMetricasPage() {
   const { adminFetch, isOwner, session } = useAdminAuth();
+  const isDiegoOwnerUi = session?.role === "owner" && session?.fromApiKey !== true;
   const [loading, setLoading] = useState(false);
-  const [resetting, setResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
   const [sellerBreakdown, setSellerBreakdown] = useState<SellerBreakdownRow[]>([]);
   const [period, setPeriod] = useState<PeriodKey>("all");
   const [selectedDate, setSelectedDate] = useState<string>(todayYmd());
+  const [sellerScope, setSellerScope] = useState<string>("all");
+  const [sellerFilterOptions, setSellerFilterOptions] = useState<SellerFilterOption[]>([]);
   const loadMetrics = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -75,6 +80,9 @@ export default function AdminMetricasPage() {
       if (period === "selectedDate" && selectedDate) {
         q.set("selectedDate", selectedDate);
         q.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
+      }
+      if (isDiegoOwnerUi && sellerScope && sellerScope !== "all") {
+        q.set("sellerScope", sellerScope);
       }
       const mRes = await adminFetch(`/api/admin/metrics?${q.toString()}`);
       const mJson = await mRes.json();
@@ -109,27 +117,50 @@ export default function AdminMetricasPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch, period, selectedDate]);
+  }, [adminFetch, period, selectedDate, isDiegoOwnerUi, sellerScope]);
+
+  useEffect(() => {
+    if (!isDiegoOwnerUi) {
+      setSellerScope("all");
+      setSellerFilterOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await adminFetch("/api/admin/staff-seller-filters");
+        if (!r.ok || cancelled) return;
+        const j = (await r.json()) as {
+          ownerStaffId?: string | null;
+          ownerDisplayName?: string;
+          sellers?: Array<{ id: string; displayName: string }>;
+        };
+        const opts: SellerFilterOption[] = [{ value: "all", label: "Todos" }];
+        if (j.ownerStaffId) {
+          opts.push({
+            value: "me",
+            label: String(j.ownerDisplayName ?? "Dono").trim() || "Dono",
+          });
+        }
+        for (const s of j.sellers ?? []) {
+          opts.push({
+            value: s.id,
+            label: String(s.displayName ?? "").trim() || "Vendedor",
+          });
+        }
+        if (!cancelled) setSellerFilterOptions(opts);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [adminFetch, isDiegoOwnerUi]);
 
   useEffect(() => {
     void loadMetrics();
   }, [loadMetrics]);
-
-  async function resetMetrics() {
-    if (!isOwner) return;
-    setResetting(true);
-    setError(null);
-    try {
-      const res = await adminFetch("/api/admin/metrics/reset", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Falha ao zerar métricas");
-      await loadMetrics();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setResetting(false);
-    }
-  }
 
   const sortedCategories = Object.entries(metrics?.piecesByCategory ?? {}).sort(
     (a, b) => b[1] - a[1]
@@ -186,13 +217,28 @@ export default function AdminMetricasPage() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isDiegoOwnerUi && sellerFilterOptions.length > 0 && (
+            <select
+              value={sellerScope}
+              onChange={(e) => setSellerScope(e.target.value)}
+              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+              aria-label="Filtrar métricas por vendedor"
+            >
+              {sellerFilterOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          )}
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value as PeriodKey)}
             className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
           >
             <option value="all">Todo período</option>
-            <option value="daily">Diário</option>
+            <option value="today">Hoje</option>
+            <option value="yesterday">Ontem</option>
             <option value="weekly">Semanal</option>
             <option value="monthly">Mensal</option>
             <option value="yearly">Anual</option>
@@ -215,16 +261,6 @@ export default function AdminMetricasPage() {
           >
             {loading ? "A atualizar…" : "Atualizar dados"}
           </button>
-          {isOwner && (
-            <button
-              type="button"
-              onClick={() => void resetMetrics()}
-              disabled={resetting}
-              className="rounded-xl border border-red-300 bg-red-50 px-5 py-2.5 text-sm font-semibold text-red-900 hover:bg-red-100 disabled:opacity-50"
-            >
-              {resetting ? "A zerar…" : "Zerar métricas"}
-            </button>
-          )}
         </div>
       </div>
 

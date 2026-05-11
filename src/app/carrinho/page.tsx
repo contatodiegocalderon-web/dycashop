@@ -11,6 +11,13 @@ import { buildOrderWhatsAppText, waMeUrl } from "@/lib/whatsapp";
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
 
+/** Mesma normalização que `/api/orders` (55 + dígitos). */
+function normalizeCheckoutWaDigits(formatted: string): string {
+  const raw = formatted.replace(/\D/g, "");
+  if (!raw) return "";
+  return raw.startsWith("55") ? raw : `55${raw}`;
+}
+
 function groupBySize(lines: CartLine[]) {
   const m = new Map<ProductSize, CartLine[]>();
   for (const s of SIZE_ORDER) m.set(s, []);
@@ -103,6 +110,8 @@ export default function CarrinhoPage() {
   );
   const [portalReady, setPortalReady] = useState(false);
   const lastTouchRef = useRef(0);
+  /** Evita sobrescrever o nome depois de o cliente editar manualmente (ref lida no fim do debounce). */
+  const nameManuallyEditedRef = useRef(false);
 
   const groups = useMemo(() => groupBySize(lines), [lines]);
 
@@ -110,9 +119,46 @@ export default function CarrinhoPage() {
     setPortalReady(true);
   }, []);
 
+  useEffect(() => {
+    const digits = normalizeCheckoutWaDigits(customerWhatsApp);
+    if (digits.length < 10) return;
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const r = await fetch(
+            `/api/orders/lookup-customer-name?whatsapp=${encodeURIComponent(digits)}`,
+            { signal: ac.signal }
+          );
+          if (!r.ok) return;
+          const j = (await r.json()) as { customerName?: string | null };
+          const n = j.customerName?.trim();
+          if (n && !nameManuallyEditedRef.current) {
+            setCustomerName(n);
+          }
+        } catch {
+          /* abort / rede */
+        }
+      })();
+    }, 450);
+    return () => {
+      ac.abort();
+      window.clearTimeout(timer);
+    };
+  }, [customerWhatsApp]);
+
   const openSellerModal = useCallback(() => {
     setErr(null);
     if (!lines.length) return;
+    const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
+    if (waDigits.length < 10) {
+      setErr("Informe um WhatsApp válido (com DDD, mínimo 10 dígitos).");
+      return;
+    }
+    if (!customerName.trim()) {
+      setErr("Informe o seu nome para enviar o pedido.");
+      return;
+    }
     if (!WHATSAPP_SELLERS.length) {
       setErr("Nenhum vendedor configurado.");
       return;
@@ -122,7 +168,7 @@ export default function CarrinhoPage() {
       return WHATSAPP_SELLERS[0]!.phone;
     });
     setSellerModalOpen(true);
-  }, [lines.length]);
+  }, [lines.length, customerWhatsApp, customerName]);
 
   const closeSellerModal = useCallback(() => {
     if (!busy) setSellerModalOpen(false);
@@ -144,6 +190,16 @@ export default function CarrinhoPage() {
       return;
     }
     if (!lines.length) return;
+    const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
+    if (waDigits.length < 10) {
+      setErr("Informe um WhatsApp válido (com DDD).");
+      return;
+    }
+    const trimmedName = customerName.trim();
+    if (!trimmedName) {
+      setErr("Informe o seu nome para enviar o pedido.");
+      return;
+    }
 
     setBusy(true);
     setErr(null);
@@ -158,8 +214,8 @@ export default function CarrinhoPage() {
             quantity: l.quantity,
           })),
           customerNote: cep.trim() || undefined,
-          customerName: customerName.trim() || undefined,
-          customerWhatsApp: customerWhatsApp.trim() || undefined,
+          customerName: trimmedName,
+          customerWhatsApp: customerWhatsApp.trim(),
           sellerName: seller?.name ?? undefined,
           sellerPhone: seller?.phone ?? undefined,
         }),
@@ -193,7 +249,7 @@ export default function CarrinhoPage() {
       const text = buildOrderWhatsAppText(lines, {
         receiptUrl: receiptUrl || undefined,
         customerCep: cep,
-        customerName: customerName.trim() || undefined,
+        customerName: trimmedName,
         orderDisplayNumber:
           typeof data.orderDisplayNumber === "number"
             ? data.orderDisplayNumber
@@ -206,6 +262,7 @@ export default function CarrinhoPage() {
       } catch {
         /* ignore */
       }
+      nameManuallyEditedRef.current = false;
       setCustomerName("");
       setCustomerWhatsApp("+55 ");
       setCep("");
@@ -235,7 +292,8 @@ export default function CarrinhoPage() {
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-xl font-bold text-stone-100">Carrinho</h1>
       <p className="mt-1 text-sm text-stone-400">
-        Confira por tamanho, informe o CEP e envie o pedido no WhatsApp.
+        Confira por tamanho, preencha WhatsApp e nome (obrigatórios), o CEP e envie o pedido no
+        WhatsApp.
       </p>
 
       {err && (
@@ -470,35 +528,14 @@ export default function CarrinhoPage() {
 
           <div className="max-w-xs">
             <label
-              htmlFor="checkout-customer-name"
-              className="text-sm font-medium text-stone-300"
-            >
-              Seu nome
-            </label>
-            <p className="mt-0.5 text-xs text-stone-500">
-              Usado para identificar o pedido no painel administrativo.
-            </p>
-            <input
-              id="checkout-customer-name"
-              type="text"
-              autoComplete="name"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              maxLength={120}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
-              placeholder="Nome para identificar o pedido"
-            />
-          </div>
-
-          <div className="max-w-xs">
-            <label
               htmlFor="checkout-customer-whatsapp"
               className="text-sm font-medium text-stone-300"
             >
-              WhatsApp
+              WhatsApp <span className="text-red-400">*</span>
             </label>
             <p className="mt-0.5 text-xs text-stone-500">
-              IMPORTANTE, confira antes de enviar o pedido
+              Preencha primeiro (obrigatório). Se já comprou connosco, o nome pode ser preenchido
+              automaticamente.
             </p>
             <input
               id="checkout-customer-whatsapp"
@@ -507,6 +544,7 @@ export default function CarrinhoPage() {
               autoComplete="tel"
               value={customerWhatsApp}
               onChange={(e) => {
+                nameManuallyEditedRef.current = false;
                 const digits = e.target.value.replace(/\D/g, "");
                 const brDigits = digits.startsWith("55")
                   ? digits
@@ -521,6 +559,31 @@ export default function CarrinhoPage() {
               maxLength={20}
               className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
               placeholder="+55 11 99999-9999"
+            />
+          </div>
+
+          <div className="max-w-xs">
+            <label
+              htmlFor="checkout-customer-name"
+              className="text-sm font-medium text-stone-300"
+            >
+              Seu nome <span className="text-red-400">*</span>
+            </label>
+            <p className="mt-0.5 text-xs text-stone-500">
+              Obrigatório. Usado para identificar o pedido no painel administrativo.
+            </p>
+            <input
+              id="checkout-customer-name"
+              type="text"
+              autoComplete="name"
+              value={customerName}
+              onChange={(e) => {
+                nameManuallyEditedRef.current = true;
+                setCustomerName(e.target.value);
+              }}
+              maxLength={120}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
+              placeholder="Nome completo"
             />
           </div>
 
@@ -550,7 +613,11 @@ export default function CarrinhoPage() {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              disabled={busy}
+              disabled={
+                busy ||
+                normalizeCheckoutWaDigits(customerWhatsApp).length < 10 ||
+                !customerName.trim()
+              }
               onClick={openSellerModal}
               className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
             >

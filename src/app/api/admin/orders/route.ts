@@ -9,8 +9,12 @@ import { resolvePrincipal } from "@/lib/access";
 
 export const runtime = "nodejs";
 
+const STAFF_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 type PeriodKey =
-  | "daily"
+  | "today"
+  | "yesterday"
   | "weekly"
   | "monthly"
   | "yearly"
@@ -22,7 +26,12 @@ function periodStartIso(period: PeriodKey): string | null {
   const now = new Date();
   const d = new Date(now);
   if (period === "all") return null;
-  if (period === "daily") {
+  if (period === "today") {
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }
+  if (period === "yesterday") {
+    d.setDate(d.getDate() - 1);
     d.setHours(0, 0, 0, 0);
     return d.toISOString();
   }
@@ -77,6 +86,38 @@ function nameFromEmail(email: string): string {
     .join(" ");
 }
 
+/** Escapa `%` e `_` para literais em filtros `ilike` do PostgREST. */
+function escapeIlikeToken(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+/**
+ * Condições OR em `requested_seller_name` para pedidos pendentes (nome gravado no checkout).
+ * Compara pelo nome completo e pelo primeiro token (ex.: "Paulo" em "Paulo Henrique").
+ * Valores com espaços vão entre aspas para o PostgREST.
+ */
+function buildPendingRequestedSellerOr(
+  staffDisplay: string,
+  opts: { includeUnassigned: boolean }
+): string | null {
+  const d = staffDisplay.trim();
+  const first = d ? d.split(/\s+/)[0]!.trim() : "";
+  const labels = new Set<string>();
+  if (d) labels.add(d);
+  if (first) labels.add(first);
+  const parts: string[] = [];
+  if (opts.includeUnassigned) parts.push("requested_seller_name.is.null");
+  for (const lab of labels) {
+    const e = escapeIlikeToken(lab);
+    if (!e) continue;
+    const inner = e.replace(/"/g, '\\"');
+    parts.push(`requested_seller_name.ilike."${inner}"`);
+    parts.push(`requested_seller_name.ilike."${inner}%"`);
+  }
+  if (parts.length === 0) return null;
+  return [...new Set(parts)].join(",");
+}
+
 export async function GET(request: NextRequest) {
   try {
     await assertAdmin(request);
@@ -92,13 +133,17 @@ export async function GET(request: NextRequest) {
   const statusFilter = searchParams.get("status") ?? "PENDENTE_PAGAMENTO";
   const rawPeriod = searchParams.get("period");
   const period: PeriodKey =
+    rawPeriod === "today" ||
     rawPeriod === "daily" ||
+    rawPeriod === "yesterday" ||
     rawPeriod === "weekly" ||
     rawPeriod === "monthly" ||
     rawPeriod === "yearly" ||
     rawPeriod === "last30" ||
     rawPeriod === "selectedDate"
-      ? rawPeriod
+      ? rawPeriod === "daily"
+        ? "today"
+        : rawPeriod
       : "all";
   const startIso = periodStartIso(period);
   const selectedDateRange =
@@ -115,6 +160,10 @@ export async function GET(request: NextRequest) {
       principal?.kind === "staff" && principal.staff.role === "seller"
         ? principal.staff.staffId
         : null;
+    const isOwnerPrincipal =
+      principal?.kind === "api_key" ||
+      (principal?.kind === "staff" && principal.staff.role === "owner");
+    const rawSellerScope = searchParams.get("sellerScope")?.trim() ?? "";
 
     const admin = createAdminClient();
     let q = admin
@@ -128,8 +177,64 @@ export async function GET(request: NextRequest) {
 
     if (statusFilter !== "all") {
       q = q.eq("status", statusFilter);
-      if (sellerId && statusFilter === "PAGO") {
-        q = q.eq("confirmed_by_staff_id", sellerId);
+      if (statusFilter === "PAGO") {
+        if (sellerId) {
+          q = q.eq("confirmed_by_staff_id", sellerId);
+        } else if (isOwnerPrincipal && rawSellerScope && rawSellerScope !== "all") {
+          if (rawSellerScope === "me") {
+            let ownerStaffId: string | null =
+              principal?.kind === "staff" && principal.staff.role === "owner"
+                ? principal.staff.staffId
+                : null;
+            if (!ownerStaffId && principal?.kind === "api_key") {
+              const { data: ownerRow } = await admin
+                .from("staff_users")
+                .select("id")
+                .eq("role", "owner")
+                .limit(1)
+                .maybeSingle();
+              ownerStaffId = (ownerRow?.id as string | undefined) ?? null;
+            }
+            if (ownerStaffId) {
+              q = q.or(
+                `confirmed_by_staff_id.eq.${ownerStaffId},confirmed_by_staff_id.is.null`
+              );
+            }
+          } else if (STAFF_UUID_RE.test(rawSellerScope)) {
+            q = q.eq("confirmed_by_staff_id", rawSellerScope);
+          }
+        }
+      } else if (statusFilter === "PENDENTE_PAGAMENTO") {
+        if (!sellerId && isOwnerPrincipal && rawSellerScope && rawSellerScope !== "all") {
+          if (rawSellerScope === "me") {
+            const { data: own } = await admin
+              .from("staff_users")
+              .select("email, full_name")
+              .eq("role", "owner")
+              .limit(1)
+              .maybeSingle();
+            const display =
+              String(own?.full_name ?? "").trim() ||
+              nameFromEmail(String(own?.email ?? ""));
+            const clause = buildPendingRequestedSellerOr(display, {
+              includeUnassigned: true,
+            });
+            if (clause) q = q.or(clause);
+          } else if (STAFF_UUID_RE.test(rawSellerScope)) {
+            const { data: st } = await admin
+              .from("staff_users")
+              .select("email, full_name")
+              .eq("id", rawSellerScope)
+              .maybeSingle();
+            const display =
+              String(st?.full_name ?? "").trim() ||
+              nameFromEmail(String(st?.email ?? ""));
+            const clause = buildPendingRequestedSellerOr(display, {
+              includeUnassigned: false,
+            });
+            if (clause) q = q.or(clause);
+          }
+        }
       }
     } else if (sellerId) {
       q = q.or(
@@ -141,6 +246,15 @@ export async function GET(request: NextRequest) {
         q = q.gte("confirmed_at", selectedDateRange.startIso).lt("confirmed_at", selectedDateRange.endIso);
       } else {
         q = q.gte("created_at", selectedDateRange.startIso).lt("created_at", selectedDateRange.endIso);
+      }
+    } else if (period === "yesterday") {
+      const end = new Date(startIso!);
+      end.setDate(end.getDate() + 1);
+      const endIso = end.toISOString();
+      if (statusFilter === "PAGO") {
+        q = q.gte("confirmed_at", startIso!).lt("confirmed_at", endIso);
+      } else {
+        q = q.gte("created_at", startIso!).lt("created_at", endIso);
       }
     } else if (startIso) {
       if (statusFilter === "PAGO") {

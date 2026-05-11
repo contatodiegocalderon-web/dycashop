@@ -84,9 +84,21 @@ export async function POST(request: NextRequest) {
       );
     }
     const nameRaw = String(body.customerName ?? "").trim();
+    if (!nameRaw) {
+      return NextResponse.json(
+        { error: "Informe o seu nome para concluir o pedido." },
+        { status: 400 }
+      );
+    }
     if (nameRaw.length > MAX_NAME_LEN) {
       return NextResponse.json(
         { error: `Nome demasiado longo (máx. ${MAX_NAME_LEN} caracteres).` },
+        { status: 400 }
+      );
+    }
+    if (customerWhatsappDigits.length < 10) {
+      return NextResponse.json(
+        { error: "Informe um WhatsApp válido (mínimo 10 dígitos, com DDD)." },
         { status: 400 }
       );
     }

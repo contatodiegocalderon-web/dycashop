@@ -10,8 +10,12 @@ import {
 
 export const runtime = "nodejs";
 
+const STAFF_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 type PeriodKey =
-  | "daily"
+  | "today"
+  | "yesterday"
   | "weekly"
   | "monthly"
   | "yearly"
@@ -23,7 +27,12 @@ function periodStartIso(period: PeriodKey): string | null {
   const now = new Date();
   const d = new Date(now);
   if (period === "all") return null;
-  if (period === "daily") {
+  if (period === "today") {
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }
+  if (period === "yesterday") {
+    d.setDate(d.getDate() - 1);
     d.setHours(0, 0, 0, 0);
     return d.toISOString();
   }
@@ -111,15 +120,20 @@ export async function GET(request: NextRequest) {
         ? principal.staff.staffId
         : null;
     const { searchParams } = new URL(request.url);
+    const rawSellerScope = searchParams.get("sellerScope")?.trim() ?? "";
     const rawPeriod = searchParams.get("period");
     const period: PeriodKey =
+      rawPeriod === "today" ||
       rawPeriod === "daily" ||
+      rawPeriod === "yesterday" ||
       rawPeriod === "weekly" ||
       rawPeriod === "monthly" ||
       rawPeriod === "yearly" ||
       rawPeriod === "last30" ||
       rawPeriod === "selectedDate"
-        ? rawPeriod
+        ? rawPeriod === "daily"
+          ? "today"
+          : rawPeriod
         : "all";
     const startIso = periodStartIso(period);
     const selectedDateRange =
@@ -155,11 +169,40 @@ export async function GET(request: NextRequest) {
 
     if (sellerId) {
       orderQuery = orderQuery.eq("confirmed_by_staff_id", sellerId);
+    } else if (isOwner && rawSellerScope && rawSellerScope !== "all") {
+      if (rawSellerScope === "me") {
+        let ownerStaffId: string | null =
+          principal?.kind === "staff" && principal.staff.role === "owner"
+            ? principal.staff.staffId
+            : null;
+        if (!ownerStaffId && principal?.kind === "api_key") {
+          const { data: ownerRow } = await admin
+            .from("staff_users")
+            .select("id")
+            .eq("role", "owner")
+            .limit(1)
+            .maybeSingle();
+          ownerStaffId = (ownerRow?.id as string | undefined) ?? null;
+        }
+        if (ownerStaffId) {
+          orderQuery = orderQuery.or(
+            `confirmed_by_staff_id.eq.${ownerStaffId},confirmed_by_staff_id.is.null`
+          );
+        }
+      } else if (STAFF_UUID_RE.test(rawSellerScope)) {
+        orderQuery = orderQuery.eq("confirmed_by_staff_id", rawSellerScope);
+      }
     }
     if (selectedDateRange) {
       orderQuery = orderQuery
         .gte("confirmed_at", selectedDateRange.startIso)
         .lt("confirmed_at", selectedDateRange.endIso);
+    } else if (period === "yesterday") {
+      const end = new Date(startIso!);
+      end.setDate(end.getDate() + 1);
+      orderQuery = orderQuery
+        .gte("confirmed_at", startIso!)
+        .lt("confirmed_at", end.toISOString());
     } else if (startIso) {
       orderQuery = orderQuery.gte("confirmed_at", startIso);
     }

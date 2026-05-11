@@ -115,10 +115,14 @@ export default function AdminClientesPage() {
   );
 
   async function removeContact(customerWhatsapp: string) {
-    const ok = window.confirm(
+    const firstConfirm = window.confirm(
       "Remover este contacto da lista de clientes? Os pedidos confirmados e as métricas mantêm-se no sistema — apenas deixa de aparecer aqui."
     );
-    if (!ok) return;
+    if (!firstConfirm) return;
+    const secondConfirm = window.confirm(
+      `Confirma novamente a remoção do contacto ${waDisplay(customerWhatsapp)} da lista?`
+    );
+    if (!secondConfirm) return;
     setRemovingWa(customerWhatsapp);
     setError(null);
     try {
