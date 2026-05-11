@@ -4,6 +4,8 @@ import { extractDriveFolderId } from "@/lib/drive-folder-url";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
+/** Igual ao cron: sync com muitas imagens excede o limite padrão do Vercel (~60s). */
+export const maxDuration = 300;
 
 /** GET: estado da configuração (sem tokens). */
 export async function GET(request: NextRequest) {

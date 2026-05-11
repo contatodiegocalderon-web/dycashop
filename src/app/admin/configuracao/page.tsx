@@ -83,6 +83,7 @@ function ConfiguracaoInner() {
         total: 0,
         skipped: 0,
       });
+      let streamTerminal = false;
       await consumeSyncNdjsonStream(res, (raw) => {
         const o = raw as {
           type?: string;
@@ -118,14 +119,22 @@ function ConfiguracaoInner() {
           });
         }
         if (o.type === "complete" && o.result) {
+          streamTerminal = true;
           setStatus(formatSyncResultSummary(o.result));
           setSyncProg(null);
         }
         if (o.type === "fatal") {
+          streamTerminal = true;
           setStatus(o.message ?? "Erro na sincronização");
           setSyncProg(null);
         }
       });
+      if (!streamTerminal) {
+        setSyncProg(null);
+        setStatus(
+          "A sincronização parou sem confirmação do servidor (muito comum por limite de tempo no alojamento, ex. Vercel). O que já foi enviado para o Storage fica guardado.\n\nVolte a clicar em «Importar do Drive» para continuar com as imagens em falta. Se usar Vercel Hobby, o tempo por pedido é curto — no plano Pro pode estender até 5 minutos (esta API já pede 5 min)."
+        );
+      }
       return;
     }
     const data = await res.json();
