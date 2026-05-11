@@ -107,7 +107,7 @@ function buildPendingRequestedSellerOr(
   if (first) labels.add(first);
   const parts: string[] = [];
   if (opts.includeUnassigned) parts.push("requested_seller_name.is.null");
-  for (const lab of labels) {
+  for (const lab of Array.from(labels)) {
     const e = escapeIlikeToken(lab);
     if (!e) continue;
     const inner = e.replace(/"/g, '\\"');
@@ -115,7 +115,7 @@ function buildPendingRequestedSellerOr(
     parts.push(`requested_seller_name.ilike."${inner}%"`);
   }
   if (parts.length === 0) return null;
-  return [...new Set(parts)].join(",");
+  return Array.from(new Set(parts)).join(",");
 }
 
 export async function GET(request: NextRequest) {
