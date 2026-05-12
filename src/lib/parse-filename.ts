@@ -13,8 +13,16 @@ export function stripImageExtension(name: string): string {
 /**
  * Padrão: MARCA … COR [número opcional]
  * - Mínimo: MARCA COR (2 palavras; última não é só número).
- * - Se o último token for um inteiro ≥ 0 e houver ≥ 3 tokens: penúltimo = cor, resto = marca; último = quantidade inicial (só na 1.ª importação).
- * O estoque em funcionamento fica na app (pedidos); resincronizar não repõe o número do nome do ficheiro.
+ * - Se o último token for um inteiro ≥ 0 e houver ≥ 3 tokens: penúltimo = cor, resto = marca; último = quantidade derivada do nome.
+ * - Sem esse sufixo numérico (ou só 2 tokens): usa `DEFAULT_INITIAL_STOCK` (env), não um número no nome.
+ *
+ * Sincronização com o Drive (`syncProductsFromDriveFolder` via API admin, com
+ * `preserveExistingStock: false`): cada import faz upsert e **volta a gravar**
+ * `stock` na BD com o valor acima. Ou seja, alterar o número no nome do ficheiro
+ * no Drive e sincronizar atualiza o stock na app para esse número (regras de parsing
+ * aplicadas). Entre syncs, vendas/pedidos podem alterar o stock na BD; um novo
+ * sync completo repõe-o de acordo com o nome no Drive, salvo futuras opções que
+ * preservem stock existente.
  */
 export function parseProductFileName(fileName: string): ParsedFileName | null {
   const base = stripImageExtension(fileName);

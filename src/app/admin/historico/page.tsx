@@ -466,6 +466,18 @@ export default function AdminHistoricoPage() {
             <p className="mt-2 text-xs text-stone-400">
               {new Date(order.confirmed_at ?? order.updated_at).toLocaleString("pt-BR")}
             </p>
+            {order.public_token ? (
+              <p className="mt-2 text-xs">
+                <Link
+                  href={`/recibo/${order.public_token}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-violet-800 underline hover:text-violet-900"
+                >
+                  Abrir recibo do cliente
+                </Link>
+              </p>
+            ) : null}
             {waHref && (
               <a
                 href={waHref}
