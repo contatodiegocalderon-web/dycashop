@@ -96,6 +96,7 @@ export default function AdminPedidosClient() {
   const [confirmSuccessMsg, setConfirmSuccessMsg] = useState<string | null>(
     null
   );
+  const [unlocking, setUnlocking] = useState<string | null>(null);
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>(
     {}
   );
@@ -171,6 +172,30 @@ export default function AdminPedidosClient() {
   useEffect(() => {
     void fetchOrders();
   }, [fetchOrders]);
+
+  async function unlockDriveConfirmLock(orderId: string) {
+    setUnlocking(orderId);
+    setError(null);
+    setConfirmSuccessMsg(null);
+    try {
+      const res = await adminFetch(
+        `/api/admin/orders/${encodeURIComponent(orderId)}/unlock-confirm-lock`,
+        { method: "POST" }
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? "Falha ao desbloquear");
+      }
+      setConfirmSuccessMsg(
+        "Bloqueio removido. Corrija o Drive se ainda faltar; depois confirme o pedido outra vez."
+      );
+      await fetchOrders();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao desbloquear");
+    } finally {
+      setUnlocking(null);
+    }
+  }
 
   function openConfirmModal(orderId: string) {
     setConfirmSuccessMsg(null);
@@ -421,9 +446,16 @@ export default function AdminPedidosClient() {
                   </p>
                   <p className="font-mono text-xs text-stone-500">{order.id}</p>
                   {driveLocked && (
-                    <p className="mt-2 inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
-                      Bloqueado por falha no Drive
-                    </p>
+                    <div className="mt-2 space-y-2">
+                      <p className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                        Bloqueado por falha no Drive
+                      </p>
+                      <p className="max-w-xl text-xs text-amber-950/90">
+                        Resolva o acesso ao Google Drive em Configuração (OAuth e pasta). Quando
+                        estiver OK, use o botão abaixo para remover o bloqueio e volte a confirmar o
+                        pedido — a renomeação corre nessa confirmação.
+                      </p>
+                    </div>
                   )}
                   {order.customer_name && (
                     <p className="mt-1 text-sm text-stone-800">
@@ -512,9 +544,28 @@ export default function AdminPedidosClient() {
                       </svg>
                     </span>
                   )}
+                  {driveLocked ? (
+                    <button
+                      type="button"
+                      disabled={
+                        unlocking === order.id || !!confirming || !!cancelling
+                      }
+                      onClick={() => void unlockDriveConfirmLock(order.id)}
+                      className="rounded-xl border border-amber-400 bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-200 disabled:opacity-50"
+                    >
+                      {unlocking === order.id
+                        ? "A desbloquear…"
+                        : "Remover bloqueio e tentar de novo"}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    disabled={confirming === order.id || !!cancelling}
+                    disabled={
+                      confirming === order.id ||
+                      !!cancelling ||
+                      driveLocked ||
+                      !!unlocking
+                    }
                     onClick={() => openConfirmModal(order.id)}
                     className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
                   >
@@ -522,7 +573,7 @@ export default function AdminPedidosClient() {
                   </button>
                   <button
                     type="button"
-                    disabled={!!confirming || !!cancelling}
+                    disabled={!!confirming || !!cancelling || !!unlocking}
                     onClick={() => {
                       setCancelOpenId((id) =>
                         id === order.id ? null : order.id

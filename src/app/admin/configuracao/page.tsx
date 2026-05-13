@@ -74,6 +74,56 @@ function ConfiguracaoInner() {
     }
   }
 
+  /** Chama a API que obtém access token e lê `about` + pasta raiz — único teste fidedigno. */
+  async function testDriveConnection() {
+    setLoading(true);
+    setStatus(null);
+    try {
+      const res = await adminFetch("/api/health/drive");
+      const text = await res.text();
+      let data: {
+        ok?: boolean;
+        error?: string;
+        driveUserEmail?: string | null;
+        driveApi?: string;
+        rootFolder?: { id?: string; name?: string; mimeType?: string };
+        rootFolderError?: string;
+        rootFolderId?: string | null;
+      } = {};
+      try {
+        data = text ? (JSON.parse(text) as typeof data) : {};
+      } catch {
+        setStatus(`Resposta inválida (${res.status}): ${text.slice(0, 200)}`);
+        return;
+      }
+      if (!res.ok && !("ok" in data)) {
+        setStatus(`Erro HTTP ${res.status}: ${data.error ?? text.slice(0, 200)}`);
+        return;
+      }
+      if (!data.ok) {
+        const hint =
+          String(data.error ?? "").includes("invalid_grant") ||
+          String(data.error ?? "").includes("Invalid grant")
+            ? "\n\nO refresh token na base de dados já não é aceite pelo Google (revogado, app OAuth alterada ou credenciais .env diferentes). Clique em «Conectar conta Google» outra vez; se persistir, em myaccount.google.com/permissions remova o acesso desta app e volte a conectar."
+            : "";
+        setStatus(`Falha no teste: ${data.error ?? res.statusText}${hint}`);
+        return;
+      }
+      const folderLine = data.rootFolder?.name
+        ? `Pasta raiz (${data.rootFolderId ?? "?"}): «${data.rootFolder.name}» (${data.rootFolder.mimeType ?? "tipo ?"}).`
+        : data.rootFolderError
+          ? `Pasta raiz: erro — ${data.rootFolderError}`
+          : "Pasta raiz: não configurada (guarde o link da pasta no passo 2).";
+      setStatus(
+        `Ligação OK. Conta Drive: ${data.driveUserEmail ?? "(sem email)"}.\n${folderLine}\n\nIsto confirma token + leitura da pasta; renomear na confirmação de pedido usa as mesmas credenciais.`
+      );
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Erro ao testar");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function consumeSyncResponse(res: Response) {
     const ct = res.headers.get("content-type") ?? "";
     if (ct.includes("ndjson")) {
@@ -257,21 +307,39 @@ function ConfiguracaoInner() {
             …/api/auth/google/callback
           </code>
         </p>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => void connectGoogle()}
-          className="mt-3 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-40"
-        >
-          Conectar conta Google
-        </button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void connectGoogle()}
+            className="rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-40"
+          >
+            Conectar conta Google
+          </button>
+          <button
+            type="button"
+            disabled={loading || !googleConnected}
+            onClick={() => void testDriveConnection()}
+            title={
+              !googleConnected
+                ? "Ligue primeiro a conta Google"
+                : "Valida o refresh token e a leitura da pasta raiz"
+            }
+            className="rounded-xl border border-amber-400 bg-white px-4 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-40"
+          >
+            Testar ligação ao Drive
+          </button>
+        </div>
         <p className="mt-2 text-xs text-amber-900/80">
           Estado:{" "}
           {googleConnected ? (
-            <span className="font-semibold text-violet-800">ligado</span>
+            <span className="font-semibold text-violet-800">token guardado</span>
           ) : (
-            <span className="font-semibold text-red-800">não ligado</span>
+            <span className="font-semibold text-red-800">sem token</span>
           )}
+          {" "}
+          (só indica se existe refresh token na base —{" "}
+          <strong>não</strong> prova que o Google ainda o aceita. Use «Testar ligação ao Drive».)
           {!oauthConfigured && (
             <span className="block mt-1">
               OAuth não configurado no servidor — veja o .env.local.
