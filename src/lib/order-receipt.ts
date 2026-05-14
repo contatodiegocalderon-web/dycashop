@@ -19,6 +19,7 @@ export async function getOrderReceiptByToken(
     .select(
       `
       id,
+      display_number,
       status,
       customer_note,
       customer_name,
@@ -53,6 +54,12 @@ export async function getOrderReceiptByToken(
   return {
     order: {
       id: row.id,
+      display_number:
+        typeof row.display_number === "number" &&
+        Number.isFinite(row.display_number) &&
+        row.display_number > 0
+          ? row.display_number
+          : undefined,
       status: row.status,
       customer_note: row.customer_note,
       customer_name: row.customer_name ?? null,

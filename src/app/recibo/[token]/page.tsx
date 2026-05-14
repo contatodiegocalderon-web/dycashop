@@ -49,7 +49,10 @@ export default async function ReciboPage({ params }: Props) {
   if (!receipt) notFound();
 
   const { order, items } = receipt;
-  const displayNumber = await fetchOrderDisplayNumberPublic(order.id);
+  const displayNumber =
+    order.display_number != null && order.display_number > 0
+      ? order.display_number
+      : await fetchOrderDisplayNumberPublic(order.id);
   const bySize = groupItems(items);
   const categoryTotals = totalsByCategoryFromOrderItems(items);
 

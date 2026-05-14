@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAdminAuth } from "@/contexts/admin-auth";
-import { displayNumberFromOrderedIds } from "@/lib/order-display-number";
 import type { OrderItemRow, OrderRow } from "@/types";
 
 type PeriodKey =
@@ -422,11 +421,9 @@ export default function AdminHistoricoPage() {
             >
             <p className="text-lg font-bold uppercase tracking-wide text-stone-800">
               {`PEDIDO #${
-                order.display_number ??
-                displayNumberFromOrderedIds(
-                  orders.map((o) => o.id),
-                  order.id
-                )
+                order.display_number != null && order.display_number > 0
+                  ? order.display_number
+                  : "—"
               }`}
             </p>
             <p className="font-mono text-xs text-stone-500">{order.id}</p>

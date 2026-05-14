@@ -1,9 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
- * Lista global: todos os pedidos (pendentes, pagos, cancelados), mais recentes primeiro.
- * Número exibido = `length − índice` → o pedido mais recente tem o maior número;
- * cada pedido tem um número único que nunca é reutilizado.
+ * Número de vitrine do pedido:
+ * - Preferencialmente `orders.display_number` na BD (atribuído na criação, estável).
+ * - Legado: posição na lista global de IDs (todos os estados), mais recentes primeiro;
+ *   número = `length − índice` (o mais recente tem o maior número).
  */
 export function normalizeOrderId(id: string): string {
   return String(id ?? "")
@@ -91,6 +92,21 @@ export async function fetchOrderDisplayNumberPublic(orderId: string): Promise<nu
   const id = normalizeOrderId(orderId);
   if (!id) return 1;
 
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("orders")
+      .select("display_number")
+      .eq("id", id)
+      .maybeSingle();
+    if (!error && data) {
+      const n = Number((data as { display_number?: unknown }).display_number);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  } catch {
+    /* coluna ainda inexistente ou rede */
+  }
+
   // Logo após o insert o pedido pode ainda não aparecer nas contagens/lista.
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const ids = await fetchAllOrderIdsNewestFirst();
@@ -110,12 +126,23 @@ export async function fetchOrderDisplayNumberPublic(orderId: string): Promise<nu
 }
 
 /** Anexa `display_number` a cada pedido (recibo e admin alinhados). */
-export function attachDisplayNumbers<T extends { id: string }>(
-  orders: T[],
-  idsNewestFirst: string[]
-): (T & { display_number: number })[] {
-  return orders.map((o) => ({
-    ...o,
-    display_number: displayNumberFromOrderedIds(idsNewestFirst, o.id) || 1,
-  }));
+export function attachDisplayNumbers<
+  T extends { id: string; display_number?: number | null },
+>(orders: T[], idsNewestFirst: string[]): (T & { display_number: number })[] {
+  return orders.map((o) => {
+    const persisted =
+      typeof o.display_number === "number" &&
+      Number.isFinite(o.display_number) &&
+      o.display_number > 0
+        ? o.display_number
+        : null;
+    return {
+      ...o,
+      display_number:
+        persisted ??
+        (idsNewestFirst.length
+          ? displayNumberFromOrderedIds(idsNewestFirst, o.id) || 1
+          : 1),
+    };
+  });
 }

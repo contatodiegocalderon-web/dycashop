@@ -67,7 +67,7 @@ export type CustomerSegment = "NOVO" | "ANTIGO";
 
 export interface OrderRow {
   id: string;
-  /** Número de vitrine (único, conta todos os pedidos por ordem de criação). */
+  /** Número de vitrine gravado na BD na criação; não muda ao cancelar nem ao filtrar listas. */
   display_number?: number;
   status: OrderStatus;
   customer_note: string | null;

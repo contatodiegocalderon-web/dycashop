@@ -317,7 +317,11 @@ export async function GET(request: NextRequest) {
         ? (staffMap.get(r.confirmed_by_staff_id) ?? ownerName)
         : ownerName,
     }));
-    const idsGlobal = await fetchAllOrderIdsNewestFirst();
+    const needsLegacyRank = withStaffName.some((r) => {
+      const dn = (r as { display_number?: number | null }).display_number;
+      return !(typeof dn === "number" && Number.isFinite(dn) && dn > 0);
+    });
+    const idsGlobal = needsLegacyRank ? await fetchAllOrderIdsNewestFirst() : [];
     const orders = attachDisplayNumbers(withStaffName, idsGlobal);
     return NextResponse.json({ orders });
   } catch (e) {

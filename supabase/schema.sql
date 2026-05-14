@@ -36,8 +36,12 @@ create table if not exists public.staff_users (
   created_at timestamptz not null default now()
 );
 
+-- Número de vitrine: atribuído na criação (estável após cancelar ou excluir outros pedidos).
+create sequence if not exists public.orders_display_number_seq;
+
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
+  display_number integer not null default nextval('public.orders_display_number_seq') unique,
   status text not null default 'PENDENTE_PAGAMENTO'
     check (status in ('PENDENTE_PAGAMENTO', 'PAGO', 'CANCELADO')),
   customer_note text,
@@ -52,6 +56,8 @@ create table if not exists public.orders (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter sequence public.orders_display_number_seq owned by public.orders.display_number;
 
 create index if not exists orders_confirmed_by_staff_id_idx
   on public.orders (confirmed_by_staff_id);

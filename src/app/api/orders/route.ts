@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
         requested_seller_phone: sellerPhoneRaw || null,
         public_token: publicToken,
       })
-      .select("id")
+      .select("id, display_number")
       .single();
 
     if (oErr || !order) {
@@ -237,7 +237,9 @@ export async function POST(request: NextRequest) {
       ? `${siteBase}/recibo/${publicToken}`
       : null;
 
-    const orderDisplayNumber = await fetchOrderDisplayNumberPublic(order.id);
+    const dn = Number((order as { display_number?: unknown }).display_number);
+    const orderDisplayNumber =
+      Number.isFinite(dn) && dn > 0 ? dn : await fetchOrderDisplayNumberPublic(order.id);
     return NextResponse.json({
       orderId: order.id,
       orderDisplayNumber,
