@@ -12,7 +12,10 @@ type ClientRow = {
   order_count: number;
   total_spent: number;
   last_confirmed_at: string | null;
+  sellers_label: string;
 };
+
+type SellerFilterOption = { value: string; label: string };
 
 function money(n: number) {
   return n.toLocaleString("pt-BR", {
@@ -36,6 +39,7 @@ function clientsToCsv(rows: ClientRow[]): string {
   const header = [
     "nome",
     "whatsapp",
+    "vendedor",
     "segmento",
     "pedidos",
     "total_gasto",
@@ -53,10 +57,12 @@ function clientsToCsv(rows: ClientRow[]): string {
           ? "ANTIGO"
           : "";
     const name = (c.customer_name ?? "").replaceAll('"', '""');
+    const sellers = (c.sellers_label ?? "").replaceAll('"', '""');
     lines.push(
       [
         `"${name}"`,
         c.customer_whatsapp,
+        `"${sellers}"`,
         seg,
         String(c.order_count),
         String(c.total_spent).replace(".", ","),
@@ -77,18 +83,24 @@ function downloadBlob(filename: string, text: string, mime: string) {
 }
 
 export default function AdminClientesPage() {
-  const { adminFetch } = useAdminAuth();
+  const { adminFetch, isOwner } = useAdminAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [removingWa, setRemovingWa] = useState<string | null>(null);
+  const [sellerScope, setSellerScope] = useState<string>("all");
+  const [sellerFilterOptions, setSellerFilterOptions] = useState<SellerFilterOption[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await adminFetch("/api/admin/clients");
+      const q =
+        isOwner && sellerScope && sellerScope !== "all"
+          ? `?sellerScope=${encodeURIComponent(sellerScope)}`
+          : "";
+      const res = await adminFetch(`/api/admin/clients${q}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao carregar");
       setClients((data.clients ?? []) as ClientRow[]);
@@ -98,18 +110,60 @@ export default function AdminClientesPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch]);
+  }, [adminFetch, isOwner, sellerScope]);
+
+  useEffect(() => {
+    if (!isOwner) {
+      setSellerScope("all");
+      setSellerFilterOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await adminFetch("/api/admin/staff-seller-filters");
+        if (!r.ok || cancelled) return;
+        const j = (await r.json()) as {
+          ownerStaffId?: string | null;
+          ownerDisplayName?: string;
+          sellers?: Array<{ id: string; displayName: string }>;
+        };
+        const opts: SellerFilterOption[] = [{ value: "all", label: "Todos" }];
+        if (j.ownerStaffId) {
+          opts.push({
+            value: "me",
+            label: String(j.ownerDisplayName ?? "Dono").trim() || "Dono",
+          });
+        }
+        for (const s of j.sellers ?? []) {
+          opts.push({
+            value: s.id,
+            label: String(s.displayName ?? "").trim() || "Vendedor",
+          });
+        }
+        if (!cancelled) setSellerFilterOptions(opts);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [adminFetch, isOwner]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  /** Mais recente no topo (último pedido confirmado). */
   const sorted = useMemo(
     () =>
       [...clients].sort((a, b) => {
-        const t = b.total_spent - a.total_spent;
-        if (t !== 0) return t;
-        return (a.customer_name ?? "").localeCompare(b.customer_name ?? "", "pt");
+        const ta = a.last_confirmed_at ?? "";
+        const tb = b.last_confirmed_at ?? "";
+        const byDate = tb.localeCompare(ta);
+        if (byDate !== 0) return byDate;
+        return (a.customer_name ?? "").localeCompare(b.customer_name ?? "", "pt-BR");
       }),
     [clients]
   );
@@ -197,6 +251,26 @@ export default function AdminClientesPage() {
       </div>
 
       <div className="mb-8 flex flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+        {isOwner && sellerFilterOptions.length > 0 && (
+          <div className="flex w-full min-w-[12rem] flex-col gap-1 sm:w-auto">
+            <label htmlFor="clientes-seller-filter" className="text-xs font-medium text-stone-600">
+              Vendedor
+            </label>
+            <select
+              id="clientes-seller-filter"
+              value={sellerScope}
+              onChange={(e) => setSellerScope(e.target.value)}
+              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+              aria-label="Filtrar clientes por vendedor"
+            >
+              {sellerFilterOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <button
           type="button"
           onClick={exportCsv}
@@ -247,6 +321,10 @@ export default function AdminClientesPage() {
               <div className="min-w-0">
                 <p className="font-semibold text-stone-900">{c.customer_name ?? "—"}</p>
                 <p className="text-sm text-stone-500">{waDisplay(c.customer_whatsapp)}</p>
+                <p className="mt-1 text-sm text-stone-700">
+                  <span className="text-stone-500">Vendedor: </span>
+                  {c.sellers_label ?? "—"}
+                </p>
                 <p className="mt-1 text-xs text-stone-400">
                   {c.is_new ? "🆕 Novo" : "Antigo"}{" "}
                   · {c.order_count} pedido(s) · Total {money(c.total_spent)}
