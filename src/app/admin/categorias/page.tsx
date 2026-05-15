@@ -180,7 +180,7 @@ export default function AdminCategoriasPage() {
           (categoryCoverEdits[category_label] ?? "").trim() || null,
         display_order:
           showcaseRows.find((r) => r.category_label === category_label)?.display_order ??
-          null,
+          DISPLAY_ORDER_DEFAULT_SENTINEL,
       }));
 
       const [costRes, showcaseRes] = await Promise.all([

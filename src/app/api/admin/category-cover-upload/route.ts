@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { assertOwnerAccess } from "@/lib/admin-auth";
 import { DEFAULT_SHOWCASE } from "@/lib/category-showcase";
+import { resolveDisplayOrderForUpsert } from "@/lib/catalog-categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 import { CATALOG_STORAGE_BUCKET } from "@/lib/storage-constants";
@@ -92,13 +93,10 @@ async function upsertCoverUrl(
     catalog_cover_image_url: catalog,
   };
 
-  if (
-    ex &&
-    typeof ex.display_order === "number" &&
-    Number.isFinite(ex.display_order)
-  ) {
-    payload.display_order = ex.display_order;
-  }
+  payload.display_order = resolveDisplayOrderForUpsert(
+    undefined,
+    ex?.display_order
+  );
 
   if (hasHomeGridColumn) {
     payload.home_grid_cover_image_url = grid;

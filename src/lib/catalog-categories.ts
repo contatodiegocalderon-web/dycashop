@@ -51,6 +51,20 @@ const PAGE_SIZE = 1000;
  */
 export const DISPLAY_ORDER_DEFAULT_SENTINEL = 100000;
 
+/** Valor seguro para INSERT/UPSERT quando o cliente não envia ordem (coluna NOT NULL na BD). */
+export function resolveDisplayOrderForUpsert(
+  incoming: number | null | undefined,
+  existing?: number | null | undefined
+): number {
+  if (incoming != null && Number.isFinite(Number(incoming))) {
+    return Number(incoming);
+  }
+  if (existing != null && Number.isFinite(existing)) {
+    return existing;
+  }
+  return DISPLAY_ORDER_DEFAULT_SENTINEL;
+}
+
 /**
  * Ordem na home: `display_order` da BD (menor primeiro); sem valor ou sentinela usa posição alfabética ×100.
  */

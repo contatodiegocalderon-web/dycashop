@@ -5,7 +5,10 @@ import {
   sanitizeWholesaleTiers,
   type WholesaleTier,
 } from "@/lib/category-showcase";
-import { categoryLookupKey } from "@/lib/catalog-categories";
+import {
+  categoryLookupKey,
+  resolveDisplayOrderForUpsert,
+} from "@/lib/catalog-categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 
@@ -177,9 +180,31 @@ export async function PUT(request: NextRequest) {
         { status: 400 }
       );
     }
+    const admin = createAdminClient();
+    const labels = body.entries.map((raw) => String(raw.category_label ?? "").trim());
+    const existingByLabel = new Map<string, number | null>();
+    if (labels.some(Boolean)) {
+      const existingRows = await fetchShowcaseRows(admin);
+      for (const row of existingRows) {
+        const label = String(
+          (row as { category_label?: string }).category_label ?? ""
+        ).trim();
+        if (!label) continue;
+        const ord = (row as { display_order?: number | null }).display_order;
+        existingByLabel.set(
+          label,
+          typeof ord === "number" && Number.isFinite(ord) ? ord : null
+        );
+      }
+    }
+
     const entries = body.entries.map((raw) => {
       const category_label = String(raw.category_label ?? "").trim();
       if (!category_label) throw new Error("Categoria inválida.");
+      const incomingOrder =
+        raw.display_order != null && Number.isFinite(Number(raw.display_order))
+          ? Number(raw.display_order)
+          : null;
       return {
         category_label,
         video_url: raw.video_url?.trim() || null,
@@ -187,13 +212,12 @@ export async function PUT(request: NextRequest) {
         wholesale_tiers: sanitizeWholesaleTiers(raw.wholesale_tiers),
         home_grid_cover_image_url: raw.home_grid_cover_image_url?.trim() || null,
         catalog_cover_image_url: raw.catalog_cover_image_url?.trim() || null,
-        display_order:
-          raw.display_order != null && Number.isFinite(Number(raw.display_order))
-            ? Number(raw.display_order)
-            : null,
+        display_order: resolveDisplayOrderForUpsert(
+          incomingOrder,
+          existingByLabel.get(category_label)
+        ),
       };
     });
-    const admin = createAdminClient();
     const { error } = await admin.from("category_showcase_settings").upsert(entries, {
       onConflict: "category_label",
     });
