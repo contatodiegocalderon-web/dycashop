@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchOrderDisplayNumberPublic } from "@/lib/order-display-number";
-import { getOrderReceiptByToken, isValidReceiptToken } from "@/lib/order-receipt";
+import { ReceiptCancelledMessage } from "@/components/receipt-cancelled";
+import {
+  getOrderReceiptByToken,
+  isCancelledReceiptToken,
+  isValidReceiptToken,
+} from "@/lib/order-receipt";
 import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
 import { publicDriveImageUrl } from "@/lib/drive-image-url";
 import type { OrderItemRow, OrderStatus, ProductSize } from "@/types";
@@ -46,9 +51,18 @@ export default async function ReciboPage({ params }: Props) {
   if (!isValidReceiptToken(token)) notFound();
 
   const receipt = await getOrderReceiptByToken(token);
-  if (!receipt) notFound();
+  if (!receipt) {
+    if (await isCancelledReceiptToken(token)) {
+      return <ReceiptCancelledMessage />;
+    }
+    notFound();
+  }
 
   const { order, items } = receipt;
+
+  if (order.status === "CANCELADO") {
+    return <ReceiptCancelledMessage />;
+  }
   const displayNumber =
     order.display_number != null && order.display_number > 0
       ? order.display_number

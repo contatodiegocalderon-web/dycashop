@@ -684,7 +684,8 @@ export default function AdminPedidosClient() {
                 <div className="mb-4 rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-950">
                   <p className="font-medium">Cancelar este pedido?</p>
                   <p className="mt-1 text-red-900/90">
-                    O cliente verá o estado como cancelado no recibo. Esta ação não
+                    O pedido será removido; o link do recibo mostrará que foi
+                    cancelado. Esta ação não
                     pode ser desfeita.
                   </p>
                   <p className="mt-3 text-xs font-medium uppercase tracking-wide text-red-800">
