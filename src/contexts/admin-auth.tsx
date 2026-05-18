@@ -161,6 +161,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     return fetch(input, {
       ...init,
       credentials: "include",
+      cache: "no-store",
       headers: h,
     });
   }, []);

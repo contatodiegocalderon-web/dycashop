@@ -6,73 +6,34 @@ import {
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
 import { resolvePrincipal } from "@/lib/access";
+import {
+  confirmedAtFilterForPeriod,
+  parseAdminPeriodKey,
+  parseTzOffsetMinutes,
+  type ConfirmedAtFilter,
+} from "@/lib/admin-period";
 
 export const runtime = "nodejs";
 
 const STAFF_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type PeriodKey =
-  | "today"
-  | "yesterday"
-  | "weekly"
-  | "monthly"
-  | "yearly"
-  | "last30"
-  | "all"
-  | "selectedDate";
-
-function periodStartIso(period: PeriodKey): string | null {
-  const now = new Date();
-  const d = new Date(now);
-  if (period === "all") return null;
-  if (period === "today") {
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
+function applyDateFilterToOrdersQuery<
+  Q extends {
+    gte(column: string, value: string): Q;
+    lt(column: string, value: string): Q;
+    not(column: string, operator: string, value: unknown): Q;
+  },
+>(query: Q, filter: ConfirmedAtFilter, dateColumn: "confirmed_at" | "created_at"): Q {
+  if (filter.kind === "all") return query;
+  let q = query.gte(dateColumn, filter.startIso);
+  if (dateColumn === "confirmed_at") {
+    q = q.not("confirmed_at", "is", null);
   }
-  if (period === "yesterday") {
-    d.setDate(d.getDate() - 1);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
+  if (filter.endIso) {
+    q = q.lt(dateColumn, filter.endIso);
   }
-  if (period === "weekly") {
-    const day = d.getDay();
-    const diffToMonday = (day + 6) % 7;
-    d.setDate(d.getDate() - diffToMonday);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  if (period === "monthly") {
-    d.setDate(1);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  if (period === "yearly") {
-    d.setMonth(0, 1);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  d.setDate(d.getDate() - 30);
-  return d.toISOString();
-}
-
-function parseSelectedDateUtcRange(
-  raw: string | null,
-  tzOffsetMinutesRaw: string | null
-): { startIso: string; endIso: string } | null {
-  if (!raw) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
-  const [yRaw, mRaw, dRaw] = raw.split("-");
-  const y = Number(yRaw);
-  const m = Number(mRaw);
-  const d = Number(dRaw);
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-  const tzOffsetMinutes = Number(tzOffsetMinutesRaw ?? "0");
-  if (!Number.isFinite(tzOffsetMinutes)) return null;
-  // Converte o "dia local" selecionado no browser para janela UTC exata [início, fim).
-  const startUtcMs = Date.UTC(y, m - 1, d, 0, 0, 0, 0) + tzOffsetMinutes * 60_000;
-  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
-  return { startIso: new Date(startUtcMs).toISOString(), endIso: new Date(endUtcMs).toISOString() };
+  return q;
 }
 
 function nameFromEmail(email: string): string {
@@ -131,28 +92,16 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const statusFilter = searchParams.get("status") ?? "PENDENTE_PAGAMENTO";
-  const rawPeriod = searchParams.get("period");
-  const period: PeriodKey =
-    rawPeriod === "today" ||
-    rawPeriod === "daily" ||
-    rawPeriod === "yesterday" ||
-    rawPeriod === "weekly" ||
-    rawPeriod === "monthly" ||
-    rawPeriod === "yearly" ||
-    rawPeriod === "last30" ||
-    rawPeriod === "selectedDate"
-      ? rawPeriod === "daily"
-        ? "today"
-        : rawPeriod
-      : "all";
-  const startIso = periodStartIso(period);
-  const selectedDateRange =
-    period === "selectedDate"
-      ? parseSelectedDateUtcRange(
-          searchParams.get("selectedDate"),
-          searchParams.get("tzOffsetMinutes")
-        )
-      : null;
+  const period = parseAdminPeriodKey(searchParams.get("period"));
+  const tzOffsetMinutes = parseTzOffsetMinutes(
+    searchParams.get("tzOffsetMinutes")
+  );
+  const dateFilter = confirmedAtFilterForPeriod(period, {
+    selectedDate: searchParams.get("selectedDate"),
+    dateFrom: searchParams.get("dateFrom"),
+    dateTo: searchParams.get("dateTo"),
+    tzOffsetMinutes,
+  });
 
   try {
     const principal = await resolvePrincipal(request);
@@ -241,27 +190,10 @@ export async function GET(request: NextRequest) {
         `status.eq.PENDENTE_PAGAMENTO,and(status.eq.PAGO,confirmed_by_staff_id.eq.${sellerId})`
       );
     }
-    if (selectedDateRange) {
-      if (statusFilter === "PAGO") {
-        q = q.gte("confirmed_at", selectedDateRange.startIso).lt("confirmed_at", selectedDateRange.endIso);
-      } else {
-        q = q.gte("created_at", selectedDateRange.startIso).lt("created_at", selectedDateRange.endIso);
-      }
-    } else if (period === "yesterday") {
-      const end = new Date(startIso!);
-      end.setDate(end.getDate() + 1);
-      const endIso = end.toISOString();
-      if (statusFilter === "PAGO") {
-        q = q.gte("confirmed_at", startIso!).lt("confirmed_at", endIso);
-      } else {
-        q = q.gte("created_at", startIso!).lt("created_at", endIso);
-      }
-    } else if (startIso) {
-      if (statusFilter === "PAGO") {
-        q = q.gte("confirmed_at", startIso);
-      } else {
-        q = q.gte("created_at", startIso);
-      }
+    if (dateFilter.kind !== "all") {
+      const dateColumn =
+        statusFilter === "PAGO" ? "confirmed_at" : "created_at";
+      q = applyDateFilterToOrdersQuery(q, dateFilter, dateColumn);
     }
 
     if (statusFilter === "PAGO") {

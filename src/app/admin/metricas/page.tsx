@@ -40,9 +40,10 @@ type PeriodKey =
   | "weekly"
   | "monthly"
   | "yearly"
+  | "last7"
   | "last30"
   | "all"
-  | "selectedDate";
+  | "dateRange";
 
 function todayYmd(): string {
   const d = new Date();
@@ -69,17 +70,28 @@ export default function AdminMetricasPage() {
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
   const [sellerBreakdown, setSellerBreakdown] = useState<SellerBreakdownRow[]>([]);
   const [period, setPeriod] = useState<PeriodKey>("all");
-  const [selectedDate, setSelectedDate] = useState<string>(todayYmd());
+  const [dateFrom, setDateFrom] = useState<string>(todayYmd());
+  const [dateTo, setDateTo] = useState<string>(todayYmd());
   const [sellerScope, setSellerScope] = useState<string>("all");
   const [sellerFilterOptions, setSellerFilterOptions] = useState<SellerFilterOption[]>([]);
+  const [periodDescription, setPeriodDescription] = useState<string | null>(null);
+  const [loadMeta, setLoadMeta] = useState<{
+    ordersIncluded: number;
+    ordersWithSale: number;
+    totalPieces: number;
+  } | null>(null);
   const loadMetrics = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const q = new URLSearchParams({ period });
-      if (period === "selectedDate" && selectedDate) {
-        q.set("selectedDate", selectedDate);
-        q.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
+      const q = new URLSearchParams({
+        period,
+        tzOffsetMinutes: String(new Date().getTimezoneOffset()),
+        _: String(Date.now()),
+      });
+      if (period === "dateRange") {
+        if (dateFrom) q.set("dateFrom", dateFrom);
+        if (dateTo) q.set("dateTo", dateTo);
       }
       if (isDiegoOwnerUi && sellerScope && sellerScope !== "all") {
         q.set("sellerScope", sellerScope);
@@ -88,6 +100,25 @@ export default function AdminMetricasPage() {
       const mJson = await mRes.json();
       if (!mRes.ok) throw new Error(mJson.error ?? "Falha nas métricas");
       setMetrics(mJson.metrics as MetricsPayload);
+      setPeriodDescription(
+        typeof mJson.periodDescription === "string" ? mJson.periodDescription : null
+      );
+      const meta = mJson.meta as
+        | {
+            ordersIncluded?: number;
+            ordersWithSale?: number;
+            totalPieces?: number;
+          }
+        | undefined;
+      setLoadMeta(
+        meta && typeof meta.ordersIncluded === "number"
+          ? {
+              ordersIncluded: meta.ordersIncluded,
+              ordersWithSale: Number(meta.ordersWithSale ?? 0),
+              totalPieces: Number(meta.totalPieces ?? 0),
+            }
+          : null
+      );
       const rows = (mJson.sellerBreakdown ?? []) as Array<{
         staffId: string;
         staffName: string;
@@ -114,10 +145,12 @@ export default function AdminMetricasPage() {
       setError(e instanceof Error ? e.message : "Erro");
       setMetrics(null);
       setSellerBreakdown([]);
+      setPeriodDescription(null);
+      setLoadMeta(null);
     } finally {
       setLoading(false);
     }
-  }, [adminFetch, period, selectedDate, isDiegoOwnerUi, sellerScope]);
+  }, [adminFetch, period, dateFrom, dateTo, isDiegoOwnerUi, sellerScope]);
 
   useEffect(() => {
     if (!isDiegoOwnerUi) {
@@ -200,8 +233,18 @@ export default function AdminMetricasPage() {
             <Link href="/admin/categorias" className="font-medium text-violet-800 underline">
               Categorias
             </Link>
-            .
+            . Só entram vendas confirmadas no admin com valor de venda registado;
+            pedidos pendentes ou sem valor não contam. Data = confirmação do pagamento.
           </p>
+          {periodDescription && (
+            <p className="mt-1 text-xs text-stone-500">{periodDescription}</p>
+          )}
+          {loadMeta && (
+            <p className="mt-1 text-xs text-stone-500">
+              {loadMeta.ordersIncluded} venda(s) confirmada(s) no período ·{" "}
+              {loadMeta.totalPieces} peça(s)
+            </p>
+          )}
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <Link href="/admin/pedidos" className="font-medium text-violet-800 underline">
               Pedidos pendentes
@@ -242,16 +285,33 @@ export default function AdminMetricasPage() {
             <option value="weekly">Semanal</option>
             <option value="monthly">Mensal</option>
             <option value="yearly">Anual</option>
+            <option value="last7">Últimos 7 dias</option>
             <option value="last30">Últimos 30 dias</option>
-            <option value="selectedDate">Data específica</option>
+            <option value="dateRange">Período personalizado</option>
           </select>
-          {period === "selectedDate" && (
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
-            />
+          {period === "dateRange" && (
+            <>
+              <label className="flex flex-col gap-0.5 text-xs text-stone-600">
+                De
+                <input
+                  type="date"
+                  value={dateFrom}
+                  max={dateTo || undefined}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+                />
+              </label>
+              <label className="flex flex-col gap-0.5 text-xs text-stone-600">
+                Até
+                <input
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+                />
+              </label>
+            </>
           )}
           <button
             type="button"

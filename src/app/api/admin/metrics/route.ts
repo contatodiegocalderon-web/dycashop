@@ -3,78 +3,28 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
 import { resolvePrincipal } from "@/lib/access";
 import {
+  confirmedAtFilterForPeriod,
+  describeConfirmedAtFilter,
+  parseAdminPeriodKey,
+  parseTzOffsetMinutes,
+} from "@/lib/admin-period";
+import {
+  applyConfirmedAtFilterToOrdersQuery,
+  fetchAllPaidOrdersWithSale,
+  fetchOrderItemsByOrderIds,
+  type OrdersListQuery,
+} from "@/lib/admin-orders-query";
+import {
   aggregateSalesMetrics,
   type OrderItemSaleRow,
   type OrderSaleRow,
 } from "@/lib/sales-metrics";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const STAFF_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-type PeriodKey =
-  | "today"
-  | "yesterday"
-  | "weekly"
-  | "monthly"
-  | "yearly"
-  | "last30"
-  | "all"
-  | "selectedDate";
-
-function periodStartIso(period: PeriodKey): string | null {
-  const now = new Date();
-  const d = new Date(now);
-  if (period === "all") return null;
-  if (period === "today") {
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  if (period === "yesterday") {
-    d.setDate(d.getDate() - 1);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  if (period === "weekly") {
-    const day = d.getDay();
-    const diffToMonday = (day + 6) % 7;
-    d.setDate(d.getDate() - diffToMonday);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  if (period === "monthly") {
-    d.setDate(1);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  if (period === "yearly") {
-    d.setMonth(0, 1);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  d.setDate(d.getDate() - 30);
-  return d.toISOString();
-}
-
-function parseSelectedDateUtcRange(
-  raw: string | null,
-  tzOffsetMinutesRaw: string | null
-): { startIso: string; endIso: string } | null {
-  if (!raw) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
-  const [yRaw, mRaw, dRaw] = raw.split("-");
-  const y = Number(yRaw);
-  const m = Number(mRaw);
-  const d = Number(dRaw);
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-  const tzOffsetMinutes = Number(tzOffsetMinutesRaw ?? "0");
-  if (!Number.isFinite(tzOffsetMinutes)) return null;
-  // Converte o "dia local" selecionado no browser para janela UTC exata [início, fim).
-  const startUtcMs = Date.UTC(y, m - 1, d, 0, 0, 0, 0) + tzOffsetMinutes * 60_000;
-  const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000;
-  return { startIso: new Date(startUtcMs).toISOString(), endIso: new Date(endUtcMs).toISOString() };
-}
 
 function nameFromEmail(email: string): string {
   const base = email.split("@")[0] ?? email;
@@ -121,28 +71,21 @@ export async function GET(request: NextRequest) {
         : null;
     const { searchParams } = new URL(request.url);
     const rawSellerScope = searchParams.get("sellerScope")?.trim() ?? "";
-    const rawPeriod = searchParams.get("period");
-    const period: PeriodKey =
-      rawPeriod === "today" ||
-      rawPeriod === "daily" ||
-      rawPeriod === "yesterday" ||
-      rawPeriod === "weekly" ||
-      rawPeriod === "monthly" ||
-      rawPeriod === "yearly" ||
-      rawPeriod === "last30" ||
-      rawPeriod === "selectedDate"
-        ? rawPeriod === "daily"
-          ? "today"
-          : rawPeriod
-        : "all";
-    const startIso = periodStartIso(period);
-    const selectedDateRange =
-      period === "selectedDate"
-        ? parseSelectedDateUtcRange(
-            searchParams.get("selectedDate"),
-            searchParams.get("tzOffsetMinutes")
-          )
-        : null;
+    const period = parseAdminPeriodKey(searchParams.get("period"));
+    const tzOffsetMinutes = parseTzOffsetMinutes(
+      searchParams.get("tzOffsetMinutes")
+    );
+    const dateFilter = confirmedAtFilterForPeriod(period, {
+      selectedDate: searchParams.get("selectedDate"),
+      dateFrom: searchParams.get("dateFrom"),
+      dateTo: searchParams.get("dateTo"),
+      tzOffsetMinutes,
+    });
+    const periodDescription = describeConfirmedAtFilter(
+      period,
+      dateFilter,
+      tzOffsetMinutes
+    );
 
     const admin = createAdminClient();
 
@@ -159,97 +102,81 @@ export async function GET(request: NextRequest) {
       costs[r.category_label] = Number(r.cost_per_piece);
     }
 
-    let orderQuery = admin
-      .from("orders")
-      .select(
-        "id, sale_amount, sale_amount_by_category, customer_segment, confirmed_by_staff_id, requested_seller_name, confirmed_at"
-      )
-      .eq("status", "PAGO")
-      .not("sale_amount", "is", null);
-
-    if (sellerId) {
-      orderQuery = orderQuery.eq("confirmed_by_staff_id", sellerId);
-    } else if (isOwner && rawSellerScope && rawSellerScope !== "all") {
-      if (rawSellerScope === "me") {
-        let ownerStaffId: string | null =
-          principal?.kind === "staff" && principal.staff.role === "owner"
-            ? principal.staff.staffId
-            : null;
-        if (!ownerStaffId && principal?.kind === "api_key") {
-          const { data: ownerRow } = await admin
-            .from("staff_users")
-            .select("id")
-            .eq("role", "owner")
-            .limit(1)
-            .maybeSingle();
-          ownerStaffId = (ownerRow?.id as string | undefined) ?? null;
-        }
-        if (ownerStaffId) {
-          orderQuery = orderQuery.or(
-            `confirmed_by_staff_id.eq.${ownerStaffId},confirmed_by_staff_id.is.null`
-          );
-        }
-      } else if (STAFF_UUID_RE.test(rawSellerScope)) {
-        orderQuery = orderQuery.eq("confirmed_by_staff_id", rawSellerScope);
+    let ownerStaffIdForScope: string | null = null;
+    if (
+      isOwner &&
+      rawSellerScope === "me" &&
+      !sellerId
+    ) {
+      ownerStaffIdForScope =
+        principal?.kind === "staff" && principal.staff.role === "owner"
+          ? principal.staff.staffId
+          : null;
+      if (!ownerStaffIdForScope && principal?.kind === "api_key") {
+        const { data: ownerRow } = await admin
+          .from("staff_users")
+          .select("id")
+          .eq("role", "owner")
+          .limit(1)
+          .maybeSingle();
+        ownerStaffIdForScope = (ownerRow?.id as string | undefined) ?? null;
       }
     }
-    if (selectedDateRange) {
-      orderQuery = orderQuery
-        .gte("confirmed_at", selectedDateRange.startIso)
-        .lt("confirmed_at", selectedDateRange.endIso);
-    } else if (period === "yesterday") {
-      const end = new Date(startIso!);
-      end.setDate(end.getDate() + 1);
-      orderQuery = orderQuery
-        .gte("confirmed_at", startIso!)
-        .lt("confirmed_at", end.toISOString());
-    } else if (startIso) {
-      orderQuery = orderQuery.gte("confirmed_at", startIso);
-    }
 
-    const { data: orders, error: oErr } = await orderQuery;
+    const orderRows = await fetchAllPaidOrdersWithSale(admin, () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let q: any = admin
+        .from("orders")
+        .select(
+          "id, sale_amount, sale_amount_by_category, customer_segment, confirmed_by_staff_id, requested_seller_name, confirmed_at"
+        )
+        .eq("status", "PAGO")
+        .not("sale_amount", "is", null)
+        .gt("sale_amount", 0);
 
-    if (oErr) {
-      return NextResponse.json({ error: oErr.message }, { status: 500 });
-    }
+      if (sellerId) {
+        q = q.eq("confirmed_by_staff_id", sellerId);
+      } else if (isOwner && rawSellerScope && rawSellerScope !== "all") {
+        if (rawSellerScope === "me" && ownerStaffIdForScope) {
+          q = q.or(
+            `confirmed_by_staff_id.eq.${ownerStaffIdForScope},confirmed_by_staff_id.is.null`
+          );
+        } else if (STAFF_UUID_RE.test(rawSellerScope)) {
+          q = q.eq("confirmed_by_staff_id", rawSellerScope);
+        }
+      }
 
-    const orderRows = (orders ?? []) as (OrderSaleRow & {
-      confirmed_by_staff_id?: string | null;
-      requested_seller_name?: string | null;
-      confirmed_at?: string | null;
-    })[];
-    const orderIds = orderRows.map((o) => o.id);
-    if (orderIds.length === 0) {
+      return applyConfirmedAtFilterToOrdersQuery(
+        q,
+        dateFilter
+      ) as unknown as OrdersListQuery;
+    });
+
+    if (orderRows.length === 0) {
       const empty = aggregateSalesMetrics([], new Map(), costs);
-      return NextResponse.json({
-        metrics: empty,
-        costs,
-        period,
-        viewerRole: isOwner ? "owner" : "seller",
-        sellerBreakdown: [],
-      });
+      return NextResponse.json(
+        {
+          metrics: empty,
+          costs,
+          period,
+          periodDescription,
+          viewerRole: isOwner ? "owner" : "seller",
+          sellerBreakdown: [],
+          meta: { ordersIncluded: 0, ordersWithSale: 0, totalPieces: 0 },
+        },
+        { headers: { "Cache-Control": "no-store" } }
+      );
     }
 
-    const { data: items, error: iErr } = await admin
-      .from("order_items")
-      .select(
-        "order_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size, products(category)"
-      )
-      .in("order_id", orderIds);
+    const orderIds = orderRows.map((o) => o.id);
+    const itemsByOrderId = await fetchOrderItemsByOrderIds(admin, orderIds);
 
-    if (iErr) {
-      return NextResponse.json({ error: iErr.message }, { status: 500 });
-    }
+    const metrics = aggregateSalesMetrics(
+      orderRows as OrderSaleRow[],
+      itemsByOrderId as Map<string, OrderItemSaleRow[]>,
+      costs
+    );
 
-    const itemsByOrderId = new Map<string, OrderItemSaleRow[]>();
-    for (const row of items ?? []) {
-      const it = row as unknown as OrderItemSaleRow;
-      const list = itemsByOrderId.get(it.order_id) ?? [];
-      list.push(it);
-      itemsByOrderId.set(it.order_id, list);
-    }
-
-    const metrics = aggregateSalesMetrics(orderRows, itemsByOrderId, costs);
     const sellerBreakdown: Array<{
       staffId: string;
       staffName: string;
@@ -329,9 +256,13 @@ export async function GET(request: NextRequest) {
           const sellerItemsByOrder = new Map<string, OrderItemSaleRow[]>();
           for (const o of sellerOrders) {
             const list = itemsByOrderId.get(o.id) ?? [];
-            sellerItemsByOrder.set(o.id, list);
+            sellerItemsByOrder.set(o.id, list as OrderItemSaleRow[]);
           }
-          const sellerMetrics = aggregateSalesMetrics(sellerOrders, sellerItemsByOrder, costs);
+          const sellerMetrics = aggregateSalesMetrics(
+            sellerOrders as OrderSaleRow[],
+            sellerItemsByOrder,
+            costs
+          );
           sellerBreakdown.push({
             staffId: bucketKey,
             staffName: bucket.name,
@@ -349,13 +280,31 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      metrics,
-      costs,
-      period,
-      viewerRole: isOwner ? "owner" : "seller",
-      sellerBreakdown,
-    });
+    const ordersWithSale = orderRows.filter(
+      (o) => o.sale_amount != null && Number(o.sale_amount) > 0
+    ).length;
+    const totalPieces = Object.values(metrics.piecesByCategory).reduce(
+      (s, n) => s + n,
+      0
+    );
+
+    return NextResponse.json(
+      {
+        metrics,
+        costs,
+        period,
+        periodDescription,
+        viewerRole: isOwner ? "owner" : "seller",
+        sellerBreakdown,
+        meta: {
+          ordersIncluded: orderRows.length,
+          ordersWithSale,
+          totalPieces,
+          generatedAt: new Date().toISOString(),
+        },
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -11,17 +11,21 @@ type PeriodKey =
   | "weekly"
   | "monthly"
   | "yearly"
+  | "last7"
   | "last30"
-  | "selectedDate";
+  | "all"
+  | "dateRange";
 
 const PERIOD_OPTIONS: Array<{ value: PeriodKey; label: string }> = [
+  { value: "all", label: "Todo período" },
   { value: "today", label: "Hoje" },
   { value: "yesterday", label: "Ontem" },
   { value: "weekly", label: "Semanal" },
   { value: "monthly", label: "Mensal" },
   { value: "yearly", label: "Anual" },
+  { value: "last7", label: "Últimos 7 dias" },
   { value: "last30", label: "Últimos 30 dias" },
-  { value: "selectedDate", label: "Data específica" },
+  { value: "dateRange", label: "Período personalizado" },
 ];
 
 function todayYmd(): string {
@@ -199,7 +203,8 @@ export default function AdminHistoricoPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<PeriodKey>("last30");
-  const [selectedDate, setSelectedDate] = useState<string>(todayYmd());
+  const [dateFrom, setDateFrom] = useState<string>(todayYmd());
+  const [dateTo, setDateTo] = useState<string>(todayYmd());
   const [sellerScope, setSellerScope] = useState<string>("all");
   const [sellerFilterOptions, setSellerFilterOptions] = useState<SellerFilterOption[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -211,10 +216,12 @@ export default function AdminHistoricoPage() {
       const q = new URLSearchParams({
         status: "PAGO",
         period,
+        tzOffsetMinutes: String(new Date().getTimezoneOffset()),
+        _: String(Date.now()),
       });
-      if (period === "selectedDate" && selectedDate) {
-        q.set("selectedDate", selectedDate);
-        q.set("tzOffsetMinutes", String(new Date().getTimezoneOffset()));
+      if (period === "dateRange") {
+        if (dateFrom) q.set("dateFrom", dateFrom);
+        if (dateTo) q.set("dateTo", dateTo);
       }
       if (isDiegoOwnerUi && sellerScope && sellerScope !== "all") {
         q.set("sellerScope", sellerScope);
@@ -253,7 +260,7 @@ export default function AdminHistoricoPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch, period, selectedDate, isDiegoOwnerUi, sellerScope]);
+  }, [adminFetch, period, dateFrom, dateTo, isDiegoOwnerUi, sellerScope]);
 
   useEffect(() => {
     if (!isDiegoOwnerUi) {
@@ -365,13 +372,29 @@ export default function AdminHistoricoPage() {
               </option>
             ))}
           </select>
-          {period === "selectedDate" && (
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
-            />
+          {period === "dateRange" && (
+            <>
+              <label className="flex flex-col gap-0.5 text-xs text-stone-600">
+                De
+                <input
+                  type="date"
+                  value={dateFrom}
+                  max={dateTo || undefined}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+                />
+              </label>
+              <label className="flex flex-col gap-0.5 text-xs text-stone-600">
+                Até
+                <input
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+                />
+              </label>
+            </>
           )}
           <Link
             href="/admin/pedidos"
