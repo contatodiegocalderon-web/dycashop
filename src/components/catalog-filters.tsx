@@ -137,30 +137,6 @@ export function CatalogFilters({
       )}
       <div className="flex min-w-[160px] flex-1 flex-col gap-1">
         <label
-          htmlFor="filter-brand"
-          className="text-[11px] font-medium uppercase tracking-[0.18em] text-stone-500"
-        >
-          Marca
-        </label>
-        <select
-          id="filter-brand"
-          value={brand}
-          onChange={(e) => onBrand(e.target.value)}
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a8a29e'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-          }}
-          className={filterSelectClass}
-        >
-          <option value="">Todas as marcas</option>
-          {brandOptions.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="flex min-w-[160px] flex-1 flex-col gap-1">
-        <label
           htmlFor="filter-color"
           className="text-[11px] font-medium uppercase tracking-[0.18em] text-stone-500"
         >
@@ -179,6 +155,30 @@ export function CatalogFilters({
           {colorOptions.map((c) => (
             <option key={c} value={c}>
               {c}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex min-w-[160px] flex-1 flex-col gap-1">
+        <label
+          htmlFor="filter-brand"
+          className="text-[11px] font-medium uppercase tracking-[0.18em] text-stone-500"
+        >
+          Marca
+        </label>
+        <select
+          id="filter-brand"
+          value={brand}
+          onChange={(e) => onBrand(e.target.value)}
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a8a29e'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+          }}
+          className={filterSelectClass}
+        >
+          <option value="">Todas as marcas</option>
+          {brandOptions.map((b) => (
+            <option key={b} value={b}>
+              {b}
             </option>
           ))}
         </select>
