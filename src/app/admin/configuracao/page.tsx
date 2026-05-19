@@ -275,7 +275,7 @@ function ConfiguracaoInner() {
 
   if (!isOwner) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-12 text-center text-sm text-stone-600">
+      <div className="mx-auto max-w-xl px-4 py-8 text-center text-sm text-stone-600">
         A redirecionar…
       </div>
     );

@@ -227,15 +227,6 @@ export default function AdminMetricasPage() {
           <h1 className="text-3xl font-bold tracking-tight text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
             Métricas de vendas
           </h1>
-          <p className="mt-1 max-w-xl text-sm text-stone-600">
-            Lucro = valor da venda menos (peças × custo da categoria). Configure custos e
-            conteúdo por categoria na aba{" "}
-            <Link href="/admin/categorias" className="font-medium text-violet-800 underline">
-              Categorias
-            </Link>
-            . Só entram vendas confirmadas no admin com valor de venda registado;
-            pedidos pendentes ou sem valor não contam. Data = confirmação do pagamento.
-          </p>
           {periodDescription && (
             <p className="mt-1 text-xs text-stone-500">{periodDescription}</p>
           )}
