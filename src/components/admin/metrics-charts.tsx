@@ -41,7 +41,13 @@ function formatInt(n: number) {
   return new Intl.NumberFormat("pt-BR").format(Math.round(n));
 }
 
-export function SegmentPieChart({ data }: { data: NamedValue[] }) {
+export function SegmentPieChart({
+  data,
+  theme = "light",
+}: {
+  data: NamedValue[];
+  theme?: "light" | "purple";
+}) {
   const filtered = data.filter((d) => d.value > 0);
   if (filtered.length === 0) return null;
   const segmentColor = (name: string) =>
@@ -76,23 +82,31 @@ export function SegmentPieChart({ data }: { data: NamedValue[] }) {
               boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.08)",
             }}
           />
-          <Legend />
+          <Legend
+            wrapperStyle={
+              theme === "purple"
+                ? { color: "rgba(255,255,255,0.85)", fontSize: "12px" }
+                : undefined
+            }
+          />
         </PieChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-/** Junta fatias pequenas em &quot;Outros&quot; para legibilidade. */
+/** Junta fatias pequenas em "Outros" para legibilidade. */
 export function CategoryPieChart({
   title,
   entries,
   valuePrefix = "",
+  theme = "light",
 }: {
   title: string;
   entries: { name: string; value: number }[];
   /** ex.: R$ — Tooltip mostra valor formatado */
   valuePrefix?: string;
+  theme?: "light" | "purple";
 }) {
   const sorted = [...entries].sort((a, b) => b.value - a.value);
   const maxSlices = 8;
@@ -120,7 +134,13 @@ export function CategoryPieChart({
 
   return (
     <div>
-      <p className="mb-2 text-center text-xs font-semibold uppercase tracking-wide text-stone-500">
+      <p
+        className={
+          theme === "purple"
+            ? "mb-2 text-center text-xs font-semibold uppercase tracking-wide text-violet-200/90"
+            : "mb-2 text-center text-xs font-semibold uppercase tracking-wide text-stone-500"
+        }
+      >
         {title}
       </p>
       <div className="h-[300px] w-full">
@@ -157,7 +177,11 @@ export function CategoryPieChart({
             <Legend
               layout="horizontal"
               verticalAlign="bottom"
-              wrapperStyle={{ fontSize: "11px" }}
+              wrapperStyle={
+                theme === "purple"
+                  ? { fontSize: "11px", color: "rgba(255,255,255,0.85)" }
+                  : { fontSize: "11px" }
+              }
             />
           </PieChart>
         </ResponsiveContainer>

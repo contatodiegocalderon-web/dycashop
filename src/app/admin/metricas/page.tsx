@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAdminAuth } from "@/contexts/admin-auth";
 
+import { AdminPurpleCard, AdminPurpleStatCard } from "@/components/admin/admin-purple-card";
 import {
   CategoryPieChart,
   SegmentPieChart,
@@ -323,74 +324,53 @@ export default function AdminMetricasPage() {
 
       {metrics && (
         <div className="mb-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            {
-              label: "Vendas",
-              value: String(metrics.orderCount),
-              sub: "Pedidos com valor registado",
-              gradient: "from-violet-500/90 to-fuchsia-600",
-            },
-            {
-              label: "Ticket médio",
-              value: money(metrics.averageTicket),
-              sub: "Por pedido",
-              gradient: "from-sky-500/90 to-blue-600",
-            },
-            {
-              label: "Faturamento",
-              value: money(metrics.totalRevenue),
-              sub: "Total",
-              gradient: "from-violet-500/90 to-purple-700",
-            },
-            {
-              label: "Lucro estimado",
-              value: money(metrics.totalProfit),
-              sub: "Com base nos custos",
-              gradient: "from-amber-500/90 to-orange-600",
-            },
-          ].map((card) => (
-            <div
-              key={card.label}
-              className="relative overflow-hidden rounded-2xl border border-white/20 bg-white p-5 shadow-xl shadow-stone-900/10"
-            >
-              <div
-                className={`pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-gradient-to-br opacity-40 blur-2xl ${card.gradient}`}
-              />
-              <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">
-                {card.label}
-              </p>
-              <p className="mt-2 text-3xl font-extrabold tracking-tight text-stone-950">
-                {card.value}
-              </p>
-              <p className="mt-1 text-xs text-stone-500">{card.sub}</p>
-            </div>
-          ))}
+          <AdminPurpleStatCard
+            label="Vendas"
+            value={String(metrics.orderCount)}
+            sub="Pedidos com valor registado"
+          />
+          <AdminPurpleStatCard
+            label="Ticket médio"
+            value={money(metrics.averageTicket)}
+            sub="Por pedido"
+          />
+          <AdminPurpleStatCard
+            label="Faturamento"
+            value={money(metrics.totalRevenue)}
+            sub="Total"
+          />
+          <AdminPurpleStatCard
+            label="Lucro estimado"
+            value={money(metrics.totalProfit)}
+            sub="Com base nos custos"
+          />
         </div>
       )}
 
       {metrics && (
         <div className="mb-10 grid gap-8 lg:grid-cols-3">
-          <div className="rounded-3xl border border-stone-200/80 bg-white p-6 shadow-lg shadow-stone-900/5">
-            <h2 className="text-center text-sm font-bold uppercase tracking-wide text-stone-700">
+          <AdminPurpleCard className="p-6">
+            <h2 className="text-center text-sm font-bold uppercase tracking-wide text-white">
               Segmento de cliente
             </h2>
-            <p className="mt-1 text-center text-xs text-stone-500">
+            <p className="mt-1 text-center text-xs text-violet-100/70">
               Pedidos confirmados (novo vs antigo)
             </p>
             {segmentPieData.some((d) => d.value > 0) ? (
-              <SegmentPieChart data={segmentPieData} />
+              <SegmentPieChart data={segmentPieData} theme="purple" />
             ) : (
-              <p className="py-12 text-center text-sm text-stone-500">
+              <p className="py-12 text-center text-sm text-violet-100/60">
                 Sem dados de segmento neste período.
               </p>
             )}
-          </div>
-          <div className="rounded-3xl border border-stone-200/80 bg-white p-6 shadow-lg shadow-stone-900/5 lg:col-span-2">
+          </AdminPurpleCard>
+          <AdminPurpleCard className="p-6 lg:col-span-2">
             <div className="grid gap-8 md:grid-cols-2">
               {piecesPieEntries && piecesPieEntries.length > 0 && (
                 <CategoryPieChart
                   title="Peças por categoria"
                   entries={piecesPieEntries}
+                  theme="purple"
                 />
               )}
               {revenuePieEntries && revenuePieEntries.length > 0 && (
@@ -398,25 +378,28 @@ export default function AdminMetricasPage() {
                   title="Faturamento por categoria (rateio)"
                   entries={revenuePieEntries}
                   valuePrefix="R$"
+                  theme="purple"
                 />
               )}
             </div>
-          </div>
+          </AdminPurpleCard>
         </div>
       )}
 
       {metrics && sortedCategories.length > 0 && (
-        <div className="mb-10 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-lg shadow-stone-900/5">
-          <div className="border-b border-stone-200 bg-stone-100 px-6 py-4">
-            <h2 className="font-bold text-stone-950">Detalhe por categoria</h2>
-            <p className="text-xs text-stone-700">
+        <AdminPurpleCard className="mb-10 overflow-hidden">
+          <div className="border-b border-white/10 px-6 py-4">
+            <h2 className="font-bold text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]">
+              Detalhe por categoria
+            </h2>
+            <p className="text-xs text-violet-100/70">
               Faturamento repartido pelo número de peças no pedido.
             </p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto px-2 pb-2">
             <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="text-xs uppercase text-stone-700">
-                <tr className="border-b border-stone-200">
+              <thead className="text-xs uppercase text-violet-200/70">
+                <tr className="border-b border-white/10">
                   <th className="px-6 py-3">Categoria</th>
                   <th className="px-6 py-3">Peças</th>
                   <th className="px-6 py-3">Faturado</th>
@@ -425,13 +408,13 @@ export default function AdminMetricasPage() {
               </thead>
               <tbody>
                 {sortedCategories.map(([cat, pieces]) => (
-                  <tr key={cat} className="border-b border-stone-100 last:border-0">
-                    <td className="px-6 py-3 font-semibold text-stone-950">{cat}</td>
-                    <td className="px-6 py-3 font-medium text-stone-900">{pieces}</td>
-                    <td className="px-6 py-3 font-medium text-stone-900">
+                  <tr key={cat} className="border-b border-white/10 last:border-0">
+                    <td className="px-6 py-3 font-semibold text-white">{cat}</td>
+                    <td className="px-6 py-3 font-medium text-violet-50/90">{pieces}</td>
+                    <td className="px-6 py-3 font-medium text-violet-50/90">
                       {money(metrics.revenueByCategory[cat] ?? 0)}
                     </td>
-                    <td className="px-6 py-3 font-medium text-stone-900">
+                    <td className="px-6 py-3 font-medium text-violet-50/90">
                       {money(metrics.profitByCategory[cat] ?? 0)}
                     </td>
                   </tr>
@@ -439,21 +422,23 @@ export default function AdminMetricasPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </AdminPurpleCard>
       )}
 
       {isOwner && sellerBreakdown.length > 0 && (
-        <div className="mb-10 overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-lg shadow-stone-900/5">
-          <div className="border-b border-stone-200 bg-stone-100 px-6 py-4">
-            <h2 className="font-bold text-stone-950">Desempenho por vendedor</h2>
-            <p className="text-xs text-stone-700">
+        <AdminPurpleCard className="mb-10 overflow-hidden">
+          <div className="border-b border-white/10 px-6 py-4">
+            <h2 className="font-bold text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]">
+              Desempenho por vendedor
+            </h2>
+            <p className="text-xs text-violet-100/70">
               Faturamento, lucro e categoria mais vendida por vendedor.
             </p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto px-2 pb-2">
             <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="text-xs uppercase text-stone-700">
-                <tr className="border-b border-stone-200">
+              <thead className="text-xs uppercase text-violet-200/70">
+                <tr className="border-b border-white/10">
                   <th className="px-6 py-3">Vendedor</th>
                   <th className="px-6 py-3">Vendas</th>
                   <th className="px-6 py-3">Faturamento</th>
@@ -463,15 +448,19 @@ export default function AdminMetricasPage() {
               </thead>
               <tbody>
                 {sellerBreakdown.map((s) => (
-                  <tr key={s.staffId} className="border-b border-stone-100 last:border-0">
+                  <tr key={s.staffId} className="border-b border-white/10 last:border-0">
                     <td className="px-6 py-3">
-                      <p className="font-semibold text-stone-950">{s.staffName}</p>
-                      <p className="text-xs text-stone-700">{s.staffEmail}</p>
+                      <p className="font-semibold text-white">{s.staffName}</p>
+                      <p className="text-xs text-violet-100/65">{s.staffEmail}</p>
                     </td>
-                    <td className="px-6 py-3 font-medium text-stone-900">{s.orderCount}</td>
-                    <td className="px-6 py-3 font-medium text-stone-900">{money(s.totalRevenue)}</td>
-                    <td className="px-6 py-3 font-medium text-stone-900">{money(s.totalProfit)}</td>
-                    <td className="px-6 py-3 font-medium text-stone-900">
+                    <td className="px-6 py-3 font-medium text-violet-50/90">{s.orderCount}</td>
+                    <td className="px-6 py-3 font-medium text-violet-50/90">
+                      {money(s.totalRevenue)}
+                    </td>
+                    <td className="px-6 py-3 font-medium text-violet-50/90">
+                      {money(s.totalProfit)}
+                    </td>
+                    <td className="px-6 py-3 font-medium text-violet-50/90">
                       {s.topCategory ? `${s.topCategory} (${s.topCategoryPieces})` : "—"}
                     </td>
                   </tr>
@@ -479,7 +468,7 @@ export default function AdminMetricasPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </AdminPurpleCard>
       )}
 
     </div>

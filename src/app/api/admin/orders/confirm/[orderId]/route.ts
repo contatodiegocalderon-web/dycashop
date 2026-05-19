@@ -3,6 +3,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
 import { resolvePrincipal } from "@/lib/access";
 import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
+import {
+  canStartOrderConfirm,
+  driveProductIdsForConfirm,
+  isConfirmLockPayload,
+  parseDriveRetry,
+  type DriveRetryPayload,
+} from "@/lib/order-drive-retry";
 import type { CustomerSegment } from "@/types";
 
 export const runtime = "nodejs";
@@ -128,19 +135,25 @@ export async function POST(
         { status: 400 }
       );
     }
-    const existingLock =
-      order.sale_amount_by_category &&
-      typeof order.sale_amount_by_category === "object" &&
-      "_confirm_lock" in (order.sale_amount_by_category as Record<string, unknown>);
-    if (existingLock) {
+    if (isConfirmLockPayload(order.sale_amount_by_category)) {
       return NextResponse.json(
         {
           error:
-            "Este pedido está bloqueado após uma falha de sincronização com o Drive. Não é permitido confirmar novamente para evitar renomeações duplicadas.",
+            "Este pedido está bloqueado após uma falha de sincronização com o Drive. Remova o bloqueio antes de confirmar.",
         },
         { status: 409 }
       );
     }
+    if (!canStartOrderConfirm(order.sale_amount_by_category)) {
+      return NextResponse.json(
+        { error: "Este pedido não pode ser confirmado no estado actual." },
+        { status: 409 }
+      );
+    }
+
+    const driveRetry: DriveRetryPayload | null = parseDriveRetry(
+      order.sale_amount_by_category
+    );
 
     const { data: items, error: iErr } = await admin
       .from("order_items")
@@ -164,7 +177,6 @@ export async function POST(
       .update({ sale_amount_by_category: confirmLock })
       .eq("id", orderId)
       .eq("status", "PENDENTE_PAGAMENTO")
-      .is("sale_amount_by_category", null)
       .select("id");
     if (lockErr) {
       return NextResponse.json({ error: lockErr.message }, { status: 500 });
@@ -179,9 +191,10 @@ export async function POST(
       );
     }
     const releaseLock = async () => {
+      const payload = driveRetry ? { _drive_retry: driveRetry } : null;
       await admin
         .from("orders")
-        .update({ sale_amount_by_category: null })
+        .update({ sale_amount_by_category: payload })
         .eq("id", orderId)
         .eq("status", "PENDENTE_PAGAMENTO");
     };
@@ -297,8 +310,16 @@ export async function POST(
     if (computedSaleAmount <= 0 && bodyParsed.saleAmount > 0) {
       computedSaleAmount = bodyParsed.saleAmount;
     }
-    // 2) Renomeia/apaga no Drive conforme novo stock. Se falhar, desfaz tudo.
-    const driveRename = await renameDriveFilesToCurrentStock(productIdList);
+    // 2) Drive: só as peças que falharam na tentativa anterior (as já OK ficam de fora).
+    const driveProductIds = driveProductIdsForConfirm(
+      productIdList,
+      driveRetry
+    );
+    const driveRename =
+      driveProductIds.length > 0
+        ? await renameDriveFilesToCurrentStock(driveProductIds)
+        : { ok: [] as string[], errors: [] as { productId: string; message: string }[] };
+
     if (driveRename.errors.length > 0) {
       // Rollback de stock/status
       for (const productId of productIdList) {
@@ -313,12 +334,33 @@ export async function POST(
           .eq("id", productId);
       }
       const details = driveRename.errors
+        .filter((e) => e.productId !== "_rollback")
         .map((e) => `${e.productId}: ${e.message}`)
         .join(" | ");
+      const skipAfterAttempt = Array.from(
+        new Set([...(driveRetry?.skip_ids ?? []), ...driveRename.ok])
+      );
+      await admin
+        .from("orders")
+        .update({
+          sale_amount_by_category: {
+            _confirm_lock: {
+              at: new Date().toISOString(),
+              by: confirmedByStaffId ?? "api_key",
+              reason: "drive_rename_failed",
+              drive_ok: skipAfterAttempt,
+              drive_errors: driveRename.errors.filter(
+                (e) => e.productId !== "_rollback"
+              ),
+            },
+          },
+        })
+        .eq("id", orderId)
+        .eq("status", "PENDENTE_PAGAMENTO");
       return NextResponse.json(
         {
           error:
-            "Falha ao atualizar nomes no Drive. Pedido NÃO foi confirmado e o estoque foi restaurado. Pedido bloqueado para evitar nova renomeação duplicada.",
+            "Falha ao atualizar nomes no Drive. Pedido NÃO foi confirmado e o estoque foi restaurado. Peças já sincronizadas no Drive não serão tocadas na próxima tentativa. Pedido bloqueado — use «Ver estado Drive» e depois desbloqueie.",
           driveRename: {
             renamed: driveRename.ok.length,
             errors: driveRename.errors,

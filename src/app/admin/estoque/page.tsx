@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AdminPurpleCard, AdminPurpleStatCard } from "@/components/admin/admin-purple-card";
 import { CategoryPieChart } from "@/components/admin/metrics-charts";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import type { CategoryStockSummary, StockInventorySnapshot } from "@/lib/stock-inventory";
@@ -129,29 +130,24 @@ export default function AdminEstoquePage() {
 
       {data && !loading && (
         <div className="mb-6 grid gap-4 sm:grid-cols-2">
-          <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">
-              Total geral de peças
-            </p>
-            <p className="mt-2 text-4xl font-extrabold text-stone-950">
-              {data.grandTotal.pieces.toLocaleString("pt-BR")}
-            </p>
-            <p className="mt-1 text-sm text-stone-600">
-              {data.grandTotal.productCount.toLocaleString("pt-BR")} produto(s) (SKUs)
-            </p>
-          </div>
-          <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+          <AdminPurpleStatCard
+            label="Total geral de peças"
+            value={data.grandTotal.pieces.toLocaleString("pt-BR")}
+            sub={`${data.grandTotal.productCount.toLocaleString("pt-BR")} produto(s) (SKUs)`}
+          />
+          <AdminPurpleCard className="p-4">
             {chartEntries.length > 0 ? (
               <CategoryPieChart
                 title="Peças por categoria"
                 entries={chartEntries}
+                theme="purple"
               />
             ) : (
-              <p className="py-8 text-center text-sm text-stone-500">
+              <p className="py-8 text-center text-sm text-violet-100/60">
                 Sem dados para o gráfico.
               </p>
             )}
-          </div>
+          </AdminPurpleCard>
         </div>
       )}
 
@@ -191,56 +187,60 @@ function CategoryCard({
   onToggle: () => void;
 }) {
   return (
-    <li className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-4 text-left hover:bg-stone-50/80"
-      >
-        <div>
-          <p className="text-lg font-bold text-stone-900">{row.category}</p>
-          <p className="text-sm text-stone-600">
-            {row.pieces.toLocaleString("pt-BR")} peça(s) ·{" "}
-            {row.productCount.toLocaleString("pt-BR")} produto(s)
-          </p>
-        </div>
-        <span className="text-sm font-medium text-violet-800">
-          {open ? "Ocultar tamanhos" : "Ver por tamanho"}
-        </span>
-      </button>
-      {open && (
-        <div className="border-t border-stone-100 px-5 py-3">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="text-xs uppercase text-stone-500">
-                <th className="py-2 pr-4">Tamanho</th>
-                <th className="py-2 pr-4">Produtos</th>
-                <th className="py-2">Peças (Σ stock)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {row.bySize.map((sz) => (
-                <tr key={sz.size} className="border-t border-stone-100">
-                  <td className="py-2.5 font-semibold text-stone-900">{sz.size}</td>
-                  <td className="py-2.5 text-stone-700">
-                    {sz.productCount.toLocaleString("pt-BR")}
-                  </td>
-                  <td className="py-2.5 font-medium text-stone-900">
-                    {sz.pieces.toLocaleString("pt-BR")}
-                  </td>
+    <li>
+      <AdminPurpleCard className="overflow-hidden">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-white/5"
+        >
+          <div>
+            <p className="text-lg font-bold text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]">
+              {row.category}
+            </p>
+            <p className="text-sm text-violet-100/80">
+              {row.pieces.toLocaleString("pt-BR")} peça(s) ·{" "}
+              {row.productCount.toLocaleString("pt-BR")} produto(s)
+            </p>
+          </div>
+          <span className="text-sm font-medium text-violet-100/90">
+            {open ? "Ocultar tamanhos" : "Ver por tamanho"}
+          </span>
+        </button>
+        {open && (
+          <div className="border-t border-white/10 px-5 py-3">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="text-xs uppercase text-violet-200/70">
+                  <th className="py-2 pr-4">Tamanho</th>
+                  <th className="py-2 pr-4">Produtos</th>
+                  <th className="py-2">Peças (Σ stock)</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t border-stone-200 font-semibold text-stone-900">
-                <td className="py-2.5">Total</td>
-                <td className="py-2.5">{row.productCount.toLocaleString("pt-BR")}</td>
-                <td className="py-2.5">{row.pieces.toLocaleString("pt-BR")}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {row.bySize.map((sz) => (
+                  <tr key={sz.size} className="border-t border-white/10">
+                    <td className="py-2.5 font-semibold text-white">{sz.size}</td>
+                    <td className="py-2.5 text-violet-100/85">
+                      {sz.productCount.toLocaleString("pt-BR")}
+                    </td>
+                    <td className="py-2.5 font-medium text-white">
+                      {sz.pieces.toLocaleString("pt-BR")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-white/15 font-semibold text-white">
+                  <td className="py-2.5">Total</td>
+                  <td className="py-2.5">{row.productCount.toLocaleString("pt-BR")}</td>
+                  <td className="py-2.5">{row.pieces.toLocaleString("pt-BR")}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </AdminPurpleCard>
     </li>
   );
 }

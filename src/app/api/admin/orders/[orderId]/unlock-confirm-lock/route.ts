@@ -1,23 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
+import {
+  isConfirmLockPayload,
+  parseConfirmLock,
+} from "@/lib/order-drive-retry";
 
 export const runtime = "nodejs";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function isConfirmLockPayload(raw: unknown): boolean {
-  if (!raw || typeof raw !== "object") return false;
-  const o = raw as Record<string, unknown>;
-  if (!("_confirm_lock" in o)) return false;
-  const keys = Object.keys(o);
-  return keys.length === 1 && keys[0] === "_confirm_lock";
-}
-
 /**
  * POST /api/admin/orders/[orderId]/unlock-confirm-lock
- * Remove o lock deixado após falha ao renomear no Drive na confirmação, para poder tentar de novo.
+ * Remove o bloqueio e guarda quais produtos já estão OK no Drive para não renomear de novo.
  */
 export async function POST(
   request: NextRequest,
@@ -68,9 +64,30 @@ export async function POST(
       );
     }
 
+    const lock = parseConfirmLock(order.sale_amount_by_category);
+    const skipIds = Array.from(new Set(lock?.drive_ok ?? []));
+    const failedIds = Array.from(
+      new Set(
+        (lock?.drive_errors ?? [])
+          .map((e) => e.productId.trim())
+          .filter((id) => id && id !== "_rollback")
+      )
+    );
+
+    const nextPayload =
+      skipIds.length > 0 || failedIds.length > 0
+        ? {
+            _drive_retry: {
+              skip_ids: skipIds,
+              failed_ids: failedIds,
+              at: new Date().toISOString(),
+            },
+          }
+        : null;
+
     const { error: uErr } = await admin
       .from("orders")
-      .update({ sale_amount_by_category: null })
+      .update({ sale_amount_by_category: nextPayload })
       .eq("id", orderId)
       .eq("status", "PENDENTE_PAGAMENTO");
 
@@ -78,7 +95,14 @@ export async function POST(
       return NextResponse.json({ error: uErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      drive_retry: nextPayload?._drive_retry ?? null,
+      message:
+        skipIds.length > 0
+          ? `Bloqueio removido. Na próxima confirmação só ${failedIds.length > 0 ? failedIds.length : "as peças em falta"} serão enviadas ao Drive (${skipIds.length} já ficam de fora).`
+          : "Bloqueio removido. Pode confirmar o pedido outra vez.",
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";
     return NextResponse.json({ error: msg }, { status: 500 });

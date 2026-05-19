@@ -71,6 +71,64 @@ function isDriveConfirmLocked(order: OrderRow): boolean {
   return "_confirm_lock" in (raw as Record<string, unknown>);
 }
 
+function parseDriveRetryFromOrder(order: OrderRow): {
+  skip_ids: string[];
+  failed_ids: string[];
+} | null {
+  const raw = order.sale_amount_by_category;
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const retry = o._drive_retry;
+  if (!retry || typeof retry !== "object") return null;
+  const r = retry as Record<string, unknown>;
+  return {
+    skip_ids: Array.isArray(r.skip_ids)
+      ? (r.skip_ids as unknown[]).map((id) => String(id))
+      : [],
+    failed_ids: Array.isArray(r.failed_ids)
+      ? (r.failed_ids as unknown[]).map((id) => String(id))
+      : [],
+  };
+}
+
+type DriveSyncLine = {
+  product_id: string;
+  brand: string;
+  color: string;
+  qty_in_order: number;
+  db_stock: number;
+  stock_after_confirm: number;
+  drive_file_id: string;
+  drive_exists: boolean;
+  drive_current_name: string | null;
+  expected_name_for_db_stock: string;
+  expected_name_after_confirm: string | null;
+  status:
+    | "synced"
+    | "drive_ahead"
+    | "file_missing"
+    | "name_mismatch"
+    | "would_delete";
+  hint: string;
+};
+
+type DriveDiagnosticState =
+  | { loading: true }
+  | {
+      loading: false;
+      error?: string;
+      lines?: DriveSyncLine[];
+      summary?: Record<string, number>;
+    };
+
+const DRIVE_STATUS_LABEL: Record<DriveSyncLine["status"], string> = {
+  synced: "OK — alinhado",
+  drive_ahead: "Drive à frente da base",
+  file_missing: "Ficheiro não encontrado",
+  name_mismatch: "Nome diferente",
+  would_delete: "Seria apagado na confirmação",
+};
+
 export default function AdminPedidosClient() {
   const { adminFetch, session } = useAdminAuth();
   const isDiegoOwnerUi = session?.role === "owner" && session?.fromApiKey !== true;
@@ -96,6 +154,9 @@ export default function AdminPedidosClient() {
     null
   );
   const [unlocking, setUnlocking] = useState<string | null>(null);
+  const [driveDiagnosticByOrder, setDriveDiagnosticByOrder] = useState<
+    Record<string, DriveDiagnosticState>
+  >({});
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>(
     {}
   );
@@ -172,6 +233,40 @@ export default function AdminPedidosClient() {
     void fetchOrders();
   }, [fetchOrders]);
 
+  async function loadDriveDiagnostic(orderId: string) {
+    setDriveDiagnosticByOrder((prev) => ({
+      ...prev,
+      [orderId]: { loading: true },
+    }));
+    try {
+      const res = await adminFetch(
+        `/api/admin/orders/${encodeURIComponent(orderId)}/drive-sync-diagnostic`
+      );
+      const data = (await res.json()) as {
+        error?: string;
+        lines?: DriveSyncLine[];
+        summary?: Record<string, number>;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Falha ao carregar diagnóstico");
+      setDriveDiagnosticByOrder((prev) => ({
+        ...prev,
+        [orderId]: {
+          loading: false,
+          lines: data.lines ?? [],
+          summary: data.summary,
+        },
+      }));
+    } catch (e) {
+      setDriveDiagnosticByOrder((prev) => ({
+        ...prev,
+        [orderId]: {
+          loading: false,
+          error: e instanceof Error ? e.message : "Erro",
+        },
+      }));
+    }
+  }
+
   async function unlockDriveConfirmLock(orderId: string) {
     setUnlocking(orderId);
     setError(null);
@@ -185,9 +280,11 @@ export default function AdminPedidosClient() {
       if (!res.ok) {
         throw new Error(data.error ?? "Falha ao desbloquear");
       }
-      setConfirmSuccessMsg(
-        "Bloqueio removido. Corrija o Drive se ainda faltar; depois confirme o pedido outra vez."
-      );
+      const msg =
+        typeof (data as { message?: string }).message === "string"
+          ? (data as { message: string }).message
+          : "Bloqueio removido. Na próxima confirmação só as peças em falha serão enviadas ao Drive.";
+      setConfirmSuccessMsg(msg);
       await fetchOrders();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao desbloquear");
@@ -427,6 +524,7 @@ export default function AdminPedidosClient() {
           const bySize = groupItems(items);
           const waHref = waLinkFromDigits(order.customer_whatsapp);
           const driveLocked = isDriveConfirmLocked(order);
+          const driveRetry = parseDriveRetryFromOrder(order);
           return (
             <li
               key={order.id}
@@ -442,16 +540,109 @@ export default function AdminPedidosClient() {
                     }`}
                   </p>
                   <p className="font-mono text-xs text-stone-500">{order.id}</p>
+                  {!driveLocked && driveRetry && (
+                    <p className="mt-2 max-w-xl rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-2 text-xs text-violet-950">
+                      Próxima confirmação:{" "}
+                      <strong>
+                        {driveRetry.failed_ids.length > 0
+                          ? `${driveRetry.failed_ids.length} peça(s) no Drive`
+                          : "só peças ainda por sincronizar"}
+                      </strong>
+                      {driveRetry.skip_ids.length > 0 && (
+                        <>
+                          {" "}
+                          · {driveRetry.skip_ids.length} já renomeada(s) e ignorada(s)
+                        </>
+                      )}
+                    </p>
+                  )}
                   {driveLocked && (
                     <div className="mt-2 space-y-2">
                       <p className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
                         Bloqueado por falha no Drive
                       </p>
                       <p className="max-w-xl text-xs text-amber-950/90">
-                        Resolva o acesso ao Google Drive em Configuração (OAuth e pasta). Quando
-                        estiver OK, use o botão abaixo para remover o bloqueio e volte a confirmar o
-                        pedido — a renomeação corre nessa confirmação.
+                        O stock na base foi reposto, mas algumas fotos podem ter ficado renomeadas
+                        no Drive. Use «Ver estado Drive» para saber quais peças corrigir. Só
+                        desbloqueie e confirme de novo quando tudo estiver alinhado (ou use em
+                        Configuração «Alinhar Drive ao stock»).
                       </p>
+                      <button
+                        type="button"
+                        onClick={() => void loadDriveDiagnostic(order.id)}
+                        className="mt-2 rounded-lg border border-amber-500 bg-white px-3 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-50"
+                      >
+                        Ver estado Drive
+                      </button>
+                      {(() => {
+                        const diag = driveDiagnosticByOrder[order.id];
+                        if (!diag) return null;
+                        if (diag.loading) {
+                          return (
+                            <p className="mt-2 text-xs text-amber-900">
+                              A comparar base e Drive…
+                            </p>
+                          );
+                        }
+                        if (diag.error) {
+                          return (
+                            <p className="mt-2 text-xs text-red-800">{diag.error}</p>
+                          );
+                        }
+                        if (!diag.lines?.length) return null;
+                        return (
+                          <div className="mt-3 max-w-2xl rounded-lg border border-amber-300/80 bg-white/90 p-3 text-xs text-stone-800">
+                            <p className="font-semibold text-amber-950">
+                              Diagnóstico ({diag.lines.length} produto
+                              {diag.lines.length === 1 ? "" : "s"})
+                            </p>
+                            <ul className="mt-2 max-h-64 space-y-2 overflow-y-auto">
+                              {diag.lines.map((line) => (
+                                <li
+                                  key={line.product_id}
+                                  className="rounded border border-stone-200 bg-stone-50/80 px-2 py-1.5"
+                                >
+                                  <p className="font-medium">
+                                    {line.brand} {line.color}{" "}
+                                    <span className="font-normal text-stone-500">
+                                      · {line.qty_in_order} no pedido · stock BD{" "}
+                                      {line.db_stock}
+                                    </span>
+                                  </p>
+                                  <p
+                                    className={
+                                      line.status === "synced"
+                                        ? "text-emerald-800"
+                                        : line.status === "drive_ahead"
+                                          ? "text-amber-900"
+                                          : "text-red-800"
+                                    }
+                                  >
+                                    {DRIVE_STATUS_LABEL[line.status]}
+                                  </p>
+                                  <p className="text-stone-600">{line.hint}</p>
+                                  {line.drive_current_name && (
+                                    <p className="mt-0.5 font-mono text-[10px] text-stone-500">
+                                      Drive: {line.drive_current_name}
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="mt-2 text-[11px] text-stone-600">
+                              <Link
+                                href="/admin/configuracao"
+                                className="font-medium text-violet-800 underline"
+                              >
+                                Configuração
+                              </Link>
+                              {" — "}
+                              teste OAuth e «Alinhar Drive ao stock» depois de corrigir IDs em
+                              falta.
+                            </p>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                   {order.customer_name && (

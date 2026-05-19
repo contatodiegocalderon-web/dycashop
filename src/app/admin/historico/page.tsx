@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { OrderDaySectionHeader } from "@/components/admin/order-day-section-header";
 import { useAdminAuth } from "@/contexts/admin-auth";
+import { groupOrdersByLocalDay } from "@/lib/order-day-groups";
 import type { OrderItemRow, OrderRow } from "@/types";
 
 type PeriodKey =
@@ -208,6 +210,7 @@ export default function AdminHistoricoPage() {
   const [sellerScope, setSellerScope] = useState<string>("all");
   const [sellerFilterOptions, setSellerFilterOptions] = useState<SellerFilterOption[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -304,6 +307,15 @@ export default function AdminHistoricoPage() {
   useEffect(() => {
     void fetchOrders();
   }, [fetchOrders]);
+
+  const orderDayGroups = useMemo(
+    () =>
+      groupOrdersByLocalDay(
+        orders,
+        (o) => o.confirmed_at ?? o.updated_at ?? o.created_at
+      ),
+    [orders]
+  );
 
   async function deleteOrder(orderId: string) {
     if (!isDiegoOwnerUi) return;
@@ -423,8 +435,12 @@ export default function AdminHistoricoPage() {
         <p className="text-stone-600">Nenhum pedido confirmado ainda.</p>
       )}
 
-      <ul className="space-y-4">
-        {orders.map((order) => {
+      <div className="space-y-8">
+        {orderDayGroups.map((group) => (
+          <section key={group.dayKey}>
+            <OrderDaySectionHeader label={group.label} />
+            <ul className="mt-4 space-y-4">
+              {group.orders.map((order) => {
           const lines = aggregateByCategory(order.order_items ?? []);
           const waHref = waLink(order.customer_whatsapp);
           const revenueByCategory = resolveOrderRevenueByCategory(order);
@@ -437,6 +453,7 @@ export default function AdminHistoricoPage() {
               ? Number(totalValueFromCategories.toFixed(2))
               : displayOrderAmount(order);
           const profit = calculateOrderProfit(order, costs);
+          const expanded = expandedOrders[order.id] === true;
           return (
             <li
               key={order.id}
@@ -465,63 +482,86 @@ export default function AdminHistoricoPage() {
                 ))}
               </ul>
             )}
-            {order.sale_amount != null || order.sale_amount_by_category ? (
-              <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                <p className="text-base font-semibold text-emerald-900">
-                  <span className="text-emerald-700">Valor total: </span>
-                  {totalValue.toLocaleString("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  })}
-                </p>
-                <p className="text-base font-semibold text-blue-900">
-                  <span className="text-blue-700">Lucro: </span>
-                  {profit.toLocaleString("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  })}
-                </p>
-              </div>
-            ) : null}
-            <p className="mt-2 text-xs text-stone-400">
-              {new Date(order.confirmed_at ?? order.updated_at).toLocaleString("pt-BR")}
-            </p>
-            {order.public_token ? (
-              <p className="mt-2 text-xs">
-                <Link
-                  href={`/recibo/${order.public_token}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium text-violet-800 underline hover:text-violet-900"
-                >
-                  Abrir recibo do cliente
-                </Link>
-              </p>
-            ) : null}
-            {waHref && (
-              <a
-                href={waHref}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#20bd5a]"
-              >
-                Chamar no WhatsApp
-              </a>
-            )}
-            {isDiegoOwnerUi && (
               <button
                 type="button"
-                onClick={() => void deleteOrder(order.id)}
-                disabled={deletingId === order.id}
-                className="mt-3 ml-0 inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-900 hover:bg-red-100 disabled:opacity-50 sm:ml-2"
+                onClick={() =>
+                  setExpandedOrders((prev) => ({
+                    ...prev,
+                    [order.id]: !expanded,
+                  }))
+                }
+                className="mt-3 text-sm font-medium text-violet-800 underline hover:text-violet-900"
               >
-                {deletingId === order.id ? "A excluir…" : "Excluir pedido"}
+                {expanded ? "Ver menos" : "Ver mais"}
               </button>
-            )}
+              {expanded && (
+                <div className="mt-3 border-t border-stone-100 pt-3">
+                  {order.sale_amount != null || order.sale_amount_by_category ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <p className="text-base font-semibold text-emerald-900">
+                        <span className="text-emerald-700">Valor total: </span>
+                        {totalValue.toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        })}
+                      </p>
+                      <p className="text-base font-semibold text-blue-900">
+                        <span className="text-blue-700">Lucro: </span>
+                        {profit.toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        })}
+                      </p>
+                    </div>
+                  ) : null}
+                  <p className="mt-2 text-xs text-stone-400">
+                    {new Date(order.confirmed_at ?? order.updated_at).toLocaleString(
+                      "pt-BR"
+                    )}
+                  </p>
+                  {order.public_token ? (
+                    <p className="mt-2 text-xs">
+                      <Link
+                        href={`/recibo/${order.public_token}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-violet-800 underline hover:text-violet-900"
+                      >
+                        Abrir recibo do cliente
+                      </Link>
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {waHref && (
+                      <a
+                        href={waHref}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#20bd5a]"
+                      >
+                        Chamar no WhatsApp
+                      </a>
+                    )}
+                    {isDiegoOwnerUi && (
+                      <button
+                        type="button"
+                        onClick={() => void deleteOrder(order.id)}
+                        disabled={deletingId === order.id}
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-900 hover:bg-red-100 disabled:opacity-50"
+                      >
+                        {deletingId === order.id ? "A excluir…" : "Excluir pedido"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </li>
           );
-        })}
-      </ul>
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }
