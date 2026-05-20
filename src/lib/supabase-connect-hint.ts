@@ -12,6 +12,9 @@ export function supabaseFailureHint(raw: string): string {
   ) {
     return `${raw.trim()} — Verifique no .env.local: NEXT_PUBLIC_SUPABASE_URL deve ser o URL real do projeto (Supabase → Project Settings → API, ex.: https://abcdefgh.supabase.co), não um placeholder. Confirme também SUPABASE_SERVICE_ROLE_KEY (service_role, começa por eyJ… longo).`;
   }
+  if (m.includes("too many connections")) {
+    return `${raw.trim()} — A base de dados recebeu pedidos em paralelo a mais. A sincronização já processa imagens uma a uma; aguarde 1–2 minutos e volte a sincronizar só os que falharam (ou repita a importação).`;
+  }
   if (
     m.includes("does not exist") ||
     m.includes("catalog_settings") ||

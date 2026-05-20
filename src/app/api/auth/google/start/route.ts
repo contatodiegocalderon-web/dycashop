@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const url = buildGoogleAuthUrl();
+    const url = buildGoogleAuthUrl(request.nextUrl.origin);
     return NextResponse.json({ url });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao iniciar OAuth";

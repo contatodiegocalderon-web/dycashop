@@ -1,7 +1,9 @@
 import { google } from "googleapis";
 import heicConvert from "heic-convert";
 import type { Readable } from "stream";
+import type { DriveAuthClient } from "@/lib/drive-auth";
 import { ensureDriveAuthorized, getDriveAuth } from "@/lib/drive-auth";
+import { withRetry } from "@/lib/retry";
 import { bufferLooksLikeHeif } from "@/lib/drive-image-sniff";
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
@@ -25,12 +27,25 @@ async function heicToJpeg(buf: Buffer): Promise<Buffer> {
  * Descarrega bytes da imagem no Drive (OAuth já configurado).
  * Converte HEIC/HEIF para JPEG quando necessário.
  */
-export async function fetchDriveFileAsImageBuffer(fileId: string): Promise<{
+export async function fetchDriveFileAsImageBuffer(
+  fileId: string,
+  authOverride?: DriveAuthClient
+): Promise<{
   buffer: Buffer;
   /** Mime normalizado para gravar no Storage (jpeg/png/webp/gif). */
   contentType: string;
 }> {
-  const auth = await getDriveAuth();
+  return withRetry(
+    () => downloadDriveFileOnce(fileId, authOverride),
+    { label: `drive-download:${fileId}`, attempts: 4, baseDelayMs: 800 }
+  );
+}
+
+async function downloadDriveFileOnce(
+  fileId: string,
+  authOverride?: DriveAuthClient
+): Promise<{ buffer: Buffer; contentType: string }> {
+  const auth = authOverride ?? (await getDriveAuth());
   await ensureDriveAuthorized(auth);
   const drive = google.drive({ version: "v3", auth });
 

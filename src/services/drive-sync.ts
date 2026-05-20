@@ -1,4 +1,6 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { ensureDriveAuthorized, getDriveAuth } from "@/lib/drive-auth";
+import { isTransientSyncError, withRetry } from "@/lib/retry";
+import { getAdminClient } from "@/lib/supabase/admin";
 import {
   fetchDriveProductRows,
   type DriveImportRow,
@@ -13,8 +15,8 @@ import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
 
 const IN_CHUNK = 120;
 const UPSERT_CHUNK = 80;
-const IMAGE_BATCH = 5;
-const BETWEEN_BATCH_MS = 200;
+/** Uma imagem de cada vez — evita «Too many connections» no Supabase. */
+const BETWEEN_IMAGES_MS = 400;
 
 export type SyncResult = {
   imported: number;
@@ -71,7 +73,7 @@ function mergePreservingStock(
   });
 }
 
-type AdminClient = ReturnType<typeof createAdminClient>;
+type AdminClient = ReturnType<typeof getAdminClient>;
 
 type ImageStateRow = {
   id: string;
@@ -267,25 +269,34 @@ async function processImageQueue(
   let completed = 0;
   const total = queue.length;
 
-  for (let i = 0; i < queue.length; i += IMAGE_BATCH) {
-    const batch = queue.slice(i, i + IMAGE_BATCH);
-    await Promise.all(
-      batch.map(async (item) => {
-        try {
-          await syncOneProductImageToStorage(admin, item);
-          uploaded++;
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "Erro";
-          errors.push({
-            id: item.id,
-            drive_file_id: item.drive_file_id,
-            message: msg,
-          });
-          await markProductImageSyncError(admin, item.id).catch(() => {});
-        }
-      })
-    );
-    completed += batch.length;
+  const driveAuth = await getDriveAuth();
+  await ensureDriveAuthorized(driveAuth);
+
+  for (let i = 0; i < queue.length; i++) {
+    const item = queue[i]!;
+    try {
+      await withRetry(
+        () => syncOneProductImageToStorage(admin, item, driveAuth),
+        { label: `image-sync:${item.id}`, attempts: 3, baseDelayMs: 900 }
+      );
+      uploaded++;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erro";
+      errors.push({
+        id: item.id,
+        drive_file_id: item.drive_file_id,
+        message: msg,
+      });
+      if (isTransientSyncError(e)) {
+        await delay(1200);
+      }
+      await withRetry(() => markProductImageSyncError(admin, item.id), {
+        label: `mark-sync-error:${item.id}`,
+        attempts: 3,
+        baseDelayMs: 500,
+      }).catch(() => {});
+    }
+    completed++;
     emit?.({
       type: "progress",
       phase: "images",
@@ -293,8 +304,8 @@ async function processImageQueue(
       total,
       skipped: skippedCount,
     });
-    if (i + IMAGE_BATCH < queue.length) {
-      await delay(BETWEEN_BATCH_MS);
+    if (i + 1 < queue.length) {
+      await delay(BETWEEN_IMAGES_MS);
     }
   }
 
@@ -324,7 +335,7 @@ async function runSync(
 
   emit?.({ type: "phase", phase: "produtos" });
 
-  const admin = createAdminClient();
+  const admin = getAdminClient();
   await removeLegacyImportProducts(admin);
 
   const ids = fromDrive.map((r) => r.drive_file_id);

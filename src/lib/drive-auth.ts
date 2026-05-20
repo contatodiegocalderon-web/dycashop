@@ -2,13 +2,37 @@ import type { JWT } from "google-auth-library";
 import { OAuth2Client } from "google-auth-library";
 import { createOAuth2Client } from "@/lib/google-drive-oauth";
 import { getDriveJwtAuth } from "@/lib/google-drive-auth";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getAdminClient } from "@/lib/supabase/admin";
 
 export type DriveAuthClient = JWT | OAuth2Client;
 
+let cachedDriveAuth: DriveAuthClient | null = null;
+let cachedDriveAuthAt = 0;
+const DRIVE_AUTH_CACHE_MS = 10 * 60 * 1000;
+
+export function clearDriveAuthCache(): void {
+  cachedDriveAuth = null;
+  cachedDriveAuthAt = 0;
+}
+
+function oauthRefreshErrorHint(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  const lower = msg.toLowerCase();
+  if (lower.includes("invalid_grant") || lower.includes("invalid grant")) {
+    return (
+      "invalid_grant: o token Google na base de dados já não é válido (revogado, app OAuth alterada ou credenciais .env diferentes). Em /admin/configuracao clique «Conectar conta Google» de novo; se persistir, remova o acesso em myaccount.google.com/permissions e volte a conectar. Não atualize a página do callback do Google."
+    );
+  }
+  return msg;
+}
+
 export async function ensureDriveAuthorized(auth: DriveAuthClient): Promise<void> {
   if (auth instanceof OAuth2Client) {
-    await auth.getAccessToken();
+    try {
+      await auth.getAccessToken();
+    } catch (e) {
+      throw new Error(oauthRefreshErrorHint(e));
+    }
     return;
   }
   await (auth as JWT).authorize();
@@ -19,7 +43,14 @@ export async function ensureDriveAuthorized(auth: DriveAuthClient): Promise<void
  * Fallback: conta de serviço no .env (avançado).
  */
 export async function getDriveAuth(): Promise<DriveAuthClient> {
-  const admin = createAdminClient();
+  if (
+    cachedDriveAuth &&
+    Date.now() - cachedDriveAuthAt < DRIVE_AUTH_CACHE_MS
+  ) {
+    return cachedDriveAuth;
+  }
+
+  const admin = getAdminClient();
   const { data, error } = await admin
     .from("catalog_settings")
     .select("google_refresh_token")
@@ -38,6 +69,8 @@ export async function getDriveAuth(): Promise<DriveAuthClient> {
   if (rt && hasOAuthEnv) {
     const oauth2 = createOAuth2Client();
     oauth2.setCredentials({ refresh_token: rt });
+    cachedDriveAuth = oauth2;
+    cachedDriveAuthAt = Date.now();
     return oauth2;
   }
 
@@ -47,5 +80,8 @@ export async function getDriveAuth(): Promise<DriveAuthClient> {
     );
   }
 
-  return getDriveJwtAuth();
+  const jwt = getDriveJwtAuth();
+  cachedDriveAuth = jwt;
+  cachedDriveAuthAt = Date.now();
+  return jwt;
 }

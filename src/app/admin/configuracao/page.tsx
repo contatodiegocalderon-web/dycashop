@@ -306,6 +306,10 @@ function ConfiguracaoInner() {
           <code className="break-all">
             …/api/auth/google/callback
           </code>
+          . Use sempre{" "}
+          <code className="rounded bg-white/80 px-1">http://localhost:3000</code>{" "}
+          no browser (evite 127.0.0.1 se o redirect no Google for localhost). Após
+          autorizar, não atualize a página do callback — aguarde voltar à configuração.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
