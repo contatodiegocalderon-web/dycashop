@@ -7,16 +7,10 @@ import { CART_STORAGE_KEY, useCart } from "@/providers/cart-provider";
 import type { CartLine, ProductSize } from "@/types";
 import type { WhatsAppSeller } from "@/lib/sellers";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
+import { normalizeCheckoutWaDigits } from "@/lib/abandoned-checkout";
 import { buildOrderWhatsAppText, waMeUrl } from "@/lib/whatsapp";
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
-
-/** Mesma normalização que `/api/orders` (55 + dígitos). */
-function normalizeCheckoutWaDigits(formatted: string): string {
-  const raw = formatted.replace(/\D/g, "");
-  if (!raw) return "";
-  return raw.startsWith("55") ? raw : `55${raw}`;
-}
 
 function groupBySize(lines: CartLine[]) {
   const m = new Map<ProductSize, CartLine[]>();
@@ -98,18 +92,22 @@ function SellerChoiceAvatar({ seller }: { seller: WhatsAppSeller }) {
 }
 
 export default function CarrinhoPage() {
-  const { lines, setLineQuantity, removeLine, clear } = useCart();
+  const { lines, hydrated, setLineQuantity, removeLine, clear, reconcileWithCatalog } =
+    useCart();
   const [customerName, setCustomerName] = useState("");
   const [customerWhatsApp, setCustomerWhatsApp] = useState("+55 ");
   const [cep, setCep] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [cartNotice, setCartNotice] = useState<string | null>(null);
+  const [reconciling, setReconciling] = useState(false);
   const [sellerModalOpen, setSellerModalOpen] = useState(false);
   const [selectedSellerPhone, setSelectedSellerPhone] = useState<string | null>(
     WHATSAPP_SELLERS[0]?.phone ?? null
   );
   const [portalReady, setPortalReady] = useState(false);
   const lastTouchRef = useRef(0);
+  const initialReconcileDoneRef = useRef(false);
   /** Evita sobrescrever o nome depois de o cliente editar manualmente (ref lida no fim do debounce). */
   const nameManuallyEditedRef = useRef(false);
 
@@ -118,6 +116,24 @@ export default function CarrinhoPage() {
   useEffect(() => {
     setPortalReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!hydrated || initialReconcileDoneRef.current) return;
+    initialReconcileDoneRef.current = true;
+    if (!lines.length) return;
+
+    let cancelled = false;
+    setReconciling(true);
+    void reconcileWithCatalog().then((notice) => {
+      if (!cancelled) {
+        setCartNotice(notice);
+        setReconciling(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, lines.length, reconcileWithCatalog]);
 
   useEffect(() => {
     const digits = normalizeCheckoutWaDigits(customerWhatsApp);
@@ -203,7 +219,16 @@ export default function CarrinhoPage() {
 
     setBusy(true);
     setErr(null);
+    setCartNotice(null);
     try {
+      const staleNotice = await reconcileWithCatalog();
+      if (staleNotice) {
+        setCartNotice(staleNotice);
+        throw new Error(
+          "O carrinho mudou: algumas peças já não estão disponíveis. Revise e tente outra vez."
+        );
+      }
+
       const seller = WHATSAPP_SELLERS.find((s) => s.phone === sellerPhone) ?? null;
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -296,10 +321,20 @@ export default function CarrinhoPage() {
         WhatsApp.
       </p>
 
+      {cartNotice && (
+        <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
+          {cartNotice}
+        </div>
+      )}
+
       {err && (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {err}
         </div>
+      )}
+
+      {reconciling && lines.length > 0 && (
+        <p className="mt-4 text-sm text-stone-500">A verificar disponibilidade…</p>
       )}
 
       {portalReady && sellerModalOpen
@@ -615,6 +650,7 @@ export default function CarrinhoPage() {
               type="button"
               disabled={
                 busy ||
+                reconciling ||
                 normalizeCheckoutWaDigits(customerWhatsApp).length < 10 ||
                 !customerName.trim()
               }

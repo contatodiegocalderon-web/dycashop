@@ -10,6 +10,7 @@ import {
   parseDriveRetry,
   type DriveRetryPayload,
 } from "@/lib/order-drive-retry";
+import { flagPendingOrdersAfterConfirm } from "@/lib/order-stock-conflict";
 import type { CustomerSegment } from "@/types";
 
 export const runtime = "nodejs";
@@ -122,7 +123,7 @@ export async function POST(
 
     const { data: order, error: oErr } = await admin
       .from("orders")
-      .select("id, status, sale_amount_by_category")
+      .select("id, status, sale_amount_by_category, display_number")
       .eq("id", orderId)
       .single();
 
@@ -405,6 +406,21 @@ export async function POST(
       return NextResponse.json({ error: fErr.message }, { status: 500 });
     }
 
+    const stockAfterByProductId = new Map<string, number>();
+    for (const productId of productIdList) {
+      stockAfterByProductId.set(
+        productId,
+        nextStockByProductId.get(productId) ?? 0
+      );
+    }
+    const dn = Number((order as { display_number?: unknown }).display_number);
+    const flaggedPending = await flagPendingOrdersAfterConfirm(admin, {
+      confirmedOrderId: orderId,
+      confirmedDisplayNumber:
+        Number.isFinite(dn) && dn > 0 ? dn : null,
+      stockAfterByProductId,
+    });
+
     // 4) Limpeza final: remove produtos que zeraram.
     for (const productId of zeroAfterConfirm) {
       await admin.from("products").delete().eq("id", productId);
@@ -412,6 +428,7 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
+      flaggedPending,
       driveRename: {
         renamed: driveRename.ok.length,
         errors: driveRename.errors,

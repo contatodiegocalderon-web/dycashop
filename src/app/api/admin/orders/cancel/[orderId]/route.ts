@@ -7,8 +7,8 @@ export const runtime = "nodejs";
 
 /**
  * POST /api/admin/orders/cancel/[orderId]
- * Remove pedidos ainda pendentes (itens em cascade). Não repõe stock: confirmação é que baixa.
- * O link /recibo/[token] mostra mensagem de pedido cancelado.
+ * Marca pedido como CANCELADO (mantém na BD para remarketing em Clientes → Carrinhos abandonados).
+ * Não repõe stock: confirmação é que baixa. O recibo mostra mensagem de cancelado.
  */
 export async function POST(
   request: NextRequest,
@@ -58,10 +58,17 @@ export async function POST(
       );
     }
 
-    const { error: dErr } = await admin.from("orders").delete().eq("id", orderId);
+    const { error: uErr } = await admin
+      .from("orders")
+      .update({
+        status: "CANCELADO",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
+      .eq("status", "PENDENTE_PAGAMENTO");
 
-    if (dErr) {
-      return NextResponse.json({ error: dErr.message }, { status: 500 });
+    if (uErr) {
+      return NextResponse.json({ error: uErr.message }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });

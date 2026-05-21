@@ -4,6 +4,21 @@ export type ProductStatus = "ATIVO" | "ESGOTADO";
 
 export type OrderStatus = "PENDENTE_PAGAMENTO" | "PAGO" | "CANCELADO";
 
+/** Preenchido quando outro pedido confirmado esgota peças deste pedido pendente. */
+export type OrderStockConflict = {
+  flagged_at: string;
+  triggered_by_order_id: string;
+  triggered_by_display_number?: number | null;
+  items: Array<{
+    product_id: string | null;
+    brand: string;
+    color: string;
+    size: string;
+    quantity: number;
+    available: number;
+  }>;
+};
+
 export type ProductSyncStatus = "pending" | "done" | "error";
 
 export interface Product {
@@ -97,6 +112,8 @@ export interface OrderRow {
   confirmed_by_staff_name?: string | null;
   created_at: string;
   updated_at: string;
+  /** Aviso de peças esgotadas por confirmação de outro pedido (ver `order-stock-conflict`). */
+  stock_conflict?: OrderStockConflict | null;
   order_items?: OrderItemRow[];
 }
 

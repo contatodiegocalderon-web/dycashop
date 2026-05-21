@@ -30,6 +30,8 @@ export async function GET(request: NextRequest) {
       let q = supabase
         .from("products")
         .select("*")
+        .eq("status", "ATIVO")
+        .gt("stock", 0)
         .order("brand", { ascending: true })
         .order("color", { ascending: true })
         .range(offset, offset + PAGE_SIZE - 1);

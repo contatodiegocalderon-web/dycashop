@@ -9,7 +9,9 @@ import type {
   OrderRow,
   ProductSize,
 } from "@/types";
+import { StockConflictNotice } from "@/components/stock-conflict-notice";
 import { publicDriveImageUrl } from "@/lib/drive-image-url";
+import { parseOrderStockConflict } from "@/lib/order-stock-conflict";
 
 type SellerFilterOption = { value: string; label: string };
 
@@ -362,6 +364,7 @@ export default function AdminPedidosClient() {
       const text = await res.text();
       let data: {
         error?: string;
+        flaggedPending?: number;
         driveRename?: {
           errors?: Array<{ productId?: string; message?: string }>;
           details?: string;
@@ -397,13 +400,19 @@ export default function AdminPedidosClient() {
       const renameErrors = data.driveRename?.errors as
         | { productId: string; message: string }[]
         | undefined;
+      const flaggedPending =
+        typeof data.flaggedPending === "number" ? data.flaggedPending : 0;
+      const conflictNote =
+        flaggedPending > 0
+          ? ` ${flaggedPending} outro(s) pedido(s) pendente(s) ficaram com aviso de peça esgotada (cliente deve refazer).`
+          : "";
       if (renameErrors?.length) {
         setConfirmSuccessMsg(
-          `Pedido confirmado. Atenção: ${renameErrors.length} renomeação(ões) no Drive falhou(aram). Verifique a API / logs.`
+          `Pedido confirmado. Atenção: ${renameErrors.length} renomeação(ões) no Drive falhou(aram). Verifique a API / logs.${conflictNote}`
         );
       } else {
         setConfirmSuccessMsg(
-          "Pedido confirmado; nomes no Drive atualizados conforme o stock."
+          `Pedido confirmado; nomes no Drive atualizados conforme o stock.${conflictNote}`
         );
       }
       setConfirmOpenId(null);
@@ -525,6 +534,9 @@ export default function AdminPedidosClient() {
           const waHref = waLinkFromDigits(order.customer_whatsapp);
           const driveLocked = isDriveConfirmLocked(order);
           const driveRetry = parseDriveRetryFromOrder(order);
+          const stockConflict = parseOrderStockConflict(
+            (order as OrderRow).stock_conflict
+          );
           return (
             <li
               key={order.id}
@@ -555,6 +567,14 @@ export default function AdminPedidosClient() {
                         </>
                       )}
                     </p>
+                  )}
+                  {stockConflict && (
+                    <div className="mt-2 max-w-xl">
+                      <StockConflictNotice
+                        conflict={stockConflict}
+                        variant="admin"
+                      />
+                    </div>
                   )}
                   {driveLocked && (
                     <div className="mt-2 space-y-2">
@@ -875,9 +895,9 @@ export default function AdminPedidosClient() {
                 <div className="mb-4 rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm text-red-950">
                   <p className="font-medium">Cancelar este pedido?</p>
                   <p className="mt-1 text-red-900/90">
-                    O pedido será removido; o link do recibo mostrará que foi
-                    cancelado. Esta ação não
-                    pode ser desfeita.
+                    O pedido ficará como cancelado (aparece em Clientes → Carrinhos
+                    abandonados para remarketing). O recibo do cliente mostra que foi
+                    cancelado. Esta ação não pode ser desfeita.
                   </p>
                   <p className="mt-3 text-xs font-medium uppercase tracking-wide text-red-800">
                     Confirmação (2.º passo): digite{" "}

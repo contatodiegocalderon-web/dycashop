@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AbandonedCartsPanel } from "@/components/admin/abandoned-carts-panel";
 import { useAdminAuth } from "@/contexts/admin-auth";
-import {
-  followUpWhatsAppMessage,
-  type BusinessProfile,
-} from "@/lib/client-follow-up";
+import { ClientProfileBadge } from "@/components/client-profile-badge";
+import { ClientRecencyBadge } from "@/components/client-recency-badge";
+import type { BusinessProfile } from "@/lib/client-follow-up";
+import type { ClientRecencyStatus } from "@/lib/client-recency";
+
+type ClientesTab = "registados" | "abandonados";
 
 type ClientRow = {
   customer_whatsapp: string;
@@ -18,26 +22,14 @@ type ClientRow = {
   first_confirmed_at: string | null;
   last_confirmed_at: string | null;
   sellers_label: string;
-  needs_follow_up: boolean;
-  follow_up_due_at: string | null;
-  follow_up_completed_at: string | null;
-  follow_up_staff_id: string | null;
   business_profile: BusinessProfile | null;
+  recency_status: ClientRecencyStatus;
 };
 
 type SellerFilterOption = { value: string; label: string };
 
-type ProfileFilter =
-  | "all"
-  | "follow_up"
-  | "lojista"
-  | "revendedor"
-  | "sem_perfil";
-
-const PROFILE_LABEL: Record<BusinessProfile, string> = {
-  lojista: "Lojista",
-  revendedor: "Revendedor",
-};
+type RecencyFilter = "all" | ClientRecencyStatus;
+type ProfileFilter = "all" | "lojista" | "revendedor" | "sem_perfil";
 
 function money(n: number) {
   return n.toLocaleString("pt-BR", {
@@ -52,11 +44,8 @@ function waDisplay(digits: string) {
   return `+${d.slice(0, 2)} ${d.slice(2, 4)} ${d.slice(4, 9)}-${d.slice(9)}`;
 }
 
-function waLink(digits: string, text?: string) {
-  const d = digits.replace(/\D/g, "");
-  const base = `https://wa.me/${d}`;
-  if (!text?.trim()) return base;
-  return `${base}?text=${encodeURIComponent(text.trim())}`;
+function waLink(digits: string) {
+  return `https://wa.me/${digits.replace(/\D/g, "")}`;
 }
 
 function clientsToCsv(rows: ClientRow[]): string {
@@ -64,40 +53,28 @@ function clientsToCsv(rows: ClientRow[]): string {
     "nome",
     "whatsapp",
     "vendedor",
-    "segmento",
-    "perfil_negocio",
+    "perfil",
+    "semaforo",
     "pedidos",
     "total_gasto",
-    "primeiro_pedido",
     "ultimo_pedido",
   ];
   const lines = [header.join(",")];
   for (const c of rows) {
-    const first = c.first_confirmed_at
-      ? new Date(c.first_confirmed_at).toLocaleDateString("pt-BR")
-      : "";
     const last = c.last_confirmed_at
       ? new Date(c.last_confirmed_at).toLocaleDateString("pt-BR")
       : "";
-    const seg =
-      c.customer_segment === "NOVO"
-        ? "NOVO"
-        : c.customer_segment === "ANTIGO"
-          ? "ANTIGO"
-          : "";
     const name = (c.customer_name ?? "").replaceAll('"', '""');
     const sellers = (c.sellers_label ?? "").replaceAll('"', '""');
-    const perfil = c.business_profile ?? "";
     lines.push(
       [
         `"${name}"`,
         c.customer_whatsapp,
         `"${sellers}"`,
-        seg,
-        perfil,
+        c.business_profile ?? "",
+        c.recency_status,
         String(c.order_count),
         String(c.total_spent).replace(".", ","),
-        first,
         last,
       ].join(",")
     );
@@ -114,34 +91,22 @@ function downloadBlob(filename: string, text: string, mime: string) {
   URL.revokeObjectURL(a.href);
 }
 
-function profileBadge(c: ClientRow) {
-  if (c.business_profile) {
-    return (
-      <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">
-        {PROFILE_LABEL[c.business_profile]}
-      </span>
-    );
-  }
-  if (c.needs_follow_up) {
-    return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
-        Follow-up
-      </span>
-    );
-  }
-  return null;
-}
-
 export default function AdminClientesPage() {
+  const searchParams = useSearchParams();
+  const tabFromUrl = searchParams.get("tab");
+  const initialTab: ClientesTab =
+    tabFromUrl === "abandonados" ? "abandonados" : "registados";
+
   const { adminFetch, isOwner } = useAdminAuth();
+  const [activeTab, setActiveTab] = useState<ClientesTab>(initialTab);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientRow[]>([]);
-  const [followUpQueue, setFollowUpQueue] = useState<ClientRow[]>([]);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [removingWa, setRemovingWa] = useState<string | null>(null);
   const [classifyingWa, setClassifyingWa] = useState<string | null>(null);
   const [sellerScope, setSellerScope] = useState<string>("all");
+  const [recencyFilter, setRecencyFilter] = useState<RecencyFilter>("all");
   const [profileFilter, setProfileFilter] = useState<ProfileFilter>("all");
   const [sellerFilterOptions, setSellerFilterOptions] = useState<SellerFilterOption[]>([]);
 
@@ -149,23 +114,24 @@ export default function AdminClientesPage() {
     setLoading(true);
     setError(null);
     try {
-      const q =
-        isOwner && sellerScope && sellerScope !== "all"
-          ? `?sellerScope=${encodeURIComponent(sellerScope)}`
-          : "";
-      const res = await adminFetch(`/api/admin/clients${q}`);
+      const q = new URLSearchParams();
+      if (isOwner && sellerScope && sellerScope !== "all") {
+        q.set("sellerScope", sellerScope);
+      }
+      if (recencyFilter !== "all") q.set("recency", recencyFilter);
+      if (profileFilter !== "all") q.set("profile", profileFilter);
+      const qs = q.toString();
+      const res = await adminFetch(`/api/admin/clients${qs ? `?${qs}` : ""}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao carregar");
       setClients((data.clients ?? []) as ClientRow[]);
-      setFollowUpQueue((data.follow_up_queue ?? []) as ClientRow[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
       setClients([]);
-      setFollowUpQueue([]);
     } finally {
       setLoading(false);
     }
-  }, [adminFetch, isOwner, sellerScope]);
+  }, [adminFetch, isOwner, sellerScope, recencyFilter, profileFilter]);
 
   useEffect(() => {
     if (!isOwner) {
@@ -207,68 +173,36 @@ export default function AdminClientesPage() {
   }, [adminFetch, isOwner]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    setActiveTab(tabFromUrl === "abandonados" ? "abandonados" : "registados");
+  }, [tabFromUrl]);
 
-  const filtered = useMemo(() => {
-    let rows = [...clients];
-    switch (profileFilter) {
-      case "follow_up":
-        rows =
-          followUpQueue.length > 0
-            ? [...followUpQueue]
-            : rows.filter((c) => c.needs_follow_up);
-        break;
-      case "lojista":
-        rows = rows.filter((c) => c.business_profile === "lojista");
-        break;
-      case "revendedor":
-        rows = rows.filter((c) => c.business_profile === "revendedor");
-        break;
-      case "sem_perfil":
-        rows = rows.filter((c) => !c.business_profile);
-        break;
-      default:
-        break;
+  useEffect(() => {
+    if (activeTab === "registados") void load();
+  }, [load, activeTab]);
+
+  const counts = useMemo(() => {
+    const c = { green: 0, yellow: 0, red: 0 };
+    for (const row of clients) {
+      if (row.recency_status === "green") c.green += 1;
+      if (row.recency_status === "yellow") c.yellow += 1;
+      if (row.recency_status === "red") c.red += 1;
     }
-    return rows.sort((a, b) => {
-      const ta = a.last_confirmed_at ?? "";
-      const tb = b.last_confirmed_at ?? "";
-      const byDate = tb.localeCompare(ta);
-      if (byDate !== 0) return byDate;
-      return (a.customer_name ?? "").localeCompare(b.customer_name ?? "", "pt-BR");
-    });
-  }, [clients, profileFilter, followUpQueue]);
+    return c;
+  }, [clients]);
 
-  /** Evita duplicar contactos que já estão na caixa de follow-up. */
-  const mainList = useMemo(() => {
-    if (profileFilter === "follow_up") return [];
-    if (profileFilter === "all" && followUpQueue.length > 0) {
-      return filtered.filter((c) => !c.needs_follow_up);
-    }
-    return filtered;
-  }, [filtered, profileFilter, followUpQueue.length]);
-
-  function followUpRowKey(c: ClientRow) {
-    return `${c.customer_whatsapp}:${c.follow_up_staff_id ?? ""}`;
-  }
-
-  async function completeFollowUp(
+  async function setBusinessProfile(
     customerWhatsapp: string,
-    business_profile: BusinessProfile,
-    follow_up_staff_id?: string | null
+    business_profile: BusinessProfile
   ) {
-    const rowKey = `${customerWhatsapp}:${follow_up_staff_id ?? ""}`;
-    setClassifyingWa(rowKey);
+    setClassifyingWa(customerWhatsapp);
     setError(null);
     try {
-      const res = await adminFetch("/api/admin/clients/follow-up", {
+      const res = await adminFetch("/api/admin/clients/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customer_whatsapp: customerWhatsapp,
           business_profile,
-          ...(follow_up_staff_id ? { follow_up_staff_id } : {}),
         }),
       });
       const data = (await res.json()) as { error?: string; hint?: string };
@@ -287,11 +221,11 @@ export default function AdminClientesPage() {
 
   async function removeContact(customerWhatsapp: string) {
     const firstConfirm = window.confirm(
-      "Remover este contacto da lista de clientes? Os pedidos confirmados e as métricas mantêm-se no sistema — apenas deixa de aparecer aqui."
+      "Remover este contacto da lista de clientes? Os pedidos confirmados mantêm-se no sistema."
     );
     if (!firstConfirm) return;
     const secondConfirm = window.confirm(
-      `Confirma novamente a remoção do contacto ${waDisplay(customerWhatsapp)} da lista?`
+      `Confirma novamente a remoção do contacto ${waDisplay(customerWhatsapp)}?`
     );
     if (!secondConfirm) return;
     setRemovingWa(customerWhatsapp);
@@ -313,10 +247,10 @@ export default function AdminClientesPage() {
   }
 
   function exportCsv() {
-    if (!filtered.length) return;
+    if (!clients.length) return;
     downloadBlob(
       `clientes-dycashop-${new Date().toISOString().slice(0, 10)}.csv`,
-      clientsToCsv(filtered),
+      clientsToCsv(clients),
       "text/csv;charset=utf-8"
     );
   }
@@ -335,149 +269,82 @@ export default function AdminClientesPage() {
         return;
       }
       setImportMsg(
-        `Lidas ${lines.length - 1} linha(s) de dados. A gravação em massa na base ainda não está ativa — use a exportação para backup e contactos.`
+        `Lidas ${lines.length - 1} linha(s). Importação em massa ainda não está ativa — use exportar para backup.`
       );
     };
     reader.readAsText(f, "UTF-8");
-  }
-
-  function renderClientActions(c: ClientRow, showClassify: boolean) {
-    const msg = followUpWhatsAppMessage(c.customer_name);
-    const busy = classifyingWa === followUpRowKey(c);
-
-    return (
-      <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-        {showClassify && (
-          <div className="flex flex-wrap justify-end gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                void completeFollowUp(
-                  c.customer_whatsapp,
-                  "lojista",
-                  c.follow_up_staff_id
-                )
-              }
-              className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900 hover:bg-violet-100 disabled:opacity-50"
-            >
-              {busy ? "…" : "Lojista"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                void completeFollowUp(
-                  c.customer_whatsapp,
-                  "revendedor",
-                  c.follow_up_staff_id
-                )
-              }
-              className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-xs font-semibold text-fuchsia-900 hover:bg-fuchsia-100 disabled:opacity-50"
-            >
-              {busy ? "…" : "Revendedor"}
-            </button>
-          </div>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void removeContact(c.customer_whatsapp)}
-            disabled={removingWa === c.customer_whatsapp}
-            className="inline-flex items-center rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-50 disabled:opacity-50"
-          >
-            {removingWa === c.customer_whatsapp ? "A remover…" : "Remover"}
-          </button>
-          <a
-            href={waLink(c.customer_whatsapp, showClassify ? msg : undefined)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#20bd5a]"
-          >
-            WhatsApp
-          </a>
-        </div>
-      </div>
-    );
   }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
-          Clientes registados
+          Clientes
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-stone-600">
-          Cada vendedor vê na fila de follow-up apenas os seus clientes cuja última compra foi há
-          mais de 5 dias úteis. Após classificar (lojista ou revendedor), o contacto volta à lista
-          normal para ofertas de recompra. Se comprar de novo, após 5 dias úteis o ciclo repete.
+          Registados: quem já teve pelo menos um pedido confirmado (pago). Carrinhos
+          abandonados: pedidos pendentes ou cancelados de quem ainda não comprou — para
+          remarketing até a primeira confirmação.
         </p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Link
-            href="/admin/metricas"
-            className="text-sm font-medium text-violet-800 underline hover:text-violet-900"
-          >
-            ← Métricas
-          </Link>
-          <Link
-            href="/admin/pedidos"
-            className="text-sm font-medium text-violet-800 underline hover:text-violet-900"
-          >
-            Pedidos pendentes
-          </Link>
-        </div>
+        <Link
+          href="/admin/metricas"
+          className="mt-4 inline-block text-sm font-medium text-violet-800 underline hover:text-violet-900"
+        >
+          ← Métricas
+        </Link>
       </div>
 
-      {!loading && followUpQueue.length > 0 && (
-        <section className="mb-8 overflow-hidden rounded-2xl border-2 border-amber-300/80 bg-gradient-to-br from-amber-50 to-orange-50/80 shadow-md">
-          <div className="border-b border-amber-200/80 bg-amber-100/60 px-5 py-3">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-amber-950">
-              Follow-up — {followUpQueue.length} contacto
-              {followUpQueue.length === 1 ? "" : "s"}
-            </h2>
-            <p className="mt-0.5 text-xs text-amber-900/80">
-              Última compra há 5+ dias úteis. Ligue no WhatsApp e classifique o perfil.
-            </p>
-          </div>
-          <ul className="divide-y divide-amber-200/60">
-            {followUpQueue.map((c) => (
-              <li
-                key={`fu-${followUpRowKey(c)}`}
-                className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-stone-900">
-                      {c.customer_name ?? "—"}
-                    </p>
-                    {profileBadge(c)}
-                  </div>
-                  <p className="text-sm text-stone-600">{waDisplay(c.customer_whatsapp)}</p>
-                  {isOwner && c.sellers_label && (
-                    <p className="mt-0.5 text-xs font-medium text-amber-950/80">
-                      Vendedor: {c.sellers_label}
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-amber-900/70">
-                    Última compra{" "}
-                    {c.last_confirmed_at
-                      ? new Date(c.last_confirmed_at).toLocaleDateString("pt-BR")
-                      : "—"}
-                    {c.follow_up_due_at && (
-                      <>
-                        {" "}
-                        · Lembrete desde{" "}
-                        {new Date(c.follow_up_due_at).toLocaleDateString("pt-BR")}
-                      </>
-                    )}
-                  </p>
-                </div>
-                {renderClientActions(c, true)}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <div
+        className="mb-8 flex gap-1 rounded-xl border border-stone-200 bg-white p-1 shadow-sm"
+        role="tablist"
+        aria-label="Secções de clientes"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "registados"}
+          onClick={() => setActiveTab("registados")}
+          className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+            activeTab === "registados"
+              ? "bg-stone-900 text-white shadow"
+              : "text-stone-600 hover:bg-stone-50"
+          }`}
+        >
+          Registados
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "abandonados"}
+          onClick={() => setActiveTab("abandonados")}
+          className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+            activeTab === "abandonados"
+              ? "bg-stone-900 text-white shadow"
+              : "text-stone-600 hover:bg-stone-50"
+          }`}
+        >
+          Carrinhos abandonados
+        </button>
+      </div>
+
+      {activeTab === "abandonados" ? (
+        <AbandonedCartsPanel active />
+      ) : (
+        <>
+      <div className="mb-6 flex flex-wrap gap-3 text-xs">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-900">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          Este mês: {counts.green}
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-950">
+          <span className="h-2 w-2 rounded-full bg-amber-500" />
+          1 mês: {counts.yellow}
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-900">
+          <span className="h-2 w-2 rounded-full bg-red-500" />
+          2+ meses: {counts.red}
+        </span>
+      </div>
 
       <div className="mb-8 flex flex-wrap items-end gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
         {isOwner && sellerFilterOptions.length > 0 && (
@@ -500,8 +367,24 @@ export default function AdminClientesPage() {
           </div>
         )}
         <div className="flex w-full min-w-[12rem] flex-col gap-1 sm:w-auto">
+          <label htmlFor="clientes-recency-filter" className="text-xs font-medium text-stone-600">
+            Semáforo
+          </label>
+          <select
+            id="clientes-recency-filter"
+            value={recencyFilter}
+            onChange={(e) => setRecencyFilter(e.target.value as RecencyFilter)}
+            className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+          >
+            <option value="all">Todos</option>
+            <option value="green">Verde — este mês</option>
+            <option value="yellow">Amarelo — 1 mês</option>
+            <option value="red">Vermelho — 2+ meses</option>
+          </select>
+        </div>
+        <div className="flex w-full min-w-[12rem] flex-col gap-1 sm:w-auto">
           <label htmlFor="clientes-profile-filter" className="text-xs font-medium text-stone-600">
-            Perfil (ofertas)
+            Perfil
           </label>
           <select
             id="clientes-profile-filter"
@@ -510,7 +393,6 @@ export default function AdminClientesPage() {
             className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
           >
             <option value="all">Todos</option>
-            <option value="follow_up">Aguardam follow-up</option>
             <option value="lojista">Lojista</option>
             <option value="revendedor">Revendedor</option>
             <option value="sem_perfil">Sem perfil</option>
@@ -519,7 +401,7 @@ export default function AdminClientesPage() {
         <button
           type="button"
           onClick={exportCsv}
-          disabled={loading || filtered.length === 0}
+          disabled={loading || clients.length === 0}
           className="rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-stone-800 disabled:opacity-40"
         >
           Exportar CSV
@@ -550,57 +432,96 @@ export default function AdminClientesPage() {
         </div>
       )}
 
-      {!loading &&
-        mainList.length === 0 &&
-        followUpQueue.length === 0 &&
-        !error && (
+      {activeTab === "registados" && !loading && clients.length === 0 && !error && (
         <p className="text-sm text-stone-500">
           Nenhum cliente neste filtro — confirme pedidos com WhatsApp ou altere o filtro.
         </p>
       )}
 
-      {mainList.length > 0 && (
+      {clients.length > 0 && (
         <ul className="divide-y divide-stone-100 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-lg shadow-stone-900/5">
-          {mainList.map((c) => (
-            <li
-              key={c.customer_whatsapp}
-              className={`flex flex-wrap items-center justify-between gap-4 px-5 py-4 transition hover:bg-stone-50/80 ${
-                c.needs_follow_up ? "bg-amber-50/40" : ""
-              }`}
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold text-stone-900">{c.customer_name ?? "—"}</p>
-                  {profileBadge(c)}
+          {clients.map((c) => {
+            const busy = classifyingWa === c.customer_whatsapp;
+            return (
+              <li
+                key={c.customer_whatsapp}
+                className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 transition hover:bg-stone-50/80"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-stone-900">{c.customer_name ?? "—"}</p>
+                    <ClientRecencyBadge status={c.recency_status} />
+                    {c.business_profile ? (
+                      <ClientProfileBadge profile={c.business_profile} />
+                    ) : null}
+                  </div>
+                  <p className="text-sm text-stone-500">{waDisplay(c.customer_whatsapp)}</p>
+                  <p className="mt-1 text-sm text-stone-700">
+                    <span className="text-stone-500">Vendedor: </span>
+                    {c.sellers_label ?? "—"}
+                  </p>
+                  <p className="mt-1 text-xs text-stone-400">
+                    {c.is_new ? "Novo" : "Antigo"} · {c.order_count} pedido(s) · Total{" "}
+                    {money(c.total_spent)}
+                    {c.last_confirmed_at && (
+                      <>
+                        {" "}
+                        · Último{" "}
+                        {new Date(c.last_confirmed_at).toLocaleDateString("pt-BR")}
+                      </>
+                    )}
+                  </p>
                 </div>
-                <p className="text-sm text-stone-500">{waDisplay(c.customer_whatsapp)}</p>
-                <p className="mt-1 text-sm text-stone-700">
-                  <span className="text-stone-500">Vendedor: </span>
-                  {c.sellers_label ?? "—"}
-                </p>
-                <p className="mt-1 text-xs text-stone-400">
-                  {c.is_new ? "Novo" : "Antigo"} · {c.order_count} pedido(s) · Total{" "}
-                  {money(c.total_spent)}
-                  {c.first_confirmed_at && (
-                    <>
-                      {" "}
-                      · 1.ª{" "}
-                      {new Date(c.first_confirmed_at).toLocaleDateString("pt-BR")}
-                    </>
+                <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+                  {!c.business_profile && (
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void setBusinessProfile(c.customer_whatsapp, "lojista")
+                        }
+                        className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-950 hover:bg-orange-100 disabled:opacity-50"
+                      >
+                        {busy ? "…" : "Lojista"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void setBusinessProfile(c.customer_whatsapp, "revendedor")
+                        }
+                        className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-xs font-semibold text-fuchsia-900 hover:bg-fuchsia-100 disabled:opacity-50"
+                      >
+                        {busy ? "…" : "Revendedor"}
+                      </button>
+                    </div>
                   )}
-                  {c.last_confirmed_at && (
-                    <>
-                      {" "}
-                      · Último{" "}
-                      {new Date(c.last_confirmed_at).toLocaleDateString("pt-BR")}
-                    </>
-                  )}
-                </p>
-              </div>
-              {renderClientActions(c, c.needs_follow_up)}
-            </li>
-          ))}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void removeContact(c.customer_whatsapp)}
+                      disabled={removingWa === c.customer_whatsapp}
+                      className="inline-flex items-center rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {removingWa === c.customer_whatsapp ? "A remover…" : "Remover"}
+                    </button>
+                    <a
+                      href={waLink(c.customer_whatsapp)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#20bd5a]"
+                    >
+                      WhatsApp
+                    </a>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
+      )}
+        </>
       )}
     </div>
   );

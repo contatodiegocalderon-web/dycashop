@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { parseOrderStockConflict } from "@/lib/order-stock-conflict";
 import type { OrderItemRow, OrderRow } from "@/types";
 
 /** 18 bytes → 36 caracteres hex */
@@ -54,6 +55,7 @@ export async function getOrderReceiptByToken(
       status,
       customer_note,
       customer_name,
+      stock_conflict,
       created_at,
       updated_at,
       order_items (
@@ -94,6 +96,9 @@ export async function getOrderReceiptByToken(
       status: row.status,
       customer_note: row.customer_note,
       customer_name: row.customer_name ?? null,
+      stock_conflict: parseOrderStockConflict(
+        (row as { stock_conflict?: unknown }).stock_conflict
+      ),
       created_at: row.created_at,
       updated_at: row.updated_at,
     },

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchOrderDisplayNumberPublic } from "@/lib/order-display-number";
 import { ReceiptCancelledMessage } from "@/components/receipt-cancelled";
+import { StockConflictNotice } from "@/components/stock-conflict-notice";
 import {
   getOrderReceiptByToken,
   isCancelledReceiptToken,
@@ -111,10 +112,14 @@ export default async function ReciboPage({ params }: Props) {
           </div>
         ) : null}
 
-        <p className="text-sm leading-relaxed text-stone-400">
-          O vendedor vai calcular seu frete e finalizar seu pedido o quanto antes,
-          aguarde só um momento!
-        </p>
+        {order.stock_conflict ? (
+          <StockConflictNotice conflict={order.stock_conflict} variant="client" />
+        ) : (
+          <p className="text-sm leading-relaxed text-stone-400">
+            O vendedor vai calcular seu frete e finalizar seu pedido o quanto antes,
+            aguarde só um momento!
+          </p>
+        )}
 
         <div className="border-t border-white/[0.06] pt-4">
           <p className="text-sm text-stone-500">{statusLabel(order.status)}</p>
