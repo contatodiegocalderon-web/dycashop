@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
+    "@svg-maps/brazil": "^2.0.0",
     "bcryptjs": "^3.0.3",
     "googleapis": "^171.4.0",
     "heic-convert": "^2.1.0",

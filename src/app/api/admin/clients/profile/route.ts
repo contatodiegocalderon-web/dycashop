@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 /**
  * PATCH /api/admin/clients/profile
- * Classifica cliente como lojista ou revendedor.
+ * Classifica cliente como lojista, revendedor ou uso próprio.
  */
 export async function PATCH(request: NextRequest) {
   try {
@@ -35,7 +35,10 @@ export async function PATCH(request: NextRequest) {
     }
     if (!isBusinessProfile(profileRaw)) {
       return NextResponse.json(
-        { error: 'business_profile deve ser "lojista" ou "revendedor"' },
+        {
+          error:
+            'business_profile deve ser "lojista", "revendedor" ou "uso_proprio"',
+        },
         { status: 400 }
       );
     }

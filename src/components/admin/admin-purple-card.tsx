@@ -34,10 +34,12 @@ export function AdminPurpleStatCard({
   label,
   value,
   sub,
+  footer,
 }: {
   label: string;
   value: string;
   sub?: string;
+  footer?: ReactNode;
 }) {
   return (
     <AdminPurpleCard className="p-5">
@@ -50,6 +52,7 @@ export function AdminPurpleStatCard({
       {sub ? (
         <p className="mt-1 text-xs text-violet-100/70">{sub}</p>
       ) : null}
+      {footer}
     </AdminPurpleCard>
   );
 }

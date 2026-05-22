@@ -3,11 +3,13 @@ import type { BusinessProfile } from "@/lib/client-follow-up";
 const PROFILE_LABEL: Record<BusinessProfile, string> = {
   lojista: "Lojista",
   revendedor: "Revendedor",
+  uso_proprio: "Uso próprio",
 };
 
 const PROFILE_STYLES: Record<BusinessProfile, string> = {
   lojista: "bg-orange-100 text-orange-950 ring-orange-300/70",
   revendedor: "bg-fuchsia-100 text-fuchsia-950 ring-fuchsia-300/70",
+  uso_proprio: "bg-sky-100 text-sky-950 ring-sky-300/70",
 };
 
 export function ClientProfileBadge({ profile }: { profile: BusinessProfile }) {

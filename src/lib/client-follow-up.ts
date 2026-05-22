@@ -1,7 +1,7 @@
 /** Dias úteis após a última compra para sugerir follow-up de recompra. */
 export const FOLLOW_UP_BUSINESS_DAYS = 5;
 
-export type BusinessProfile = "lojista" | "revendedor";
+export type BusinessProfile = "lojista" | "revendedor" | "uso_proprio";
 
 export type CrmClientProfileRow = {
   whatsapp_digits: string;
@@ -80,5 +80,5 @@ export function followUpWhatsAppMessage(
 }
 
 export function isBusinessProfile(v: string | null | undefined): v is BusinessProfile {
-  return v === "lojista" || v === "revendedor";
+  return v === "lojista" || v === "revendedor" || v === "uso_proprio";
 }

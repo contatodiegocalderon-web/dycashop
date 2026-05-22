@@ -20,6 +20,75 @@ function fmtWhen(iso: string | null | undefined): string {
   return new Date(iso).toLocaleString("pt-BR");
 }
 
+function money(n: number) {
+  return n.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function unitCostForCategory(
+  category: string,
+  costs: Record<string, number>
+): number {
+  if (costs[category] != null) return costs[category];
+  return costs["Sem categoria"] ?? 0;
+}
+
+function RevealInventoryValue({
+  value,
+  pieces,
+  unitCost,
+  compact,
+  breakdownHint,
+}: {
+  value: number;
+  pieces: number;
+  unitCost: number;
+  compact?: boolean;
+  /** Se definido, substitui a linha «peças × custo/peça». */
+  breakdownHint?: string;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const detail =
+    breakdownHint ??
+    `${pieces.toLocaleString("pt-BR")} × ${money(unitCost)}/peça`;
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        setRevealed((v) => !v);
+      }}
+      aria-pressed={revealed}
+      title={revealed ? "Clique para embaçar" : "Clique para revelar"}
+      className={`group rounded-lg text-right transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/50 ${
+        compact ? "px-1 py-0.5" : "px-2 py-1"
+      } ${revealed ? "" : "hover:bg-white/[0.04]"}`}
+    >
+      <p
+        className={`font-semibold tabular-nums tracking-tight text-emerald-100 transition-[filter,opacity,transform] duration-300 ease-out ${
+          compact ? "text-sm" : "text-lg"
+        } ${
+          revealed
+            ? "blur-0 opacity-100"
+            : "blur-md opacity-75 saturate-50 group-hover:blur-sm group-hover:opacity-85"
+        }`}
+      >
+        {money(value)}
+      </p>
+      <p
+        className={`mt-0.5 text-[11px] text-violet-200/50 transition-[filter,opacity] duration-300 ease-out ${
+          revealed ? "blur-0 opacity-80" : "blur-[5px] opacity-40 group-hover:blur-[3px]"
+        }`}
+      >
+        {detail}
+      </p>
+    </button>
+  );
+}
+
 export default function AdminEstoquePage() {
   const router = useRouter();
   const { adminFetch, isOwner, session } = useAdminAuth();
@@ -28,6 +97,9 @@ export default function AdminEstoquePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ApiPayload | null>(null);
+  const [costsByCategory, setCostsByCategory] = useState<Record<string, number>>(
+    {}
+  );
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
@@ -35,9 +107,24 @@ export default function AdminEstoquePage() {
     setError(null);
     try {
       const q = new URLSearchParams({ _: String(Date.now()) });
-      const res = await adminFetch(`/api/admin/stock-inventory?${q.toString()}`);
-      const json = (await res.json()) as ApiPayload;
-      if (!res.ok) throw new Error(json.error ?? "Falha ao carregar estoque");
+      const [stockRes, costRes] = await Promise.all([
+        adminFetch(`/api/admin/stock-inventory?${q.toString()}`),
+        adminFetch("/api/admin/category-costs"),
+      ]);
+      const json = (await stockRes.json()) as ApiPayload;
+      const costJson = (await costRes.json()) as {
+        error?: string;
+        rows?: Array<{ category_label: string; cost_per_piece: number }>;
+      };
+      if (!stockRes.ok) throw new Error(json.error ?? "Falha ao carregar estoque");
+      if (!costRes.ok) {
+        throw new Error(costJson.error ?? "Falha ao carregar custos por categoria");
+      }
+      const nextCosts: Record<string, number> = {};
+      for (const row of costJson.rows ?? []) {
+        nextCosts[row.category_label] = Number(row.cost_per_piece ?? 0);
+      }
+      setCostsByCategory(nextCosts);
       setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
@@ -63,6 +150,14 @@ export default function AdminEstoquePage() {
       })),
     [data?.categories]
   );
+
+  const grandInventoryValue = useMemo(() => {
+    if (!data) return 0;
+    return data.categories.reduce((sum, c) => {
+      const unit = unitCostForCategory(c.category, costsByCategory);
+      return sum + c.pieces * unit;
+    }, 0);
+  }, [data, costsByCategory]);
 
   function toggleCategory(cat: string) {
     setExpanded((prev) => ({ ...prev, [cat]: !prev[cat] }));
@@ -134,6 +229,17 @@ export default function AdminEstoquePage() {
             label="Total geral de peças"
             value={data.grandTotal.pieces.toLocaleString("pt-BR")}
             sub={`${data.grandTotal.productCount.toLocaleString("pt-BR")} produto(s) (SKUs)`}
+            footer={
+              <div className="mt-4 flex items-end justify-between gap-3 border-t border-white/10 pt-4">
+                <p className="text-[11px] text-violet-200/45">Em custo</p>
+                <RevealInventoryValue
+                  value={grandInventoryValue}
+                  pieces={data.grandTotal.pieces}
+                  unitCost={0}
+                  breakdownHint="Soma de (peças × custo) em cada categoria"
+                />
+              </div>
+            }
           />
           <AdminPurpleCard className="p-4">
             {chartEntries.length > 0 ? (
@@ -167,6 +273,7 @@ export default function AdminEstoquePage() {
             <CategoryCard
               key={row.category}
               row={row}
+              unitCost={unitCostForCategory(row.category, costsByCategory)}
               open={expanded[row.category] ?? false}
               onToggle={() => toggleCategory(row.category)}
             />
@@ -179,22 +286,26 @@ export default function AdminEstoquePage() {
 
 function CategoryCard({
   row,
+  unitCost,
   open,
   onToggle,
 }: {
   row: CategoryStockSummary;
+  unitCost: number;
   open: boolean;
   onToggle: () => void;
 }) {
+  const inventoryValue = row.pieces * unitCost;
+
   return (
     <li>
       <AdminPurpleCard className="overflow-hidden">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-white/5"
-        >
-          <div>
+        <div className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="min-w-0 flex-1 text-left transition hover:opacity-90"
+          >
             <p className="text-lg font-bold text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]">
               {row.category}
             </p>
@@ -202,11 +313,23 @@ function CategoryCard({
               {row.pieces.toLocaleString("pt-BR")} peça(s) ·{" "}
               {row.productCount.toLocaleString("pt-BR")} produto(s)
             </p>
+          </button>
+          <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+            <RevealInventoryValue
+              value={inventoryValue}
+              pieces={row.pieces}
+              unitCost={unitCost}
+              compact
+            />
+            <button
+              type="button"
+              onClick={onToggle}
+              className="text-sm font-medium text-violet-100/90 underline-offset-2 hover:text-white hover:underline"
+            >
+              {open ? "Ocultar tamanhos" : "Ver por tamanho"}
+            </button>
           </div>
-          <span className="text-sm font-medium text-violet-100/90">
-            {open ? "Ocultar tamanhos" : "Ver por tamanho"}
-          </span>
-        </button>
+        </div>
         {open && (
           <div className="border-t border-white/10 px-5 py-3">
             <table className="w-full text-left text-sm">

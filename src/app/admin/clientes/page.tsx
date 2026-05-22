@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AbandonedCartsPanel } from "@/components/admin/abandoned-carts-panel";
+import { ClientsBrazilMapPanel } from "@/components/admin/clients-brazil-map-panel";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import { ClientProfileBadge } from "@/components/client-profile-badge";
 import { ClientRecencyBadge } from "@/components/client-recency-badge";
 import type { BusinessProfile } from "@/lib/client-follow-up";
 import type { ClientRecencyStatus } from "@/lib/client-recency";
 
-type ClientesTab = "registados" | "abandonados";
+type ClientesTab = "registados" | "abandonados" | "mapa";
 
 type ClientRow = {
   customer_whatsapp: string;
@@ -29,7 +30,12 @@ type ClientRow = {
 type SellerFilterOption = { value: string; label: string };
 
 type RecencyFilter = "all" | ClientRecencyStatus;
-type ProfileFilter = "all" | "lojista" | "revendedor" | "sem_perfil";
+type ProfileFilter =
+  | "all"
+  | "lojista"
+  | "revendedor"
+  | "uso_proprio"
+  | "sem_perfil";
 
 function money(n: number) {
   return n.toLocaleString("pt-BR", {
@@ -95,7 +101,11 @@ export default function AdminClientesPage() {
   const searchParams = useSearchParams();
   const tabFromUrl = searchParams.get("tab");
   const initialTab: ClientesTab =
-    tabFromUrl === "abandonados" ? "abandonados" : "registados";
+    tabFromUrl === "abandonados"
+      ? "abandonados"
+      : tabFromUrl === "mapa"
+        ? "mapa"
+        : "registados";
 
   const { adminFetch, isOwner } = useAdminAuth();
   const [activeTab, setActiveTab] = useState<ClientesTab>(initialTab);
@@ -173,7 +183,13 @@ export default function AdminClientesPage() {
   }, [adminFetch, isOwner]);
 
   useEffect(() => {
-    setActiveTab(tabFromUrl === "abandonados" ? "abandonados" : "registados");
+    setActiveTab(
+      tabFromUrl === "abandonados"
+        ? "abandonados"
+        : tabFromUrl === "mapa"
+          ? "mapa"
+          : "registados"
+    );
   }, [tabFromUrl]);
 
   useEffect(() => {
@@ -317,7 +333,7 @@ export default function AdminClientesPage() {
           role="tab"
           aria-selected={activeTab === "abandonados"}
           onClick={() => setActiveTab("abandonados")}
-          className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+          className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
             activeTab === "abandonados"
               ? "bg-stone-900 text-white shadow"
               : "text-stone-600 hover:bg-stone-50"
@@ -325,10 +341,25 @@ export default function AdminClientesPage() {
         >
           Carrinhos abandonados
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "mapa"}
+          onClick={() => setActiveTab("mapa")}
+          className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
+            activeTab === "mapa"
+              ? "bg-stone-900 text-white shadow"
+              : "text-stone-600 hover:bg-stone-50"
+          }`}
+        >
+          Mapa
+        </button>
       </div>
 
       {activeTab === "abandonados" ? (
         <AbandonedCartsPanel active />
+      ) : activeTab === "mapa" ? (
+        <ClientsBrazilMapPanel active />
       ) : (
         <>
       <div className="mb-6 flex flex-wrap gap-3 text-xs">
@@ -395,6 +426,7 @@ export default function AdminClientesPage() {
             <option value="all">Todos</option>
             <option value="lojista">Lojista</option>
             <option value="revendedor">Revendedor</option>
+            <option value="uso_proprio">Uso próprio</option>
             <option value="sem_perfil">Sem perfil</option>
           </select>
         </div>
@@ -494,6 +526,19 @@ export default function AdminClientesPage() {
                         className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-xs font-semibold text-fuchsia-900 hover:bg-fuchsia-100 disabled:opacity-50"
                       >
                         {busy ? "…" : "Revendedor"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void setBusinessProfile(
+                            c.customer_whatsapp,
+                            "uso_proprio"
+                          )
+                        }
+                        className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-900 hover:bg-sky-100 disabled:opacity-50"
+                      >
+                        {busy ? "…" : "Uso próprio"}
                       </button>
                     </div>
                   )}

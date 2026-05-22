@@ -271,10 +271,10 @@ export async function GET(request: NextRequest) {
           .sort((a, b) => a.localeCompare(b, "pt-BR"))
           .join(", ");
         const profile = profileMap.get(wa);
+        const bp = profile?.business_profile;
         const businessProfile =
-          profile?.business_profile === "lojista" ||
-          profile?.business_profile === "revendedor"
-            ? profile.business_profile
+          bp === "lojista" || bp === "revendedor" || bp === "uso_proprio"
+            ? bp
             : null;
         const lastAt = agg.last_at;
 
@@ -296,7 +296,11 @@ export async function GET(request: NextRequest) {
     if (recencyFilter && recencyFilter !== "all") {
       clients = clients.filter((c) => c.recency_status === recencyFilter);
     }
-    if (profileFilter === "lojista" || profileFilter === "revendedor") {
+    if (
+      profileFilter === "lojista" ||
+      profileFilter === "revendedor" ||
+      profileFilter === "uso_proprio"
+    ) {
       clients = clients.filter((c) => c.business_profile === profileFilter);
     } else if (profileFilter === "sem_perfil") {
       clients = clients.filter((c) => !c.business_profile);
