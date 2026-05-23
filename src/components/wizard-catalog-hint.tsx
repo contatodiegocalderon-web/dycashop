@@ -44,24 +44,27 @@ export function WizardCatalogHint({ visible, onDismiss }: Props) {
         >
           <svg
             viewBox="0 0 24 24"
-            width={22}
-            height={22}
+            width={24}
+            height={24}
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.75"
+            strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <rect x="3" y="5" width="18" height="14" rx="2" />
-            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M5 3.5 5 16.5 8.5 13 11.5 19.5 14 18 11 11.5 16 11.5 5 3.5Z"
+              fill="currentColor"
+              fillOpacity="0.2"
+            />
+            <circle cx="17" cy="7" r="1.25" fill="currentColor" stroke="none" />
+            <circle cx="17" cy="7" r="3" strokeOpacity="0.5" />
+            <circle cx="17" cy="7" r="5.25" strokeOpacity="0.25" />
           </svg>
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-semibold text-emerald-50">
-            Pressione a imagem para ver melhor
-          </span>
-          <span className="mt-0.5 block text-xs text-emerald-200/70">
-            Toque na foto do produto para ampliar
+            Clique na imagem para ver melhor
           </span>
         </span>
       </button>
