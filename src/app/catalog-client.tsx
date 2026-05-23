@@ -12,6 +12,7 @@ import type { Product, ProductSize } from "@/types";
 import { CatalogFilters } from "@/components/catalog-filters";
 import { CatalogSections } from "@/components/catalog-sections";
 import { CategoryGuidedWizard } from "@/components/category-guided-wizard";
+import { WizardCatalogHint } from "@/components/wizard-catalog-hint";
 
 function buildQuery(
   size: "" | ProductSize,
@@ -64,6 +65,7 @@ export function CatalogClient({
   const [wizardDone, setWizardDone] = useState(!guidedMode);
   const [wizardGuidedFilter, setWizardGuidedFilter] =
     useState<WizardGuidedFilter | null>(null);
+  const [wizardImageHint, setWizardImageHint] = useState(false);
 
   const effectiveCategory = (categoryFixed ?? categoryFree).trim();
   const categoryExact = Boolean(categoryFixed);
@@ -141,7 +143,12 @@ export function CatalogClient({
     setBrand("");
     setWizardGuidedFilter({ colors: sel.colors, brands: sel.brands });
     setWizardDone(true);
+    setWizardImageHint(true);
   }
+
+  const dismissWizardImageHint = useCallback(() => {
+    setWizardImageHint(false);
+  }, []);
 
   function handleBrandChange(v: string) {
     setWizardGuidedFilter(null);
@@ -216,6 +223,11 @@ export function CatalogClient({
       )}
         </>
       )}
+
+      <WizardCatalogHint
+        visible={wizardImageHint && showCatalog}
+        onDismiss={dismissWizardImageHint}
+      />
     </div>
   );
 }

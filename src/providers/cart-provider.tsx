@@ -6,11 +6,18 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { CartAddedToast } from "@/components/cart-added-toast";
 import type { CartLine, Product } from "@/types";
 
 export const CART_STORAGE_KEY = "streetwear-cart-v1";
+
+export type CartAddToastState = {
+  key: number;
+  totalItems: number;
+};
 
 type CartContextValue = {
   lines: CartLine[];
@@ -24,6 +31,10 @@ type CartContextValue = {
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
+
+function cartTotalPieces(lines: CartLine[]): number {
+  return lines.reduce((n, l) => n + l.quantity, 0);
+}
 
 function productToCartProduct(
   p: Product
@@ -43,6 +54,20 @@ function productToCartProduct(
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [lines, setLines] = useState<CartLine[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [addToast, setAddToast] = useState<CartAddToastState | null>(null);
+  const toastSeqRef = useRef(0);
+  const prevCartTotalRef = useRef<number | null>(null);
+
+  const showCartTotalToast = useCallback((totalItems: number) => {
+    toastSeqRef.current += 1;
+    const payload = { key: toastSeqRef.current, totalItems };
+    setAddToast(null);
+    requestAnimationFrame(() => setAddToast(payload));
+  }, []);
+
+  const dismissCartToast = useCallback(() => {
+    setAddToast(null);
+  }, []);
 
   useEffect(() => {
     try {
@@ -66,20 +91,39 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [lines, hydrated]);
 
+  /** Dispara o pulso sempre que o total de peças sobe (inclui remover e voltar a adicionar). */
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const total = cartTotalPieces(lines);
+
+    if (prevCartTotalRef.current === null) {
+      prevCartTotalRef.current = total;
+      return;
+    }
+
+    if (total > prevCartTotalRef.current) {
+      showCartTotalToast(total);
+    }
+
+    prevCartTotalRef.current = total;
+  }, [lines, hydrated, showCartTotalToast]);
+
   const addProduct = useCallback((product: Product, qty = 1) => {
     setLines((prev) => {
       const cp = productToCartProduct(product);
       const idx = prev.findIndex((l) => l.productId === product.id);
+      const prevLineQty = idx >= 0 ? prev[idx]!.quantity : 0;
       const nextQty =
         idx >= 0
-          ? Math.min(prev[idx].quantity + qty, product.stock)
+          ? Math.min(prevLineQty + qty, product.stock)
           : Math.min(qty, product.stock);
-      if (nextQty < 1) return prev;
+      if (nextQty <= prevLineQty) return prev;
 
       if (idx >= 0) {
         const copy = [...prev];
         copy[idx] = {
-          ...copy[idx],
+          ...copy[idx]!,
           quantity: nextQty,
           product: { ...cp, stock: product.stock },
         };
@@ -237,7 +281,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     ]
   );
 
-  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+  return (
+    <CartContext.Provider value={value}>
+      {children}
+      <CartAddedToast toast={addToast} onDismiss={dismissCartToast} />
+    </CartContext.Provider>
+  );
 }
 
 export function useCart() {
