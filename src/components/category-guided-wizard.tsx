@@ -218,13 +218,6 @@ export function CategoryGuidedWizard({ categoryLabel, onComplete }: Props) {
         ? "2º passo — escolha a(s) cor(es) de sua preferência"
         : "Pra finalizar — 3º passo, escolha a(s) marca(s)";
 
-  const stepHint =
-    step === 2
-      ? "Pode marcar mais de uma cor"
-      : step === 3
-        ? "Pode marcar mais de uma marca"
-        : null;
-
   return (
     <section
       className="overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-zinc-900/80 via-zinc-950/90 to-black/60 p-5 ring-1 ring-white/[0.05] sm:p-8"
@@ -239,9 +232,6 @@ export function CategoryGuidedWizard({ categoryLabel, onComplete }: Props) {
         <h2 className="mt-2 text-balance text-center text-lg font-semibold leading-snug text-stone-50 sm:text-xl">
           {stepTitle}
         </h2>
-        {stepHint ? (
-          <p className="mt-2 text-center text-sm text-stone-500">{stepHint}</p>
-        ) : null}
 
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           {step === 1 &&

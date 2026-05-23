@@ -90,7 +90,6 @@ async function listFolders(
 ): Promise<{ id: string; name: string }[]> {
   const folders: { id: string; name: string }[] = [];
   let pageToken: string | undefined;
-  let sawExtraPages = false;
   do {
     const res = await drive.files.list({
       q: `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
@@ -102,35 +101,8 @@ async function listFolders(
     for (const f of res.data.files ?? []) {
       if (f.id && f.name) folders.push({ id: f.id, name: f.name });
     }
-    if (res.data.nextPageToken) sawExtraPages = true;
     pageToken = res.data.nextPageToken ?? undefined;
   } while (pageToken);
-
-  // #region agent log
-  fetch(
-    "http://127.0.0.1:7446/ingest/24af6af5-b59d-45ad-acbf-6e5e9842079c",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "6883b3",
-      },
-      body: JSON.stringify({
-        sessionId: "6883b3",
-        runId: "import",
-        hypothesisId: "H-folder-page",
-        location: "drive-import.ts:listFolders",
-        message: "folders_list",
-        data: {
-          parentId,
-          folderCount: folders.length,
-          paginatedPastFirstPage: sawExtraPages,
-        },
-        timestamp: Date.now(),
-      }),
-    }
-  ).catch(() => {});
-  // #endregion
 
   return folders;
 }
@@ -170,31 +142,6 @@ async function listImageFiles(
     pageToken = res.data.nextPageToken ?? undefined;
   } while (pageToken);
 
-  // #region agent log
-  fetch(
-    "http://127.0.0.1:7446/ingest/24af6af5-b59d-45ad-acbf-6e5e9842079c",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "6883b3",
-      },
-      body: JSON.stringify({
-        sessionId: "6883b3",
-        runId: "import",
-        hypothesisId: "H-mime",
-        location: "drive-import.ts:listImageFiles",
-        message: "image_files_filtered",
-        data: {
-          folderId,
-          importableImageCount: out.length,
-        },
-        timestamp: Date.now(),
-      }),
-    }
-  ).catch(() => {});
-  // #endregion
-
   return out;
 }
 
@@ -209,16 +156,11 @@ async function pushRowsFromImageFolder(
   const files = await listImageFiles(drive, folderId, listOptions);
   const defaultStock = defaultInitialStockFromEnv();
 
-  let parseOk = 0;
-  let parseFail = 0;
-
   for (const file of files) {
     const parsed = parseProductFileName(file.name);
     if (!parsed) {
-      parseFail++;
       continue;
     }
-    parseOk++;
 
     const initial = parsed.initialStockFromFilename ?? defaultStock;
     const sku = buildSku(file.id, size, parsed.brand, parsed.color);
@@ -240,35 +182,15 @@ async function pushRowsFromImageFolder(
       status,
     });
   }
+}
 
-  // #region agent log
-  fetch(
-    "http://127.0.0.1:7446/ingest/24af6af5-b59d-45ad-acbf-6e5e9842079c",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "6883b3",
-      },
-      body: JSON.stringify({
-        sessionId: "6883b3",
-        runId: "import",
-        hypothesisId: "H-parse",
-        location: "drive-import.ts:pushRowsFromImageFolder",
-        message: "parse_counts",
-        data: {
-          folderId,
-          size,
-          category: category ?? "(null)",
-          totalListedImages: files.length,
-          parseOk,
-          parseFail,
-        },
-        timestamp: Date.now(),
-      }),
-    }
-  ).catch(() => {});
-  // #endregion
+function dedupeDriveRows(rows: DriveImportRow[]): DriveImportRow[] {
+  const byId = new Map<string, DriveImportRow>();
+  for (const row of rows) {
+    if (byId.has(row.drive_file_id)) continue;
+    byId.set(row.drive_file_id, row);
+  }
+  return Array.from(byId.values());
 }
 
 /**
@@ -301,7 +223,7 @@ export async function fetchDriveProductRows(
         rows
       );
     }
-    return rows;
+    return dedupeDriveRows(rows);
   }
 
   for (const catFolder of topFolders) {
@@ -326,5 +248,5 @@ export async function fetchDriveProductRows(
     }
   }
 
-  return rows;
+  return dedupeDriveRows(rows);
 }

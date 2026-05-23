@@ -3,7 +3,10 @@ import type { DriveAuthClient } from "@/lib/drive-auth";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchDriveFileAsImageBuffer } from "@/lib/drive-download-buffer";
 import { withRetry } from "@/lib/retry";
-import { CATALOG_STORAGE_BUCKET } from "@/lib/storage-constants";
+import {
+  CATALOG_STORAGE_BUCKET,
+  catalogProductStoragePath,
+} from "@/lib/storage-constants";
 
 type AdminClient = SupabaseClient;
 
@@ -45,7 +48,7 @@ export async function syncOneProductImageToStorage(
     driveAuth
   );
   const jpeg = await toCatalogJpegBuffer(buffer);
-  const path = `products/${item.drive_file_id}.jpg`;
+  const path = catalogProductStoragePath(item.drive_file_id);
 
   await withRetry(
     async () => {
@@ -97,4 +100,30 @@ export async function markProductImageSyncError(
     .from("products")
     .update({ sync_status: "error" })
     .eq("id", productId);
+}
+
+/** Remove JPEGs do Storage quando o produto deixa de existir no Drive. */
+export async function deleteStorageForDriveFileIds(
+  admin: AdminClient,
+  driveFileIds: string[]
+): Promise<number> {
+  const paths = driveFileIds
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .map((id) => catalogProductStoragePath(id));
+  if (paths.length === 0) return 0;
+
+  let removed = 0;
+  const CHUNK = 50;
+  for (let i = 0; i < paths.length; i += CHUNK) {
+    const slice = paths.slice(i, i + CHUNK);
+    const { error } = await admin.storage
+      .from(CATALOG_STORAGE_BUCKET)
+      .remove(slice);
+    if (error) {
+      throw new Error(error.message);
+    }
+    removed += slice.length;
+  }
+  return removed;
 }

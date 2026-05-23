@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
     imported: syncResult.imported,
     totalParsed: syncResult.totalParsed,
     removedMissingFromDrive: syncResult.removedMissingFromDrive,
+    storageRemoved: syncResult.storageRemoved,
     storageUploaded: syncResult.storageUploaded,
     storageSkipped: syncResult.storageSkipped,
     storageErrorCount: syncResult.storageErrors?.length ?? 0,

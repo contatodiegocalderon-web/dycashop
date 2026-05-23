@@ -7,6 +7,7 @@ import {
   type DriveImportUpsert,
 } from "@/services/drive-import";
 import {
+  deleteStorageForDriveFileIds,
   markProductImageSyncError,
   syncOneProductImageToStorage,
   type ImageSyncItem,
@@ -22,6 +23,7 @@ export type SyncResult = {
   imported: number;
   totalParsed: number;
   removedMissingFromDrive: number;
+  storageRemoved: number;
   message?: string;
   storageUploaded: number;
   storageSkipped: number;
@@ -117,11 +119,26 @@ async function removeLegacyImportProducts(admin: AdminClient): Promise<void> {
   await deleteBatch("streetwear");
 }
 
+async function fetchProductIdsInOrders(
+  admin: AdminClient
+): Promise<Set<string>> {
+  const { data: orderRows, error } = await admin
+    .from("order_items")
+    .select("product_id");
+  if (error) throw new Error(error.message);
+  return new Set(
+    (orderRows ?? [])
+      .map((r: { product_id: string | null }) => r.product_id)
+      .filter((id): id is string => Boolean(id))
+  );
+}
+
 async function pruneProductsMissingFromDrive(
   admin: AdminClient,
   driveFileIds: string[]
-): Promise<{ removed: number }> {
+): Promise<{ removed: number; removedDriveFileIds: string[] }> {
   const driveSet = new Set(driveFileIds);
+  const protectedIds = await fetchProductIdsInOrders(admin);
 
   const { data: products, error: listErr } = await admin
     .from("products")
@@ -129,15 +146,18 @@ async function pruneProductsMissingFromDrive(
   if (listErr) throw new Error(listErr.message);
 
   const removable: string[] = [];
+  const removedDriveFileIds: string[] = [];
   for (const p of products ?? []) {
     const row = p as { id: string; drive_file_id: string | null };
     const driveId = row.drive_file_id?.trim() ?? "";
     if (!driveId || driveSet.has(driveId)) continue;
+    if (protectedIds.has(row.id)) continue;
     removable.push(row.id);
+    removedDriveFileIds.push(driveId);
   }
 
   if (removable.length === 0) {
-    return { removed: 0 };
+    return { removed: 0, removedDriveFileIds: [] };
   }
 
   let removed = 0;
@@ -151,7 +171,22 @@ async function pruneProductsMissingFromDrive(
     removed += count ?? slice.length;
   }
 
-  return { removed };
+  return { removed, removedDriveFileIds };
+}
+
+function emptySyncResult(partial: Partial<SyncResult>): SyncResult {
+  return {
+    imported: 0,
+    totalParsed: 0,
+    removedMissingFromDrive: 0,
+    storageRemoved: 0,
+    storageUploaded: 0,
+    storageSkipped: 0,
+    storageErrors: [],
+    driveRenameOk: 0,
+    driveRenameErrors: [],
+    ...partial,
+  };
 }
 
 async function fetchExistingStockByDriveIds(
@@ -317,29 +352,33 @@ async function runSync(
   emit?: (e: SyncProgressEvent) => void,
   opts?: SyncOptions
 ): Promise<SyncResult> {
-  const fromDrive = await fetchDriveProductRows(rootFolderId);
-  if (!fromDrive.length) {
-    return {
-      imported: 0,
-      totalParsed: 0,
-      removedMissingFromDrive: 0,
-      message:
-        "Nenhuma imagem válida. Na pasta principal do catálogo: uma subpasta por categoria (nome da pasta = categoria); dentro, M, G, GG com ficheiros «MARCA COR». Verifique nomes e permissões no Drive.",
-      storageUploaded: 0,
-      storageSkipped: 0,
-      storageErrors: [],
-      driveRenameOk: 0,
-      driveRenameErrors: [],
-    };
-  }
+  emit?.({ type: "phase", phase: "drive_scan" });
 
-  emit?.({ type: "phase", phase: "produtos" });
+  const fromDrive = await fetchDriveProductRows(rootFolderId);
 
   const admin = getAdminClient();
   await removeLegacyImportProducts(admin);
 
   const ids = fromDrive.map((r) => r.drive_file_id);
   const prune = await pruneProductsMissingFromDrive(admin, ids);
+  let storageRemoved = 0;
+  if (prune.removedDriveFileIds.length > 0) {
+    storageRemoved = await deleteStorageForDriveFileIds(
+      admin,
+      prune.removedDriveFileIds
+    );
+  }
+
+  if (!fromDrive.length) {
+    return emptySyncResult({
+      removedMissingFromDrive: prune.removed,
+      storageRemoved,
+      message:
+        "Nenhuma imagem válida nas pastas M, G ou GG. Estrutura: uma subpasta por categoria; dentro, M, G, GG com ficheiros «MARCA COR».",
+    });
+  }
+
+  emit?.({ type: "phase", phase: "produtos" });
   const preserveExistingStock = opts?.preserveExistingStock === true;
   const rows = preserveExistingStock
     ? mergePreservingStock(
@@ -389,6 +428,7 @@ async function runSync(
     imported: totalUpserted,
     totalParsed: rows.length,
     removedMissingFromDrive: prune.removed,
+    storageRemoved,
     storageUploaded: uploaded,
     storageSkipped: skippedCount,
     storageErrors: errors,

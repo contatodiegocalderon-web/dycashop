@@ -2,11 +2,21 @@ import type { SyncResult } from "@/services/drive-sync";
 
 export function formatSyncResultSummary(r: SyncResult): string {
   if (r.message && r.imported === 0) {
-    return r.message;
+    const parts = [r.message];
+    if ((r.removedMissingFromDrive ?? 0) > 0) {
+      parts.push(
+        `Removidos por não existir no Drive: ${r.removedMissingFromDrive}.`
+      );
+    }
+    if ((r.storageRemoved ?? 0) > 0) {
+      parts.push(`Imagens Storage removidas (órfãs): ${r.storageRemoved}.`);
+    }
+    return parts.join("\n");
   }
   const parts = [
     `Produtos no catálogo: ${r.imported} (${r.totalParsed} ficheiros no Drive).`,
     `Removidos por não existir no Drive: ${r.removedMissingFromDrive ?? 0}.`,
+    `Imagens Storage removidas (órfãs): ${r.storageRemoved ?? 0}.`,
     `Imagens Storage: ${r.storageUploaded} enviadas, ${r.storageSkipped} já atualizadas (ignoradas).`,
   ];
   if (r.storageErrors?.length) {
