@@ -2,9 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CategorySummary } from "@/lib/catalog-categories";
+import {
+  ENABLE_GUIDED_CATEGORY_WIZARD,
+  filterProductsByWizardSelection,
+  type GuidedWizardSelection,
+  type WizardGuidedFilter,
+} from "@/lib/catalog-guided-wizard";
 import type { Product, ProductSize } from "@/types";
 import { CatalogFilters } from "@/components/catalog-filters";
 import { CatalogSections } from "@/components/catalog-sections";
+import { CategoryGuidedWizard } from "@/components/category-guided-wizard";
 
 function buildQuery(
   size: "" | ProductSize,
@@ -44,22 +51,41 @@ export function CatalogClient({
   categories,
   activeCategorySlug,
 }: Props) {
+  const guidedMode =
+    Boolean(categoryFixed?.trim()) && ENABLE_GUIDED_CATEGORY_WIZARD;
+
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!guidedMode);
   const [error, setError] = useState<string | null>(null);
   const [size, setSize] = useState<"" | ProductSize>("");
   const [categoryFree, setCategoryFree] = useState("");
   const [brand, setBrand] = useState("");
   const [color, setColor] = useState("");
+  const [wizardDone, setWizardDone] = useState(!guidedMode);
+  const [wizardGuidedFilter, setWizardGuidedFilter] =
+    useState<WizardGuidedFilter | null>(null);
 
   const effectiveCategory = (categoryFixed ?? categoryFree).trim();
   const categoryExact = Boolean(categoryFixed);
+  const showCatalog = !guidedMode || wizardDone;
 
-  const query = useMemo(
-    () =>
-      buildQuery(size, effectiveCategory, brand, color, categoryExact),
-    [size, effectiveCategory, brand, color, categoryExact]
-  );
+  const query = useMemo(() => {
+    const useApiBrandColor = !wizardGuidedFilter;
+    return buildQuery(
+      size,
+      effectiveCategory,
+      useApiBrandColor ? brand : "",
+      useApiBrandColor ? color : "",
+      categoryExact
+    );
+  }, [
+    size,
+    effectiveCategory,
+    brand,
+    color,
+    categoryExact,
+    wizardGuidedFilter,
+  ]);
 
   const brandOptions = useMemo(() => {
     const s = new Set<string>();
@@ -83,7 +109,13 @@ export function CatalogClient({
     );
   }, [products]);
 
+  const displayedProducts = useMemo(() => {
+    if (!wizardGuidedFilter) return products;
+    return filterProductsByWizardSelection(products, wizardGuidedFilter);
+  }, [products, wizardGuidedFilter]);
+
   const load = useCallback(async () => {
+    if (!showCatalog) return;
     setLoading(true);
     setError(null);
     try {
@@ -97,11 +129,29 @@ export function CatalogClient({
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, [query, showCatalog]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
+
+  function handleWizardComplete(sel: GuidedWizardSelection) {
+    setSize(sel.size);
+    setColor("");
+    setBrand("");
+    setWizardGuidedFilter({ colors: sel.colors, brands: sel.brands });
+    setWizardDone(true);
+  }
+
+  function handleBrandChange(v: string) {
+    setWizardGuidedFilter(null);
+    setBrand(v);
+  }
+
+  function handleColorChange(v: string) {
+    setWizardGuidedFilter(null);
+    setColor(v);
+  }
 
   useEffect(() => {
     if (brand && brandOptions.length > 0 && !brandOptions.includes(brand)) {
@@ -117,6 +167,15 @@ export function CatalogClient({
 
   return (
     <div className="space-y-8">
+      {guidedMode && !wizardDone && categoryFixed && (
+        <CategoryGuidedWizard
+          categoryLabel={categoryFixed}
+          onComplete={handleWizardComplete}
+        />
+      )}
+
+      {showCatalog && (
+        <>
       <CatalogFilters
         size={size}
         category={categoryFree}
@@ -130,10 +189,13 @@ export function CatalogClient({
             ? { categories, currentSlug: activeCategorySlug }
             : undefined
         }
-        onSize={setSize}
+        onSize={(v) => {
+          setWizardGuidedFilter(null);
+          setSize(v);
+        }}
         onCategory={setCategoryFree}
-        onBrand={setBrand}
-        onColor={setColor}
+        onBrand={handleBrandChange}
+        onColor={handleColorChange}
       />
 
       {loading && (
@@ -144,13 +206,15 @@ export function CatalogClient({
           {error}
         </div>
       )}
-      {!loading && !error && products.length === 0 && (
+      {!loading && !error && displayedProducts.length === 0 && (
         <p className="text-center text-stone-400">
           Nenhum produto encontrado. Rode a importação do Drive e verifique filtros.
         </p>
       )}
-      {!loading && !error && products.length > 0 && (
-        <CatalogSections products={products} />
+      {!loading && !error && displayedProducts.length > 0 && (
+        <CatalogSections products={displayedProducts} />
+      )}
+        </>
       )}
     </div>
   );
