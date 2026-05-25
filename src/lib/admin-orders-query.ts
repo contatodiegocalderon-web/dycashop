@@ -64,6 +64,7 @@ export async function fetchAllPaidOrdersWithSale(
 }
 
 export type OrderItemMetricsRow = {
+  id?: string;
   order_id: string;
   quantity: number;
   snapshot_category: string | null;
@@ -73,7 +74,7 @@ export type OrderItemMetricsRow = {
   products?: { category: string | null } | { category: string | null }[] | null;
 };
 
-/** Carrega itens em lotes (limite do `.in()` no PostgREST). */
+/** Carrega itens em lotes e páginas (PostgREST limita respostas a ~1000 linhas). */
 export async function fetchOrderItemsByOrderIds(
   admin: AdminClient,
   orderIds: string[]
@@ -83,18 +84,28 @@ export async function fetchOrderItemsByOrderIds(
 
   for (let i = 0; i < orderIds.length; i += IN_CHUNK) {
     const chunk = orderIds.slice(i, i + IN_CHUNK);
-    const { data, error } = await admin
-      .from("order_items")
-      .select(
-        "order_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size, products(category)"
-      )
-      .in("order_id", chunk);
-    if (error) throw new Error(error.message);
-    for (const row of data ?? []) {
-      const it = row as OrderItemMetricsRow;
-      const list = map.get(it.order_id) ?? [];
-      list.push(it);
-      map.set(it.order_id, list);
+    let offset = 0;
+    for (;;) {
+      const { data, error } = await admin
+        .from("order_items")
+        .select(
+          "id, order_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size, products(category)"
+        )
+        .in("order_id", chunk)
+        .order("order_id", { ascending: true })
+        .order("id", { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1);
+      if (error) throw new Error(error.message);
+
+      const rows = (data ?? []) as OrderItemMetricsRow[];
+      for (const it of rows) {
+        const list = map.get(it.order_id) ?? [];
+        list.push(it);
+        map.set(it.order_id, list);
+      }
+
+      if (rows.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
     }
   }
   return map;
