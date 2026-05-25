@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -467,12 +468,12 @@ export default function CarrinhoPage() {
                       className="flex gap-3 border-b border-white/[0.06] pb-4 last:border-0 last:pb-0"
                     >
                       <div className="relative h-[4.5rem] w-[3.25rem] shrink-0 overflow-hidden rounded-md bg-zinc-950">
-                        <img
+                        <Image
                           src={line.product.drive_image_url}
                           alt=""
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                          decoding="async"
+                          fill
+                          className="object-cover"
+                          sizes="52px"
                         />
                       </div>
                       <div className="min-w-0 flex-1">

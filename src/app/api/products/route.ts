@@ -86,7 +86,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ products });
+    return NextResponse.json(
+      { products },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -11,12 +11,14 @@ type Props = {
 
 export function CartAddedToast({ toast, onDismiss }: Props) {
   const pathname = usePathname();
+  const toastKey = toast?.key;
+  const totalItems = toast?.totalItems;
 
   useEffect(() => {
-    if (!toast) return;
+    if (!toastKey) return;
     const t = window.setTimeout(onDismiss, 1650);
     return () => window.clearTimeout(t);
-  }, [toast?.key, toast?.totalItems, onDismiss]);
+  }, [toastKey, totalItems, onDismiss]);
 
   if (!toast || pathname?.startsWith("/admin")) return null;
 

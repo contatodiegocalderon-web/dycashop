@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchOrderDisplayNumberPublic } from "@/lib/order-display-number";
@@ -151,12 +152,12 @@ export default async function ReciboPage({ params }: Props) {
                       className="flex gap-3 rounded-xl border border-white/[0.06] bg-zinc-900/40 p-3 ring-1 ring-white/[0.03]"
                     >
                       <div className="relative h-24 w-[4.5rem] shrink-0 overflow-hidden rounded-lg bg-zinc-950">
-                        <img
+                        <Image
                           src={itemImageSrc(it)}
                           alt=""
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                          decoding="async"
+                          fill
+                          className="object-cover"
+                          sizes="72px"
                         />
                       </div>
                       <div className="min-w-0 flex-1 py-0.5">

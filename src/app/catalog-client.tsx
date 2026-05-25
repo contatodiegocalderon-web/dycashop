@@ -121,7 +121,7 @@ export function CatalogClient({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/products${query}`);
+      const res = await fetch(`/api/products${query}`, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao carregar");
       setProducts(data.products ?? []);

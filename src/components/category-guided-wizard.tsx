@@ -119,7 +119,10 @@ export function CategoryGuidedWizard({ categoryLabel, onComplete }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/products${buildCategoryQuery(categoryLabel)}`);
+      const res = await fetch(
+        `/api/products${buildCategoryQuery(categoryLabel)}`,
+        { cache: "no-store" }
+      );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao carregar");
       setProducts((data.products ?? []) as Product[]);
@@ -211,12 +214,14 @@ export function CategoryGuidedWizard({ categoryLabel, onComplete }: Props) {
     );
   }
 
-  const stepTitle =
+  const stepLabel =
+    step === 1 ? "1º passo" : step === 2 ? "2º passo" : "3º passo";
+  const stepInstruction =
     step === 1
-      ? "1º passo — escolha o tamanho que você está procurando"
+      ? "escolha o tamanho que você está procurando"
       : step === 2
-        ? "2º passo — escolha a(s) cor(es) de sua preferência"
-        : "Pra finalizar — 3º passo, escolha a(s) marca(s)";
+        ? "escolha a(s) cor(es) de sua preferência"
+        : "escolha a(s) marca(s)";
 
   return (
     <section
@@ -227,10 +232,17 @@ export function CategoryGuidedWizard({ categoryLabel, onComplete }: Props) {
 
       <div key={step} className="animate-guided-step-in">
         <p className="text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400/90">
-          {step === 1 ? "Comece aqui" : step === 2 ? "Quase lá" : "Último passo"}
+          {step === 1
+            ? "comece aqui sua separação"
+            : step === 2
+              ? "Quase lá"
+              : "Último passo"}
         </p>
-        <h2 className="mt-2 text-balance text-center text-lg font-semibold leading-snug text-stone-50 sm:text-xl">
-          {stepTitle}
+        <h2 className="mt-3 flex flex-col items-center gap-2 text-balance text-center text-lg font-semibold leading-snug text-stone-50 sm:text-xl">
+          <span className="animate-guided-step-badge rounded-full border border-emerald-300/40 bg-emerald-400/15 px-4 py-1 text-sm font-black uppercase tracking-[0.16em] text-emerald-100 shadow-[0_0_24px_rgba(52,211,153,0.24)] ring-1 ring-emerald-300/20 sm:text-base">
+            {stepLabel}
+          </span>
+          <span>{stepInstruction}</span>
         </h2>
 
         <div className="mt-8 flex flex-wrap justify-center gap-3">

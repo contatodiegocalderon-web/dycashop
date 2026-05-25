@@ -119,26 +119,11 @@ async function removeLegacyImportProducts(admin: AdminClient): Promise<void> {
   await deleteBatch("streetwear");
 }
 
-async function fetchProductIdsInOrders(
-  admin: AdminClient
-): Promise<Set<string>> {
-  const { data: orderRows, error } = await admin
-    .from("order_items")
-    .select("product_id");
-  if (error) throw new Error(error.message);
-  return new Set(
-    (orderRows ?? [])
-      .map((r: { product_id: string | null }) => r.product_id)
-      .filter((id): id is string => Boolean(id))
-  );
-}
-
 async function pruneProductsMissingFromDrive(
   admin: AdminClient,
   driveFileIds: string[]
 ): Promise<{ removed: number; removedDriveFileIds: string[] }> {
   const driveSet = new Set(driveFileIds);
-  const protectedIds = await fetchProductIdsInOrders(admin);
 
   const { data: products, error: listErr } = await admin
     .from("products")
@@ -151,7 +136,6 @@ async function pruneProductsMissingFromDrive(
     const row = p as { id: string; drive_file_id: string | null };
     const driveId = row.drive_file_id?.trim() ?? "";
     if (!driveId || driveSet.has(driveId)) continue;
-    if (protectedIds.has(row.id)) continue;
     removable.push(row.id);
     removedDriveFileIds.push(driveId);
   }

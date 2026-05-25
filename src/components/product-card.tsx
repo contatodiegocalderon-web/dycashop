@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import type { Product } from "@/types";
 import { ProductImagePreview } from "@/components/product-image-preview";
@@ -35,14 +36,14 @@ export function ProductCard({ product, imagePriority }: Props) {
         className="relative aspect-[3/4] max-h-[220px] w-full cursor-zoom-in bg-zinc-950 sm:max-h-[240px]"
         aria-label={`Ver imagem maior: ${previewLabel}`}
       >
-        <img
+        <Image
           src={imageSrc}
           alt=""
           role="presentation"
-          className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:brightness-110"
-          loading={imagePriority ? "eager" : "lazy"}
-          decoding="async"
-          fetchPriority={imagePriority ? "high" : "low"}
+          fill
+          priority={imagePriority}
+          className="object-cover transition duration-300 group-hover:brightness-110"
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 240px"
         />
         <span className="absolute left-2 top-2 rounded bg-black/75 px-2 py-1 text-[11px] font-bold uppercase tabular-nums text-white">
           {product.size}

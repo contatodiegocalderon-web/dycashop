@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect } from "react";
 import { publicDriveImageUrl } from "@/lib/drive-image-url";
 
@@ -50,12 +51,19 @@ export function ProductImagePreview({
       >
         ×
       </button>
-      <img
-        src={src}
-        alt={label}
-        className="max-h-[min(90vh,900px)] max-w-full rounded-lg object-contain shadow-2xl"
+      <div
+        className="relative h-[min(90vh,900px)] w-[min(92vw,720px)]"
         onClick={(e) => e.stopPropagation()}
-      />
+      >
+        <Image
+          src={src}
+          alt={label}
+          fill
+          priority
+          className="rounded-lg object-contain drop-shadow-2xl"
+          sizes="(max-width: 768px) 92vw, 720px"
+        />
+      </div>
     </div>
   );
 }

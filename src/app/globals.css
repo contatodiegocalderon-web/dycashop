@@ -52,6 +52,22 @@ body {
   animation: guided-step-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes guided-step-badge {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 24px rgba(52, 211, 153, 0.24);
+  }
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 34px rgba(52, 211, 153, 0.42);
+  }
+}
+
+.animate-guided-step-badge {
+  animation: guided-step-badge 1.8s ease-in-out infinite;
+}
+
 @keyframes guided-chip-in {
   from {
     opacity: 0;
