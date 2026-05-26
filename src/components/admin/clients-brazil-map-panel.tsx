@@ -16,6 +16,7 @@ import type {
 } from "@/app/api/admin/clients/map/route";
 
 type SellerFilterOption = { value: string; label: string };
+type ProfileFilter = "all" | "lojista" | "uso_proprio" | "revendedor";
 
 const PROFILE_COLORS: Record<
   "lojista" | "revendedor" | "uso_proprio" | "sem_perfil",
@@ -35,6 +36,21 @@ function money(n: number) {
   });
 }
 
+function waDisplay(digits: string) {
+  const d = digits.replace(/\D/g, "");
+  if (d.length <= 11) return d;
+  return `+${d.slice(0, 2)} ${d.slice(2, 4)} ${d.slice(4, 9)}-${d.slice(9)}`;
+}
+
+function waLink(digits: string) {
+  return `https://wa.me/${digits.replace(/\D/g, "")}`;
+}
+
+function shortDate(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("pt-BR");
+}
+
 function fillForCount(count: number, max: number): string {
   if (count <= 0) return "#f5f5f4";
   const t = Math.min(1, count / Math.max(1, max));
@@ -48,17 +64,31 @@ function breakdownByUf(
   return new Map(states.map((s) => [s.uf, s]));
 }
 
+function countProfiles(clients: StateClientBreakdown["clients"]) {
+  let lojista = 0;
+  let revendedor = 0;
+  let uso_proprio = 0;
+  let sem_perfil = 0;
+  for (const client of clients) {
+    if (client.business_profile === "lojista") lojista += 1;
+    else if (client.business_profile === "revendedor") revendedor += 1;
+    else if (client.business_profile === "uso_proprio") uso_proprio += 1;
+    else sem_perfil += 1;
+  }
+  return { lojista, revendedor, uso_proprio, sem_perfil };
+}
+
 export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
   const { adminFetch, isOwner } = useAdminAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [states, setStates] = useState<StateClientBreakdown[]>([]);
   const [topSales, setTopSales] = useState<TopSalesState[]>([]);
-  const [maxClients, setMaxClients] = useState(1);
   const [clientsWithoutUf, setClientsWithoutUf] = useState(0);
-  const [totalClients, setTotalClients] = useState(0);
   const [hoverUf, setHoverUf] = useState<BrazilUf | null>(null);
+  const [selectedUf, setSelectedUf] = useState<BrazilUf | null>(null);
   const [sellerScope, setSellerScope] = useState("all");
+  const [profileFilter, setProfileFilter] = useState<ProfileFilter>("all");
   const [sellerFilterOptions, setSellerFilterOptions] = useState<
     SellerFilterOption[]
   >([]);
@@ -79,9 +109,7 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
       if (!res.ok) throw new Error(data.error ?? "Falha ao carregar mapa");
       setStates((data.states ?? []) as StateClientBreakdown[]);
       setTopSales((data.topSalesStates ?? []) as TopSalesState[]);
-      setMaxClients(Number(data.maxClients ?? 1));
       setClientsWithoutUf(Number(data.clientsWithoutUf ?? 0));
-      setTotalClients(Number(data.totalClients ?? 0));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
       setStates([]);
@@ -134,28 +162,58 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
     if (active) void load();
   }, [load, active]);
 
-  const byUf = useMemo(() => breakdownByUf(states), [states]);
+  const filteredStates = useMemo(() => {
+    if (profileFilter === "all") return states;
+
+    return states.map((state) => {
+      const clients = state.clients.filter(
+        (client) => client.business_profile === profileFilter
+      );
+      const counts = countProfiles(clients);
+      return {
+        ...state,
+        total: clients.length,
+        clients,
+        lojista: counts.lojista,
+        revendedor: counts.revendedor,
+        uso_proprio: counts.uso_proprio,
+        sem_perfil: counts.sem_perfil,
+        desconhecido: 0,
+      };
+    });
+  }, [states, profileFilter]);
+
+  const visibleMaxClients = useMemo(
+    () => Math.max(1, ...filteredStates.map((s) => s.total)),
+    [filteredStates]
+  );
+  const visibleTotalClients = useMemo(
+    () => filteredStates.reduce((sum, state) => sum + state.total, 0),
+    [filteredStates]
+  );
+  const byUf = useMemo(() => breakdownByUf(filteredStates), [filteredStates]);
   const hoverRow = hoverUf ? byUf.get(hoverUf) : null;
+  const selectedRow = selectedUf ? byUf.get(selectedUf) : null;
 
   const totals = useMemo(() => {
     let lojista = 0;
     let revendedor = 0;
     let uso_proprio = 0;
     let sem_perfil = 0;
-    for (const s of states) {
+    for (const s of filteredStates) {
       lojista += s.lojista;
       revendedor += s.revendedor;
       uso_proprio += s.uso_proprio;
       sem_perfil += s.sem_perfil;
     }
     return { lojista, revendedor, uso_proprio, sem_perfil };
-  }, [states]);
+  }, [filteredStates]);
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-stone-600">
-        Distribuição por estado inferida pelo DDD do WhatsApp. Passe o rato sobre
-        um estado para ver o detalhe por perfil.
+        Distribuição por estado inferida pelo DDD do WhatsApp. Clique em um
+        estado para ver a lista de clientes e chamar no WhatsApp.
       </p>
 
       <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -181,6 +239,25 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
             </select>
           </div>
         )}
+        <div className="flex min-w-[12rem] flex-col gap-1">
+          <label
+            htmlFor="mapa-profile-filter"
+            className="text-xs font-medium text-stone-600"
+          >
+            Perfil
+          </label>
+          <select
+            id="mapa-profile-filter"
+            value={profileFilter}
+            onChange={(e) => setProfileFilter(e.target.value as ProfileFilter)}
+            className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+          >
+            <option value="all">Todos</option>
+            <option value="lojista">Lojista</option>
+            <option value="uso_proprio">Uso próprio</option>
+            <option value="revendedor">Revendedor</option>
+          </select>
+        </div>
         <button
           type="button"
           onClick={() => void load()}
@@ -226,18 +303,26 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
             const row = byUf.get(uf);
             const count = row?.total ?? 0;
             const isHover = hoverUf === uf;
+            const isSelected = selectedUf === uf;
             return (
               <path
                 key={loc.id}
                 d={loc.path}
-                fill={fillForCount(count, maxClients)}
-                stroke={isHover ? "#5b21b6" : "#e7e5e4"}
-                strokeWidth={isHover ? 1.5 : 0.6}
+                fill={fillForCount(count, visibleMaxClients)}
+                stroke={isSelected || isHover ? "#5b21b6" : "#e7e5e4"}
+                strokeWidth={isSelected || isHover ? 1.7 : 0.6}
                 className="cursor-pointer transition-[fill,stroke] duration-150"
+                onClick={() => setSelectedUf(uf)}
                 onMouseEnter={() => setHoverUf(uf)}
                 onMouseLeave={() => setHoverUf(null)}
                 onFocus={() => setHoverUf(uf)}
                 onBlur={() => setHoverUf(null)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedUf(uf);
+                  }
+                }}
                 tabIndex={0}
                 aria-label={`${BRAZIL_UF_LABELS[uf]}: ${count} cliente(s)`}
               />
@@ -287,6 +372,79 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
         )}
       </div>
 
+      <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-5">
+        {selectedRow ? (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-stone-900">
+                  Clientes em {selectedRow.name} ({selectedRow.uf})
+                </h3>
+                <p className="mt-1 text-sm text-stone-500">
+                  {selectedRow.total} cliente
+                  {selectedRow.total === 1 ? "" : "s"} identificado
+                  {selectedRow.total === 1 ? "" : "s"} pelo DDD.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedUf(null)}
+                className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-50"
+              >
+                Limpar seleção
+              </button>
+            </div>
+
+            {selectedRow.clients.length > 0 ? (
+              <ul className="mt-4 divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-100">
+                {selectedRow.clients.map((client) => (
+                  <li
+                    key={client.customer_whatsapp}
+                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-stone-900">
+                          {client.customer_name?.trim() || "Cliente sem nome"}
+                        </p>
+                        {client.business_profile ? (
+                          <ClientProfileBadge profile={client.business_profile} />
+                        ) : null}
+                      </div>
+                      <p className="mt-0.5 text-sm text-stone-500">
+                        {waDisplay(client.customer_whatsapp)}
+                      </p>
+                      <p className="mt-1 text-xs text-stone-500">
+                        {client.order_count} pedido
+                        {client.order_count === 1 ? "" : "s"} ·{" "}
+                        {money(client.total_spent)} · último pedido em{" "}
+                        {shortDate(client.last_confirmed_at)}
+                      </p>
+                    </div>
+                    <a
+                      href={waLink(client.customer_whatsapp)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#20bd5a]"
+                    >
+                      Chamar no WhatsApp
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 rounded-xl bg-stone-50 px-4 py-6 text-center text-sm text-stone-500">
+                Nenhum cliente encontrado neste estado para o filtro atual.
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-stone-500">
+            Clique em um estado do mapa para ver os clientes aqui embaixo.
+          </p>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-4 text-xs text-stone-600">
         <span className="inline-flex items-center gap-1.5">
           <span
@@ -317,8 +475,9 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
       </div>
 
       <p className="text-xs text-stone-500">
-        {totalClients} cliente(s) mapeado(s).
-        {clientsWithoutUf > 0
+        {visibleTotalClients} cliente(s) mapeado(s)
+        {profileFilter !== "all" ? " neste perfil" : ""}.
+        {profileFilter === "all" && clientsWithoutUf > 0
           ? ` ${clientsWithoutUf} com DDD não identificado (excluídos do mapa).`
           : null}
       </p>

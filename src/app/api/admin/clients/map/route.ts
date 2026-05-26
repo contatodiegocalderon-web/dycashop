@@ -18,6 +18,15 @@ const STAFF_UUID_RE =
 
 const MS_30_DAYS = 30 * 24 * 60 * 60 * 1000;
 
+export type StateClientMapItem = {
+  customer_whatsapp: string;
+  customer_name: string | null;
+  business_profile: BusinessProfile | null;
+  order_count: number;
+  total_spent: number;
+  last_confirmed_at: string | null;
+};
+
 export type StateClientBreakdown = {
   uf: BrazilUf;
   name: string;
@@ -27,6 +36,7 @@ export type StateClientBreakdown = {
   uso_proprio: number;
   sem_perfil: number;
   desconhecido: number;
+  clients: StateClientMapItem[];
 };
 
 export type TopSalesState = {
@@ -46,6 +56,7 @@ function emptyBreakdown(uf: BrazilUf): StateClientBreakdown {
     uso_proprio: 0,
     sem_perfil: 0,
     desconhecido: 0,
+    clients: [],
   };
 }
 
@@ -103,7 +114,7 @@ export async function GET(request: NextRequest) {
     let orderQuery = admin
       .from("orders")
       .select(
-        "customer_whatsapp, sale_amount, confirmed_at, confirmed_by_staff_id"
+        "customer_whatsapp, customer_name, sale_amount, confirmed_at, confirmed_by_staff_id"
       )
       .eq("status", "PAGO")
       .not("customer_whatsapp", "is", null);
@@ -166,18 +177,47 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const byWa = new Map<string, { profile: BusinessProfile | null }>();
+    const byWa = new Map<
+      string,
+      {
+        customer_whatsapp: string;
+        customer_name: string | null;
+        profile: BusinessProfile | null;
+        order_count: number;
+        total_spent: number;
+        last_confirmed_at: string | null;
+      }
+    >();
     for (const o of orders ?? []) {
       const row = o as {
         customer_whatsapp: string;
+        customer_name: string | null;
         sale_amount: number | null;
         confirmed_at: string | null;
       };
       const wa = String(row.customer_whatsapp ?? "").replace(/\D/g, "");
       if (wa.length < 10 || hiddenSet.has(wa)) continue;
-      if (!byWa.has(wa)) {
-        byWa.set(wa, { profile: profileMap.get(wa) ?? null });
+      const cur = byWa.get(wa) ?? {
+        customer_whatsapp: wa,
+        customer_name: null,
+        profile: profileMap.get(wa) ?? null,
+        order_count: 0,
+        total_spent: 0,
+        last_confirmed_at: null,
+      };
+      cur.order_count += 1;
+      const spent = Number(row.sale_amount ?? 0);
+      if (!Number.isNaN(spent)) cur.total_spent += spent;
+      if (
+        row.confirmed_at &&
+        (!cur.last_confirmed_at || row.confirmed_at > cur.last_confirmed_at)
+      ) {
+        cur.last_confirmed_at = row.confirmed_at;
+        cur.customer_name = String(row.customer_name ?? "").trim() || cur.customer_name;
+      } else if (!cur.customer_name) {
+        cur.customer_name = String(row.customer_name ?? "").trim() || null;
       }
+      byWa.set(wa, cur);
     }
 
     const stateMap = new Map<BrazilUf, StateClientBreakdown>();
@@ -200,6 +240,24 @@ export async function GET(request: NextRequest) {
       else if (p === "uso_proprio") row.uso_proprio += 1;
       else if (!p) row.sem_perfil += 1;
       else row.desconhecido += 1;
+      row.clients.push({
+        customer_whatsapp: meta.customer_whatsapp,
+        customer_name: meta.customer_name,
+        business_profile: meta.profile,
+        order_count: meta.order_count,
+        total_spent: Number(meta.total_spent.toFixed(2)),
+        last_confirmed_at: meta.last_confirmed_at,
+      });
+    }
+
+    for (const row of Array.from(stateMap.values())) {
+      row.clients.sort((a, b) => {
+        const bySpent = b.total_spent - a.total_spent;
+        if (bySpent !== 0) return bySpent;
+        return String(b.last_confirmed_at ?? "").localeCompare(
+          String(a.last_confirmed_at ?? "")
+        );
+      });
     }
 
     const sinceIso = new Date(Date.now() - MS_30_DAYS).toISOString();
