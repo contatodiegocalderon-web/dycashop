@@ -52,6 +52,7 @@ export function CategoryGrid({ categories }: Props) {
                     alt=""
                     fill
                     priority={eager}
+                    unoptimized
                     className="object-cover object-center transition duration-700 group-hover:scale-[1.03] motion-reduce:group-hover:scale-100"
                     sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                   />

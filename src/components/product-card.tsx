@@ -42,6 +42,7 @@ export function ProductCard({ product, imagePriority }: Props) {
           role="presentation"
           fill
           priority={imagePriority}
+          unoptimized
           className="object-cover transition duration-300 group-hover:brightness-110"
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 240px"
         />

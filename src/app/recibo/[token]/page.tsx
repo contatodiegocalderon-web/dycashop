@@ -156,6 +156,7 @@ export default async function ReciboPage({ params }: Props) {
                           src={itemImageSrc(it)}
                           alt=""
                           fill
+                          unoptimized
                           className="object-cover"
                           sizes="72px"
                         />

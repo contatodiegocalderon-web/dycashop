@@ -472,6 +472,7 @@ export default function CarrinhoPage() {
                           src={line.product.drive_image_url}
                           alt=""
                           fill
+                          unoptimized
                           className="object-cover"
                           sizes="52px"
                         />

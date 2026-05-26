@@ -36,6 +36,7 @@ export default async function CategoriaPage({ params }: Props) {
               alt=""
               fill
               priority
+              unoptimized
               className="object-cover"
               sizes="(max-width: 1280px) 100vw, 1280px"
             />

@@ -60,6 +60,7 @@ export function ProductImagePreview({
           alt={label}
           fill
           priority
+          unoptimized
           className="rounded-lg object-contain drop-shadow-2xl"
           sizes="(max-width: 768px) 92vw, 720px"
         />
