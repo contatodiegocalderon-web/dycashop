@@ -16,6 +16,7 @@ import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
 
 const IN_CHUNK = 120;
 const UPSERT_CHUNK = 80;
+const PAGE_SIZE = 1000;
 /** Uma imagem de cada vez — evita «Too many connections» no Supabase. */
 const BETWEEN_IMAGES_MS = 400;
 
@@ -85,6 +86,31 @@ type ImageStateRow = {
   sync_status: string | null;
 };
 
+async function fetchAllProductsMinimal(
+  admin: AdminClient,
+  columns: string
+): Promise<Array<{ id: string; drive_file_id: string | null; category?: string | null }>> {
+  const out: Array<{ id: string; drive_file_id: string | null; category?: string | null }> = [];
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await admin
+      .from("products")
+      .select(columns)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as unknown as Array<{
+      id: string;
+      drive_file_id: string | null;
+      category?: string | null;
+    }>;
+    out.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return out;
+}
+
 async function removeLegacyImportProducts(admin: AdminClient): Promise<void> {
   const { data: orderRows } = await admin
     .from("order_items")
@@ -96,16 +122,12 @@ async function removeLegacyImportProducts(admin: AdminClient): Promise<void> {
   );
 
   async function deleteBatch(kind: "null" | "streetwear") {
-    let query = admin.from("products").select("id");
-    if (kind === "null") {
-      query = query.is("category", null);
-    } else {
-      query = query.eq("category", "STREETWEAR");
-    }
-    const { data: targets, error: selErr } = await query;
-    if (selErr) throw new Error(selErr.message);
-    const safeIds = (targets ?? [])
-      .map((t: { id: string }) => t.id)
+    const all = await fetchAllProductsMinimal(admin, "id, category");
+    const safeIds = all
+      .filter((t) =>
+        kind === "null" ? t.category == null : t.category === "STREETWEAR"
+      )
+      .map((t) => t.id)
       .filter((id: string) => !protectedIds.has(id));
     if (safeIds.length === 0) return;
     const { error: delErr } = await admin
@@ -125,10 +147,7 @@ async function pruneProductsMissingFromDrive(
 ): Promise<{ removed: number; removedDriveFileIds: string[] }> {
   const driveSet = new Set(driveFileIds);
 
-  const { data: products, error: listErr } = await admin
-    .from("products")
-    .select("id, drive_file_id");
-  if (listErr) throw new Error(listErr.message);
+  const products = await fetchAllProductsMinimal(admin, "id, drive_file_id");
 
   const removable: string[] = [];
   const removedDriveFileIds: string[] = [];
