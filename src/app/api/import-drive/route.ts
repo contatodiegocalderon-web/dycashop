@@ -39,7 +39,9 @@ export async function POST(request: NextRequest) {
 
   try {
     if (stream) {
-      const body = syncProductsFromDriveFolderStreaming(rootId);
+      const body = syncProductsFromDriveFolderStreaming(rootId, {
+        preserveExistingStock: false,
+      });
       return new Response(body, {
         headers: {
           "Content-Type": "application/x-ndjson; charset=utf-8",
@@ -48,7 +50,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const result = await syncProductsFromDriveFolder(rootId);
+    const result = await syncProductsFromDriveFolder(rootId, {
+      preserveExistingStock: false,
+    });
     if ("message" in result && result.imported === 0) {
       return NextResponse.json(result);
     }

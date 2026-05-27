@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export type OrderStockConflictReason =
+  | "sold_out_other_order"
+  | "removed_from_drive_sync";
+
 export type OrderStockConflictItem = {
   product_id: string | null;
   brand: string;
@@ -13,14 +17,80 @@ export type OrderStockConflict = {
   flagged_at: string;
   triggered_by_order_id: string;
   triggered_by_display_number?: number | null;
+  reason?: OrderStockConflictReason;
   items: OrderStockConflictItem[];
 };
 
-export const STOCK_CONFLICT_CLIENT_MESSAGE =
-  "Uma ou mais peças deste pedido já esgotaram (outro cliente confirmou antes). Por favor, refaça o pedido no catálogo.";
+const MESSAGES: Record<
+  OrderStockConflictReason,
+  { client: string; admin: string; clientSub?: string; adminSub?: string }
+> = {
+  sold_out_other_order: {
+    client:
+      "Uma ou mais peças deste pedido já esgotaram porque outro cliente confirmou o pagamento antes. Por favor, refaça o pedido no catálogo.",
+    admin:
+      "Conflito de stock: alguma peça já foi vendida noutro pedido confirmado. O cliente precisa refazer o pedido.",
+    clientSub: "Outro pedido confirmado antes",
+    adminSub: "Outro pedido confirmado antes",
+  },
+  removed_from_drive_sync: {
+    client:
+      "Uma ou mais peças deste pedido não estão mais no catálogo (foram removidas na sincronização com o Google Drive). Por favor, refaça o pedido.",
+    admin:
+      "Conflito de stock: uma ou mais peças saíram do catálogo na sincronização com o Google Drive. O cliente precisa refazer o pedido.",
+    clientSub: "Removida na sincronização do Drive",
+    adminSub: "Removida na sincronização do Drive",
+  },
+};
 
-export const STOCK_CONFLICT_ADMIN_MESSAGE =
-  "Conflito de stock: o cliente precisa refazer o pedido — alguma peça já foi vendida noutro pedido confirmado.";
+function resolveReason(
+  raw: unknown,
+  triggeredByOrderId?: string
+): OrderStockConflictReason {
+  if (raw === "removed_from_drive_sync") return "removed_from_drive_sync";
+  if (triggeredByOrderId === "__drive_sync__") return "removed_from_drive_sync";
+  return "sold_out_other_order";
+}
+
+export function stockConflictMessage(
+  conflict: OrderStockConflict,
+  variant: "client" | "admin"
+): string {
+  const reason = resolveReason(
+    conflict.reason,
+    conflict.triggered_by_order_id
+  );
+  return MESSAGES[reason][variant];
+}
+
+export function stockConflictSubline(
+  conflict: OrderStockConflict,
+  variant: "client" | "admin"
+): string | null {
+  const reason = resolveReason(
+    conflict.reason,
+    conflict.triggered_by_order_id
+  );
+  const key = variant === "admin" ? "adminSub" : "clientSub";
+  const sub = MESSAGES[reason][key];
+  if (!sub) return null;
+
+  if (reason === "sold_out_other_order") {
+    const n = conflict.triggered_by_display_number;
+    if (n != null && n > 0) {
+      return `${sub}: #${n}`;
+    }
+    return sub;
+  }
+
+  return sub;
+}
+
+/** @deprecated Use stockConflictMessage */
+export const STOCK_CONFLICT_CLIENT_MESSAGE = MESSAGES.sold_out_other_order.client;
+
+/** @deprecated Use stockConflictMessage */
+export const STOCK_CONFLICT_ADMIN_MESSAGE = MESSAGES.sold_out_other_order.admin;
 
 export function parseOrderStockConflict(raw: unknown): OrderStockConflict | null {
   if (raw == null || typeof raw !== "object") return null;
@@ -58,6 +128,10 @@ export function parseOrderStockConflict(raw: unknown): OrderStockConflict | null
       typeof o.triggered_by_display_number === "number"
         ? o.triggered_by_display_number
         : null,
+    reason: resolveReason(
+      o.reason,
+      String(o.triggered_by_order_id ?? "")
+    ),
     items,
   };
 }
@@ -144,6 +218,7 @@ export async function flagPendingOrdersAfterConfirm(
       flagged_at: flaggedAt,
       triggered_by_order_id: opts.confirmedOrderId,
       triggered_by_display_number: opts.confirmedDisplayNumber ?? null,
+      reason: "sold_out_other_order",
       items,
     };
     const { error: uErr } = await admin

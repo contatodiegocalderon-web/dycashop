@@ -4,20 +4,11 @@ export type ProductStatus = "ATIVO" | "ESGOTADO";
 
 export type OrderStatus = "PENDENTE_PAGAMENTO" | "PAGO" | "CANCELADO";
 
-/** Preenchido quando outro pedido confirmado esgota peças deste pedido pendente. */
-export type OrderStockConflict = {
-  flagged_at: string;
-  triggered_by_order_id: string;
-  triggered_by_display_number?: number | null;
-  items: Array<{
-    product_id: string | null;
-    brand: string;
-    color: string;
-    size: string;
-    quantity: number;
-    available: number;
-  }>;
-};
+export type {
+  OrderStockConflict,
+  OrderStockConflictItem,
+  OrderStockConflictReason,
+} from "@/lib/order-stock-conflict";
 
 export type ProductSyncStatus = "pending" | "done" | "error";
 

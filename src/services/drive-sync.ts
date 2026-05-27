@@ -86,6 +86,15 @@ type ImageStateRow = {
   sync_status: string | null;
 };
 
+type PendingItemForRemovedProduct = {
+  order_id: string;
+  product_id: string | null;
+  quantity: number;
+  snapshot_brand: string;
+  snapshot_color: string;
+  snapshot_size: string;
+};
+
 async function fetchAllProductsMinimal(
   admin: AdminClient,
   columns: string
@@ -109,6 +118,81 @@ async function fetchAllProductsMinimal(
     offset += PAGE_SIZE;
   }
   return out;
+}
+
+async function flagPendingOrdersForRemovedProducts(
+  admin: AdminClient,
+  removedProductIds: string[]
+): Promise<void> {
+  if (removedProductIds.length === 0) return;
+
+  const conflictByOrder = new Map<
+    string,
+    Array<{
+      product_id: string | null;
+      brand: string;
+      color: string;
+      size: string;
+      quantity: number;
+      available: number;
+    }>
+  >();
+
+  for (let i = 0; i < removedProductIds.length; i += IN_CHUNK) {
+    const slice = removedProductIds.slice(i, i + IN_CHUNK);
+    const { data, error } = await admin
+      .from("order_items")
+      .select(
+        "order_id, product_id, quantity, snapshot_brand, snapshot_color, snapshot_size, orders!inner(id, status)"
+      )
+      .in("product_id", slice)
+      .eq("orders.status", "PENDENTE_PAGAMENTO");
+    if (error) throw new Error(error.message);
+
+    const qtyByOrderProduct = new Map<string, number>();
+    const metaByOrderProduct = new Map<string, PendingItemForRemovedProduct>();
+    for (const raw of data ?? []) {
+      const row = raw as PendingItemForRemovedProduct;
+      const pid = row.product_id?.trim();
+      if (!pid) continue;
+      const key = `${row.order_id}:${pid}`;
+      qtyByOrderProduct.set(key, (qtyByOrderProduct.get(key) ?? 0) + row.quantity);
+      if (!metaByOrderProduct.has(key)) metaByOrderProduct.set(key, row);
+    }
+
+    for (const [key, quantity] of Array.from(qtyByOrderProduct.entries())) {
+      const [orderId] = key.split(":");
+      const meta = metaByOrderProduct.get(key);
+      if (!meta) continue;
+      const list = conflictByOrder.get(orderId) ?? [];
+      list.push({
+        product_id: meta.product_id,
+        brand: meta.snapshot_brand,
+        color: meta.snapshot_color,
+        size: meta.snapshot_size,
+        quantity,
+        available: 0,
+      });
+      conflictByOrder.set(orderId, list);
+    }
+  }
+
+  const flaggedAt = new Date().toISOString();
+  for (const [orderId, items] of Array.from(conflictByOrder.entries())) {
+    await admin
+      .from("orders")
+      .update({
+        stock_conflict: {
+          flagged_at: flaggedAt,
+          triggered_by_order_id: "__drive_sync__",
+          triggered_by_display_number: null,
+          reason: "removed_from_drive_sync",
+          items,
+        },
+      })
+      .eq("id", orderId)
+      .eq("status", "PENDENTE_PAGAMENTO");
+  }
 }
 
 async function removeLegacyImportProducts(admin: AdminClient): Promise<void> {
@@ -162,6 +246,8 @@ async function pruneProductsMissingFromDrive(
   if (removable.length === 0) {
     return { removed: 0, removedDriveFileIds: [] };
   }
+
+  await flagPendingOrdersForRemovedProducts(admin, removable);
 
   let removed = 0;
   for (let i = 0; i < removable.length; i += IN_CHUNK) {
