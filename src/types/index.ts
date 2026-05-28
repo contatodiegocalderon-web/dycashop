@@ -4,11 +4,13 @@ export type ProductStatus = "ATIVO" | "ESGOTADO";
 
 export type OrderStatus = "PENDENTE_PAGAMENTO" | "PAGO" | "CANCELADO";
 
-export type {
+import type {
   OrderStockConflict,
   OrderStockConflictItem,
   OrderStockConflictReason,
 } from "@/lib/order-stock-conflict";
+
+export type { OrderStockConflict, OrderStockConflictItem, OrderStockConflictReason };
 
 export type ProductSyncStatus = "pending" | "done" | "error";
 
