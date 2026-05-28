@@ -80,6 +80,14 @@ export default function AdminMetricasPage() {
     ordersIncluded: number;
     ordersWithSale: number;
     totalPieces: number;
+    orderItemsTruncated: boolean;
+    orderItemsLoaded: number;
+    orderItemsExpected: number;
+    ordersTruncated?: boolean;
+    ordersExpected?: number;
+    newestIncluded?: boolean;
+    newestInDb?: { displayNumber: number | null; confirmedAt: string | null };
+    sellerScope?: string;
   } | null>(null);
   const loadMetrics = useCallback(async () => {
     setLoading(true);
@@ -109,6 +117,17 @@ export default function AdminMetricasPage() {
             ordersIncluded?: number;
             ordersWithSale?: number;
             totalPieces?: number;
+            orderItemsTruncated?: boolean;
+            orderItemsLoaded?: number;
+            orderItemsExpected?: number;
+            ordersTruncated?: boolean;
+            ordersExpected?: number;
+            newestIncluded?: boolean;
+            newestInDb?: {
+              displayNumber: number | null;
+              confirmedAt: string | null;
+            };
+            sellerScope?: string;
           }
         | undefined;
       setLoadMeta(
@@ -117,6 +136,15 @@ export default function AdminMetricasPage() {
               ordersIncluded: meta.ordersIncluded,
               ordersWithSale: Number(meta.ordersWithSale ?? 0),
               totalPieces: Number(meta.totalPieces ?? 0),
+              orderItemsTruncated: Boolean(meta.orderItemsTruncated),
+              orderItemsLoaded: Number(meta.orderItemsLoaded ?? 0),
+              orderItemsExpected: Number(meta.orderItemsExpected ?? 0),
+              ordersTruncated: Boolean(meta.ordersTruncated),
+              ordersExpected: Number(meta.ordersExpected ?? meta.ordersIncluded),
+              newestIncluded: meta.newestIncluded !== false,
+              newestInDb: meta.newestInDb,
+              sellerScope:
+                typeof meta.sellerScope === "string" ? meta.sellerScope : "all",
             }
           : null
       );
@@ -233,7 +261,22 @@ export default function AdminMetricasPage() {
           )}
           {loadMeta && (
             <p className="mt-1 text-xs text-stone-500">
-              {loadMeta.ordersIncluded} venda(s) confirmada(s) no período ·{" "}
+              {loadMeta.ordersIncluded}
+              {loadMeta.ordersExpected != null &&
+              loadMeta.ordersExpected !== loadMeta.ordersIncluded
+                ? `/${loadMeta.ordersExpected}`
+                : ""}{" "}
+              venda(s) no período
+              {loadMeta.sellerScope && loadMeta.sellerScope !== "all"
+                ? ` · filtro vendedor: ${loadMeta.sellerScope}`
+                : ""}
+              {loadMeta.newestInDb?.displayNumber != null
+                ? ` · pedido mais recente na loja: #${loadMeta.newestInDb.displayNumber}`
+                : ""}
+              {loadMeta.newestIncluded === false
+                ? " · o pedido mais recente não entrou neste total"
+                : ""}
+              {" · "}
               {loadMeta.totalPieces} peça(s)
             </p>
           )}
@@ -319,6 +362,30 @@ export default function AdminMetricasPage() {
       {error && (
         <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}
+        </div>
+      )}
+
+      {(loadMeta?.ordersTruncated || loadMeta?.orderItemsTruncated) && (
+        <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          {loadMeta.ordersTruncated ? (
+            <p>
+              Faltam pedidos no cálculo: entraram {loadMeta.ordersIncluded} de{" "}
+              {loadMeta.ordersExpected} vendas confirmadas. O deploy pode estar com código
+              antigo — faça redeploy e «Atualizar dados».
+            </p>
+          ) : null}
+          {loadMeta.orderItemsTruncated ? (
+            <p className={loadMeta.ordersTruncated ? "mt-2" : undefined}>
+              Itens incompletos: {loadMeta.orderItemsLoaded} de{" "}
+              {loadMeta.orderItemsExpected} linhas de itens — lucro pode estar errado.
+            </p>
+          ) : null}
+        </div>
+      )}
+      {loadMeta?.newestIncluded === false && loadMeta.newestInDb?.displayNumber != null && (
+        <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          O pedido mais recente (#{loadMeta.newestInDb.displayNumber}) não está incluído.
+          Verifique o filtro de vendedor (use «Todos») e o período («Todo período»).
         </div>
       )}
 

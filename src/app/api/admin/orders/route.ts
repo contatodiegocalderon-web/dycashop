@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  fetchOrdersWithItemsPaginated,
+  type OrdersListBuildQuery,
+} from "@/lib/admin-orders-query";
+import {
   attachDisplayNumbers,
   fetchAllOrderIdsNewestFirst,
 } from "@/lib/order-display-number";
@@ -115,14 +119,7 @@ export async function GET(request: NextRequest) {
     const rawSellerScope = searchParams.get("sellerScope")?.trim() ?? "";
 
     const admin = createAdminClient();
-    let q = admin
-      .from("orders")
-      .select(
-        `
-        *,
-        order_items (*)
-      `
-      );
+    let q = admin.from("orders").select("*");
 
     if (statusFilter !== "all") {
       q = q.eq("status", statusFilter);
@@ -205,11 +202,10 @@ export async function GET(request: NextRequest) {
       q = q.order("created_at", { ascending: false }).order("id", { ascending: false });
     }
 
-    const { data, error } = await q;
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    const rows = (data ?? []) as Array<{
+    const rows = (await fetchOrdersWithItemsPaginated(
+      admin,
+      () => q as unknown as OrdersListBuildQuery
+    )) as Array<{
       id: string;
       confirmed_by_staff_id?: string | null;
       requested_seller_name?: string | null;

@@ -10,37 +10,90 @@ function normalizeOrigin(origin: string): string {
   return origin.replace(/\/$/, "");
 }
 
+/**
+ * `next dev -H 0.0.0.0` faz o browser pedir a 0.0.0.0 — inválido (ERR_ADDRESS_INVALID)
+ * e o Google não aceita esse redirect_uri. Em dev usamos sempre localhost no OAuth.
+ */
+function normalizeDevOrigin(origin: string): string {
+  try {
+    const u = new URL(origin);
+    if (u.hostname === "0.0.0.0") {
+      u.hostname = "localhost";
+      return normalizeOrigin(u.origin);
+    }
+  } catch {
+    /* ignore */
+  }
+  return normalizeOrigin(origin);
+}
+
 /** URI de callback registada no Google Cloud (deve coincidir com a troca do código). */
 export function getOAuthRedirectUri(): string {
-  const base =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? DEFAULT_DEV_ORIGIN;
-  return `${base}/api/auth/google/callback`;
+  return resolveOAuthRedirectUri(null);
 }
 
 /**
  * Usa o origin do pedido atual quando é localhost/127.0.0.1,
  * para o redirect_uri da troca coincidir com o URL onde o Google devolveu o código.
  */
-export function resolveOAuthRedirectUri(requestOrigin?: string | null): string {
-  const fromEnv = getOAuthRedirectUri();
-  if (!requestOrigin?.trim()) return fromEnv;
-
-  let origin: string;
+function resolveRequestOrigin(requestOrigin?: string | null): string | null {
+  if (!requestOrigin?.trim()) return null;
   try {
-    origin = normalizeOrigin(new URL(requestOrigin).origin);
+    return normalizeDevOrigin(new URL(requestOrigin).origin);
   } catch {
-    return fromEnv;
+    return null;
   }
+}
+
+function isLocalHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "[::1]"
+  );
+}
+
+/** Base URL da app para redirects pós-OAuth (respeita localhost em dev). */
+export function resolveAppBaseUrl(requestOrigin?: string | null): string {
+  const fromEnv = normalizeDevOrigin(
+    process.env.NEXT_PUBLIC_APP_URL?.trim() || DEFAULT_DEV_ORIGIN
+  );
+  const origin = resolveRequestOrigin(requestOrigin);
+  if (!origin) return fromEnv;
 
   const host = new URL(origin).hostname;
-  const isLocal =
-    host === "localhost" || host === "127.0.0.1" || host === "[::1]";
-  if (!isLocal) {
-    const envHost = new URL(fromEnv).hostname;
-    if (host !== envHost) return fromEnv;
-  }
+  if (isLocalHostname(host)) return origin;
 
-  return `${origin}/api/auth/google/callback`;
+  try {
+    const envHost = new URL(fromEnv).hostname;
+    if (host === envHost) return fromEnv;
+  } catch {
+    /* ignore */
+  }
+  return origin;
+}
+
+export function resolveOAuthRedirectUri(requestOrigin?: string | null): string {
+  const base = resolveAppBaseUrl(requestOrigin);
+  return `${base}/api/auth/google/callback`;
+}
+
+/** Confirma que o refresh token ainda é aceite pelo Google. */
+export async function verifyGoogleRefreshToken(
+  refreshToken: string,
+  redirectUri?: string
+): Promise<boolean> {
+  const rt = refreshToken.trim();
+  if (!rt) return false;
+  const oauth2 = createOAuth2Client(redirectUri);
+  oauth2.setCredentials({ refresh_token: rt });
+  try {
+    await oauth2.getAccessToken();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function createOAuth2Client(redirectUri?: string) {

@@ -10,6 +10,7 @@ import type { CategoryStockSummary, StockInventorySnapshot } from "@/lib/stock-i
 
 type ApiPayload = StockInventorySnapshot & {
   driveSettingsUpdatedAt?: string | null;
+  catalogSyncedAt?: string | null;
   productRows?: number;
   generatedAt?: string;
   error?: string;
@@ -197,10 +198,15 @@ export default function AdminEstoquePage() {
           )}
           {data && (
             <p className="mt-2 text-xs text-stone-500">
-              {data.productRows ?? 0} produto(s) no catálogo · última alteração em
-              produtos: {fmtWhen(data.catalogLastUpdatedAt)}
+              {data.productRows ?? 0} produto(s) no catálogo · última sync Drive:{" "}
+              {fmtWhen(data.catalogSyncedAt ?? data.catalogLastUpdatedAt)}
+              {data.catalogSyncedAt &&
+              data.catalogLastUpdatedAt &&
+              data.catalogSyncedAt !== data.catalogLastUpdatedAt
+                ? ` · última alteração em produto: ${fmtWhen(data.catalogLastUpdatedAt)}`
+                : ""}
               {data.driveSettingsUpdatedAt
-                ? ` · configuração Drive: ${fmtWhen(data.driveSettingsUpdatedAt)}`
+                ? ` · configuração (pasta/OAuth): ${fmtWhen(data.driveSettingsUpdatedAt)}`
                 : ""}
             </p>
           )}

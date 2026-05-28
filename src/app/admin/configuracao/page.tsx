@@ -63,6 +63,8 @@ function ConfiguracaoInner() {
     try {
       const res = await adminFetch("/api/auth/google/start", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao iniciar OAuth");
@@ -308,8 +310,11 @@ function ConfiguracaoInner() {
           </code>
           . Use sempre{" "}
           <code className="rounded bg-white/80 px-1">http://localhost:3000</code>{" "}
-          no browser (evite 127.0.0.1 se o redirect no Google for localhost). Após
-          autorizar, não atualize a página do callback — aguarde voltar à configuração.
+          no browser — não abra{" "}
+          <code className="rounded bg-white/80 px-1">0.0.0.0</code> nem{" "}
+          <code className="rounded bg-white/80 px-1">127.0.0.1</code> se o redirect
+          no Google for localhost. Na Google Cloud, em «Utilizadores de teste», adicione
+          o seu Gmail. Após autorizar, não atualize a página do callback.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button

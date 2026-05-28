@@ -74,7 +74,13 @@ export type OrderItemMetricsRow = {
   products?: { category: string | null } | { category: string | null }[] | null;
 };
 
-/** Carrega itens em lotes e páginas (PostgREST limita respostas a ~1000 linhas). */
+const ORDER_ITEM_SELECT =
+  "id, order_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size, products(category)";
+
+/**
+ * Carrega itens dos pedidos pedidos, paginando a tabela inteira (evita cortes do
+ * PostgREST com `.in(order_id)` + `range` em bases grandes).
+ */
 export async function fetchOrderItemsByOrderIds(
   admin: AdminClient,
   orderIds: string[]
@@ -82,31 +88,93 @@ export async function fetchOrderItemsByOrderIds(
   const map = new Map<string, OrderItemMetricsRow[]>();
   if (!orderIds.length) return map;
 
+  const idSet = new Set(orderIds);
+  let offset = 0;
+
+  for (;;) {
+    const { data, error } = await admin
+      .from("order_items")
+      .select(ORDER_ITEM_SELECT)
+      .order("order_id", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as OrderItemMetricsRow[];
+    for (const it of rows) {
+      if (!idSet.has(it.order_id)) continue;
+      const list = map.get(it.order_id) ?? [];
+      list.push(it);
+      map.set(it.order_id, list);
+    }
+
+    if (rows.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  return map;
+}
+
+/** Conta itens esperados (valida se a paginação carregou tudo). */
+export async function countOrderItemsByOrderIds(
+  admin: AdminClient,
+  orderIds: string[]
+): Promise<number> {
+  if (!orderIds.length) return 0;
+  let total = 0;
   for (let i = 0; i < orderIds.length; i += IN_CHUNK) {
     const chunk = orderIds.slice(i, i + IN_CHUNK);
-    let offset = 0;
-    for (;;) {
-      const { data, error } = await admin
-        .from("order_items")
-        .select(
-          "id, order_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size, products(category)"
-        )
-        .in("order_id", chunk)
-        .order("order_id", { ascending: true })
-        .order("id", { ascending: true })
-        .range(offset, offset + PAGE_SIZE - 1);
-      if (error) throw new Error(error.message);
-
-      const rows = (data ?? []) as OrderItemMetricsRow[];
-      for (const it of rows) {
-        const list = map.get(it.order_id) ?? [];
-        list.push(it);
-        map.set(it.order_id, list);
-      }
-
-      if (rows.length < PAGE_SIZE) break;
-      offset += PAGE_SIZE;
-    }
+    const { count, error } = await admin
+      .from("order_items")
+      .select("id", { count: "exact", head: true })
+      .in("order_id", chunk);
+    if (error) throw new Error(error.message);
+    total += count ?? 0;
   }
-  return map;
+  return total;
+}
+
+export type OrdersListRow = Record<string, unknown> & { id: string };
+
+export type OrdersListBuildQuery = {
+  order(
+    column: string,
+    options?: { ascending?: boolean; nullsFirst?: boolean }
+  ): OrdersListBuildQuery;
+  range(
+    from: number,
+    to: number
+  ): Promise<{
+    data: OrdersListRow[] | null;
+    error: { message: string } | null;
+  }>;
+};
+
+/** Lista pedidos com `order_items` anexados — pedidos e itens paginados. */
+export async function fetchOrdersWithItemsPaginated(
+  admin: AdminClient,
+  buildOrdersQuery: () => OrdersListBuildQuery
+): Promise<OrdersListRow[]> {
+  const orders: OrdersListRow[] = [];
+  let offset = 0;
+
+  for (;;) {
+    const { data, error } = await buildOrdersQuery()
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const chunk = (data ?? []) as OrdersListRow[];
+    orders.push(...chunk);
+    if (chunk.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  if (!orders.length) return [];
+
+  const orderIds = orders.map((o) => o.id);
+  const itemsByOrderId = await fetchOrderItemsByOrderIds(admin, orderIds);
+
+  return orders.map((o) => ({
+    ...o,
+    order_items: itemsByOrderId.get(o.id) ?? [],
+  }));
 }

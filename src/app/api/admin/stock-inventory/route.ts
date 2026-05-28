@@ -53,15 +53,20 @@ export async function GET(request: NextRequest) {
 
     const { data: settings } = await admin
       .from("catalog_settings")
-      .select("updated_at")
+      .select("updated_at, catalog_synced_at")
       .eq("id", 1)
       .maybeSingle();
+
+    const settingsRow = settings as {
+      updated_at?: string;
+      catalog_synced_at?: string | null;
+    } | null;
 
     return NextResponse.json(
       {
         ...snapshot,
-        driveSettingsUpdatedAt:
-          (settings as { updated_at?: string } | null)?.updated_at ?? null,
+        driveSettingsUpdatedAt: settingsRow?.updated_at ?? null,
+        catalogSyncedAt: settingsRow?.catalog_synced_at ?? null,
         productRows: all.length,
         generatedAt: new Date().toISOString(),
       },

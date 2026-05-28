@@ -51,10 +51,10 @@ type SyncOptions = {
   renameDriveFiles?: boolean;
 };
 
-function rowForUpsert(row: DriveImportRow): DriveImportUpsert {
+function rowForUpsert(row: DriveImportRow): DriveImportUpsert & { updated_at: string } {
   const { drive_modified_at, ...rest } = row;
   void drive_modified_at;
-  return rest;
+  return { ...rest, updated_at: new Date().toISOString() };
 }
 
 function mergePreservingStock(
@@ -512,6 +512,19 @@ async function runSync(
     driveRenameOk = rename.ok.length;
     driveRenameErrors = rename.errors;
   }
+
+  const syncedAt = new Date().toISOString();
+  await admin
+    .from("catalog_settings")
+    .upsert(
+      { id: 1, catalog_synced_at: syncedAt },
+      { onConflict: "id", ignoreDuplicates: false }
+    )
+    .then(({ error }) => {
+      if (error && !error.message.includes("catalog_synced_at")) {
+        console.error("[drive-sync] catalog_synced_at:", error.message);
+      }
+    });
 
   return {
     imported: totalUpserted,
