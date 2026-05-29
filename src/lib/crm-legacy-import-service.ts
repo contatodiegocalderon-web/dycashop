@@ -130,8 +130,16 @@ async function insertRegistered(
 
   let { error } = await admin.from("orders").insert(payload);
   if (error && /legacy_import|column/i.test(error.message)) {
-    const { created_at: _c, legacy_import: _l, ...fallback } = payload;
-    ({ error } = await admin.from("orders").insert(fallback));
+    ({ error } = await admin.from("orders").insert({
+      status: payload.status,
+      customer_name: payload.customer_name,
+      customer_whatsapp: payload.customer_whatsapp,
+      customer_segment: payload.customer_segment,
+      sale_amount: payload.sale_amount,
+      confirmed_at: payload.confirmed_at,
+      confirmed_by_staff_id: payload.confirmed_by_staff_id,
+      requested_seller_name: payload.requested_seller_name,
+    }));
   }
   if (error) throw new Error(error.message);
 
@@ -164,8 +172,13 @@ async function insertAbandoned(
 
   let { error } = await admin.from("orders").insert(payload);
   if (error && /legacy_import|column/i.test(error.message)) {
-    const { legacy_import: _l, ...fallback } = payload;
-    ({ error } = await admin.from("orders").insert(fallback));
+    ({ error } = await admin.from("orders").insert({
+      status: payload.status,
+      customer_name: payload.customer_name,
+      customer_whatsapp: payload.customer_whatsapp,
+      requested_seller_name: payload.requested_seller_name,
+      created_at: payload.created_at,
+    }));
   }
   if (error) throw new Error(error.message);
 }
@@ -179,7 +192,6 @@ export async function importLegacyClients(
 
   const toProcess: LegacySpreadsheetRow[] = [];
   const seenInFile = new Set<string>();
-  let skippedExisting = 0;
   let skippedDuplicateInFile = 0;
 
   for (const row of parsed) {
@@ -197,7 +209,7 @@ export async function importLegacyClients(
     valid: parsed.length,
     registered: 0,
     abandoned: 0,
-    skippedExisting,
+    skippedExisting: 0,
     skippedDuplicateInFile,
     skippedInvalid,
     ordersCreated: 0,

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import brazilMap from "@svg-maps/brazil";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import { ClientProfileBadge } from "@/components/client-profile-badge";
-import type { BusinessProfile } from "@/lib/client-follow-up";
 import {
   BRAZIL_UF_LABELS,
   type BrazilUf,
@@ -16,7 +15,12 @@ import type {
 } from "@/app/api/admin/clients/map/route";
 
 type SellerFilterOption = { value: string; label: string };
-type ProfileFilter = "all" | "lojista" | "uso_proprio" | "revendedor";
+type ProfileFilter =
+  | "all"
+  | "lojista"
+  | "uso_proprio"
+  | "revendedor"
+  | "sem_perfil";
 
 const PROFILE_COLORS: Record<
   "lojista" | "revendedor" | "uso_proprio" | "sem_perfil",
