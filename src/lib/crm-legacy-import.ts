@@ -3,6 +3,13 @@ import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 
 export const SITE_VAREJO_SELLER = "SITE-VAREJO";
 
+/** Remarketing da planilha — não entra na fila de Pedidos do admin. */
+export function excludeCrmRemarketingFromOrdersQuery<
+  Q extends { or(filter: string): Q },
+>(q: Q): Q {
+  return q.or("legacy_import.is.null,legacy_import.eq.false");
+}
+
 export type LegacySpreadsheetRow = {
   name: string;
   whatsapp: string;

@@ -10,6 +10,7 @@ import {
   aggregateStockInventory,
   type ProductStockRow,
 } from "@/lib/stock-inventory";
+import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,10 +51,12 @@ export async function GET(request: NextRequest) {
       principal?.kind === "api_key" ||
       (principal?.kind === "staff" && principal.staff.role === "owner");
 
-    const { count: pendingCount, error: pendErr } = await admin
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "PENDENTE_PAGAMENTO");
+    const { count: pendingCount, error: pendErr } = await excludeCrmRemarketingFromOrdersQuery(
+      admin
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "PENDENTE_PAGAMENTO")
+    );
 
     if (pendErr) {
       return NextResponse.json({ error: pendErr.message }, { status: 500 });

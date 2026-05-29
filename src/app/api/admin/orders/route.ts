@@ -16,6 +16,7 @@ import {
   parseTzOffsetMinutes,
   type ConfirmedAtFilter,
 } from "@/lib/admin-period";
+import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
 
 export const runtime = "nodejs";
 
@@ -120,6 +121,10 @@ export async function GET(request: NextRequest) {
 
     const admin = createAdminClient();
     let q = admin.from("orders").select("*");
+
+    if (statusFilter === "PENDENTE_PAGAMENTO" || statusFilter === "all") {
+      q = excludeCrmRemarketingFromOrdersQuery(q);
+    }
 
     if (statusFilter !== "all") {
       q = q.eq("status", statusFilter);
