@@ -42,6 +42,75 @@ export type OrdersListQuery = {
   ): Promise<{ data: PaidOrderRow[] | null; error: { message: string } | null }>;
 };
 
+/** Pedido pago com WhatsApp — base para lista/mapa de clientes. */
+export type CrmPaidOrderRow = {
+  customer_whatsapp: string;
+  customer_name: string | null;
+  sale_amount: number | null;
+  confirmed_at: string | null;
+  confirmed_by_staff_id?: string | null;
+  requested_seller_name?: string | null;
+  legacy_import?: boolean;
+};
+
+export type CrmPaidOrdersListQuery = {
+  order(
+    column: string,
+    options?: { ascending?: boolean; nullsFirst?: boolean }
+  ): CrmPaidOrdersListQuery;
+  range(
+    from: number,
+    to: number
+  ): Promise<{ data: CrmPaidOrderRow[] | null; error: { message: string } | null }>;
+};
+
+/** Pagina todos os pedidos PAGO com WhatsApp (mapa + lista de clientes). */
+export async function fetchAllCrmPaidOrders(
+  admin: AdminClient,
+  buildBaseQuery: () => CrmPaidOrdersListQuery
+): Promise<CrmPaidOrderRow[]> {
+  const all: CrmPaidOrderRow[] = [];
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await buildBaseQuery()
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const chunk = (data ?? []) as CrmPaidOrderRow[];
+    all.push(...chunk);
+    if (chunk.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return all;
+}
+
+/** Perfis CRM em lotes (limite do `.in()` no PostgREST). */
+export async function fetchCrmProfilesByWhatsapp(
+  admin: AdminClient,
+  whatsappDigits: string[]
+): Promise<Map<string, { business_profile: string | null }>> {
+  const map = new Map<string, { business_profile: string | null }>();
+  if (!whatsappDigits.length) return map;
+
+  for (let i = 0; i < whatsappDigits.length; i += IN_CHUNK) {
+    const chunk = whatsappDigits.slice(i, i + IN_CHUNK);
+    const { data, error } = await admin
+      .from("crm_client_profiles")
+      .select("whatsapp_digits, business_profile")
+      .in("whatsapp_digits", chunk);
+    if (error) {
+      const missing = /does not exist|schema cache|relation/i.test(error.message);
+      if (missing) return map;
+      throw new Error(error.message);
+    }
+    for (const raw of data ?? []) {
+      const p = raw as { whatsapp_digits: string; business_profile: string | null };
+      map.set(p.whatsapp_digits, p);
+    }
+  }
+  return map;
+}
+
 /** Pagina pedidos PAGO com valor — evita limite ~1000 do PostgREST. */
 export async function fetchAllPaidOrdersWithSale(
   admin: AdminClient,

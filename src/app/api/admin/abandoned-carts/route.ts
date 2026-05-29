@@ -1,29 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
-import type { OrderItemRow, OrderStatus } from "@/types";
+import type { OrderItemRow } from "@/types";
+import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 
 export const runtime = "nodejs";
 
 export type AbandonedOrderRow = {
   order_id: string;
-  display_number: number | null;
-  status: Extract<OrderStatus, "PENDENTE_PAGAMENTO" | "CANCELADO">;
   customer_whatsapp: string;
   customer_name: string | null;
-  customer_note: string | null;
   requested_seller_name: string | null;
   created_at: string;
-  public_token: string | null;
   order_items: OrderItemRow[];
-  total_pieces: number;
+  whatsapp_click_count: number;
 };
-
-function normalizeWa(raw: string | null | undefined): string {
-  const d = String(raw ?? "").replace(/\D/g, "");
-  if (!d) return "";
-  return d.startsWith("55") ? d : `55${d}`;
-}
 
 /**
  * Pedidos pendentes ou cancelados de clientes que ainda não têm nenhum pedido PAGO
@@ -55,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     const registeredWa = new Set<string>();
     for (const row of paidRows ?? []) {
-      const wa = normalizeWa(
+      const wa = normalizeWhatsappDigits(
         (row as { customer_whatsapp: string }).customer_whatsapp
       );
       if (wa.length >= 10) registeredWa.add(wa);
@@ -66,14 +57,10 @@ export async function GET(request: NextRequest) {
       .select(
         `
         id,
-        display_number,
-        status,
         customer_whatsapp,
         customer_name,
-        customer_note,
         requested_seller_name,
         created_at,
-        public_token,
         order_items (
           id,
           order_id,
@@ -100,42 +87,51 @@ export async function GET(request: NextRequest) {
     }
 
     const carts: AbandonedOrderRow[] = [];
+    const waForClicks = new Set<string>();
 
     for (const raw of orders ?? []) {
       const o = raw as {
         id: string;
-        display_number?: number | null;
-        status: string;
         customer_whatsapp: string;
         customer_name: string | null;
-        customer_note: string | null;
         requested_seller_name: string | null;
         created_at: string;
-        public_token: string | null;
         order_items?: OrderItemRow[] | null;
       };
 
-      const wa = normalizeWa(o.customer_whatsapp);
+      const wa = normalizeWhatsappDigits(o.customer_whatsapp);
       if (wa.length < 10 || registeredWa.has(wa)) continue;
 
       const items = o.order_items ?? [];
-      const totalPieces = items.reduce((sum, it) => sum + (it.quantity ?? 0), 0);
-      const dn = Number(o.display_number);
 
+      waForClicks.add(wa);
       carts.push({
         order_id: o.id,
-        display_number:
-          Number.isFinite(dn) && dn > 0 ? dn : null,
-        status: o.status as AbandonedOrderRow["status"],
         customer_whatsapp: wa,
         customer_name: o.customer_name,
-        customer_note: o.customer_note,
         requested_seller_name: o.requested_seller_name,
         created_at: o.created_at,
-        public_token: o.public_token,
         order_items: items,
-        total_pieces: totalPieces,
+        whatsapp_click_count: 0,
       });
+    }
+
+    const clickMap = new Map<string, number>();
+    if (waForClicks.size > 0) {
+      const { data: clickRows, error: cErr } = await admin
+        .from("crm_abandoned_whatsapp_clicks")
+        .select("whatsapp_digits, click_count")
+        .in("whatsapp_digits", Array.from(waForClicks));
+      if (!cErr) {
+        for (const row of clickRows ?? []) {
+          const r = row as { whatsapp_digits: string; click_count: number };
+          clickMap.set(r.whatsapp_digits, Number(r.click_count) || 0);
+        }
+      }
+    }
+
+    for (const cart of carts) {
+      cart.whatsapp_click_count = clickMap.get(cart.customer_whatsapp) ?? 0;
     }
 
     return NextResponse.json({ orders: carts, total: carts.length });

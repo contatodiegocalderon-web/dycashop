@@ -6,7 +6,13 @@ import {
   clientRecencyStatus,
   type ClientRecencyStatus,
 } from "@/lib/client-recency";
-import type { BusinessProfile, CrmClientProfileRow } from "@/lib/client-follow-up";
+import type { BusinessProfile } from "@/lib/client-follow-up";
+import {
+  fetchAllCrmPaidOrders,
+  fetchCrmProfilesByWhatsapp,
+  type CrmPaidOrdersListQuery,
+} from "@/lib/admin-orders-query";
+import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 
 export const runtime = "nodejs";
 
@@ -31,6 +37,8 @@ type OrderRowForClient = {
   sale_amount: number | null;
   confirmed_at: string | null;
   confirmed_by_staff_id?: string | null;
+  requested_seller_name?: string | null;
+  legacy_import?: boolean;
 };
 
 function sellerLabelForOrder(
@@ -40,7 +48,16 @@ function sellerLabelForOrder(
 ): string {
   const sid = o.confirmed_by_staff_id;
   if (sid) return staffMap.get(sid) ?? "Vendedor";
+  const req = o.requested_seller_name?.trim();
+  if (req === "?" || o.legacy_import) return "?";
   return ownerName;
+}
+
+function formatSellersLabel(labels: Set<string>): string {
+  const arr = Array.from(labels);
+  const real = arr.filter((l) => l !== "?");
+  const use = real.length > 0 ? real : arr;
+  return use.sort((a, b) => a.localeCompare(b, "pt-BR")).join(", ") || "—";
 }
 
 export type AdminClientRow = {
@@ -103,36 +120,34 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get("sellerScope")?.trim() ?? "all";
 
     const admin = createAdminClient();
-    await resolveOwnerStaffId(admin, principal);
+    const ownerStaffId = await resolveOwnerStaffId(admin, principal);
 
-    let orderQuery = admin
-      .from("orders")
-      .select(
-        "customer_whatsapp, customer_name, customer_segment, sale_amount, confirmed_at, confirmed_by_staff_id"
-      )
-      .eq("status", "PAGO")
-      .not("customer_whatsapp", "is", null);
+    const orderRows = await fetchAllCrmPaidOrders(admin, () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let q: any = admin
+        .from("orders")
+        .select(
+          "customer_whatsapp, customer_name, customer_segment, sale_amount, confirmed_at, confirmed_by_staff_id, requested_seller_name, legacy_import"
+        )
+        .eq("status", "PAGO")
+        .not("customer_whatsapp", "is", null);
 
-    if (sellerId) {
-      orderQuery = orderQuery.eq("confirmed_by_staff_id", sellerId);
-    } else if (isOwnerPrincipal && rawSellerScope && rawSellerScope !== "all") {
-      const ownerStaffId = await resolveOwnerStaffId(admin, principal);
-      if (rawSellerScope === "me") {
-        if (ownerStaffId) {
-          orderQuery = orderQuery.or(
-            `confirmed_by_staff_id.eq.${ownerStaffId},confirmed_by_staff_id.is.null`
-          );
+      if (sellerId) {
+        q = q.eq("confirmed_by_staff_id", sellerId);
+      } else if (isOwnerPrincipal && rawSellerScope && rawSellerScope !== "all") {
+        if (rawSellerScope === "me") {
+          if (ownerStaffId) {
+            q = q.or(
+              `confirmed_by_staff_id.eq.${ownerStaffId},confirmed_by_staff_id.is.null`
+            );
+          }
+        } else if (STAFF_UUID_RE.test(rawSellerScope)) {
+          q = q.eq("confirmed_by_staff_id", rawSellerScope);
         }
-      } else if (STAFF_UUID_RE.test(rawSellerScope)) {
-        orderQuery = orderQuery.eq("confirmed_by_staff_id", rawSellerScope);
       }
-    }
 
-    const { data: orders, error } = await orderQuery;
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+      return q as CrmPaidOrdersListQuery;
+    });
 
     const { data: hiddenRows, error: hErr } = await admin
       .from("crm_hidden_contacts")
@@ -155,7 +170,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const orderRows = (orders ?? []) as OrderRowForClient[];
     const staffIds = Array.from(
       new Set(orderRows.map((r) => r.confirmed_by_staff_id).filter(Boolean))
     ) as string[];
@@ -191,28 +205,15 @@ export async function GET(request: NextRequest) {
 
     const waKeys = new Set<string>();
     for (const o of orderRows) {
-      const wa = String(o.customer_whatsapp ?? "").replace(/\D/g, "");
-      if (wa.length >= 10) waKeys.add(wa);
+      const wa = normalizeWhatsappDigits(o.customer_whatsapp);
+      if (wa.length >= 12) waKeys.add(wa);
     }
 
-    const profileMap = new Map<string, CrmClientProfileRow>();
-    if (waKeys.size > 0) {
-      const { data: profileRows, error: pErr } = await admin
-        .from("crm_client_profiles")
-        .select("whatsapp_digits, business_profile")
-        .in("whatsapp_digits", Array.from(waKeys));
-      if (pErr) {
-        const missing = /does not exist|schema cache|relation/i.test(pErr.message);
-        if (!missing) {
-          return NextResponse.json({ error: pErr.message }, { status: 500 });
-        }
-      } else {
-        for (const raw of profileRows ?? []) {
-          const p = raw as CrmClientProfileRow;
-          profileMap.set(p.whatsapp_digits, p);
-        }
-      }
-    }
+    const profileRaw = await fetchCrmProfilesByWhatsapp(
+      admin,
+      Array.from(waKeys)
+    );
+    const profileMap = profileRaw;
 
     const byWa = new Map<
       string,
@@ -223,12 +224,13 @@ export async function GET(request: NextRequest) {
         first_at: string | null;
         last_at: string | null;
         seller_labels: Set<string>;
+        has_legacy_import: boolean;
       }
     >();
 
-    for (const o of orderRows) {
-      const wa = String(o.customer_whatsapp ?? "").replace(/\D/g, "");
-      if (wa.length < 10) continue;
+    for (const o of orderRows as OrderRowForClient[]) {
+      const wa = normalizeWhatsappDigits(o.customer_whatsapp);
+      if (wa.length < 12) continue;
 
       const spent = Number(o.sale_amount ?? 0);
       const t = o.confirmed_at;
@@ -240,9 +242,11 @@ export async function GET(request: NextRequest) {
         first_at: null as string | null,
         last_at: null as string | null,
         seller_labels: new Set<string>(),
+        has_legacy_import: false,
       };
 
       cur.order_count += 1;
+      if (o.legacy_import) cur.has_legacy_import = true;
       if (!Number.isNaN(spent)) cur.total_spent += spent;
       if (o.customer_name?.trim()) cur.names.push(o.customer_name.trim());
       cur.seller_labels.add(sellerLabelForOrder(o, staffMap, ownerName));
@@ -259,17 +263,16 @@ export async function GET(request: NextRequest) {
       | "all"
       | "";
     const profileFilter = request.nextUrl.searchParams.get("profile")?.trim();
+    const segmentFilter = request.nextUrl.searchParams.get("segment")?.trim();
 
     let clients: AdminClientRow[] = Array.from(byWa.entries())
       .filter(([wa]) => !hiddenSet.has(wa))
       .map(([wa, agg]) => {
         const name =
           agg.names.length > 0 ? agg.names[agg.names.length - 1] : null;
-        const isNew = agg.order_count <= 1;
+        const isNew = agg.order_count <= 1 && !agg.has_legacy_import;
         const segment = isNew ? "NOVO" : "ANTIGO";
-        const sellers_label = Array.from(agg.seller_labels)
-          .sort((a, b) => a.localeCompare(b, "pt-BR"))
-          .join(", ");
+        const sellers_label = formatSellersLabel(agg.seller_labels);
         const profile = profileMap.get(wa);
         const bp = profile?.business_profile;
         const businessProfile =
@@ -305,15 +308,17 @@ export async function GET(request: NextRequest) {
     } else if (profileFilter === "sem_perfil") {
       clients = clients.filter((c) => !c.business_profile);
     }
+    if (segmentFilter === "novo") {
+      clients = clients.filter((c) => c.is_new);
+    } else if (segmentFilter === "antigo") {
+      clients = clients.filter((c) => !c.is_new);
+    }
 
     clients.sort((a, b) => {
-      const order = { red: 0, yellow: 1, green: 2, none: 3 };
-      const ra = order[a.recency_status];
-      const rb = order[b.recency_status];
-      if (ra !== rb) return ra - rb;
       const ta = a.last_confirmed_at ?? "";
       const tb = b.last_confirmed_at ?? "";
-      return tb.localeCompare(ta);
+      if (ta !== tb) return tb.localeCompare(ta);
+      return (a.customer_name ?? "").localeCompare(b.customer_name ?? "", "pt-BR");
     });
 
     return NextResponse.json({ clients });

@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import type { AbandonedOrderRow } from "@/app/api/admin/abandoned-carts/route";
 import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
+import { SITE_VAREJO_SELLER } from "@/lib/crm-legacy-import";
 
 function waDisplay(digits: string) {
   const d = digits.replace(/\D/g, "");
@@ -21,21 +21,22 @@ function waLink(digits: string, text?: string) {
 function recoveryMessage(order: AbandonedOrderRow): string {
   const first = order.customer_name?.trim().split(/\s+/)[0];
   const hi = first ? `Olá ${first}!` : "Olá!";
-  const num =
-    order.display_number != null ? `PEDIDO #${order.display_number}` : "seu pedido";
-  const cats = totalsByCategoryFromOrderItems(order.order_items);
-  const summary = cats.map((c) => `x${c.qty} ${c.label}`).join(", ");
-
-  if (order.status === "CANCELADO") {
-    return `${hi} O ${num} foi cancelado, mas ainda podemos ajudar a concluir a compra.${summary ? ` Itens: ${summary}.` : ""}`;
+  if (order.requested_seller_name?.trim() === SITE_VAREJO_SELLER) {
+    return `${hi} Vi que você deixou itens no carrinho do site. Posso ajudar a finalizar?`;
   }
-  return `${hi} O ${num} está aguardando confirmação de pagamento.${summary ? ` Itens: ${summary}.` : ""} Posso ajudar a finalizar?`;
+  const cats = totalsByCategoryFromOrderItems(order.order_items);
+  const summary = cats.map((c) => `x${c.qty} ${c.label}`).join("\n");
+
+  return summary
+    ? `${hi}\n\nVi que você deixou itens no carrinho:\n${summary}\n\nPosso ajudar a finalizar?`
+    : `${hi} Vi que você deixou itens no carrinho. Posso ajudar a finalizar?`;
 }
 
-const STATUS_LABEL = {
-  PENDENTE_PAGAMENTO: "Pendente",
-  CANCELADO: "Cancelado",
-} as const;
+function formatCategoryLines(order: AbandonedOrderRow): string[] {
+  return totalsByCategoryFromOrderItems(order.order_items).map(
+    (c) => `x${c.qty} ${c.label.toUpperCase()}`
+  );
+}
 
 type Props = {
   active: boolean;
@@ -46,6 +47,7 @@ export function AbandonedCartsPanel({ active }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [orders, setOrders] = useState<AbandonedOrderRow[]>([]);
+  const [clickCounts, setClickCounts] = useState<Record<string, number>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,10 +56,17 @@ export function AbandonedCartsPanel({ active }: Props) {
       const res = await adminFetch("/api/admin/abandoned-carts");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? data.hint ?? "Falha ao carregar");
-      setOrders((data.orders ?? []) as AbandonedOrderRow[]);
+      const list = (data.orders ?? []) as AbandonedOrderRow[];
+      setOrders(list);
+      const counts: Record<string, number> = {};
+      for (const o of list) {
+        counts[o.customer_whatsapp] = o.whatsapp_click_count ?? 0;
+      }
+      setClickCounts(counts);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
       setOrders([]);
+      setClickCounts({});
     } finally {
       setLoading(false);
     }
@@ -67,14 +76,33 @@ export function AbandonedCartsPanel({ active }: Props) {
     if (active) void load();
   }, [active, load]);
 
+  async function trackWhatsAppClick(wa: string, msg: string) {
+    try {
+      const res = await adminFetch("/api/admin/abandoned-carts/whatsapp-click", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_whatsapp: wa }),
+      });
+      const data = await res.json();
+      if (res.ok && typeof data.click_count === "number") {
+        setClickCounts((prev) => ({ ...prev, [wa]: data.click_count }));
+      }
+    } catch {
+      setClickCounts((prev) => ({
+        ...prev,
+        [wa]: (prev[wa] ?? 0) + 1,
+      }));
+    }
+    window.open(waLink(wa, msg), "_blank", "noopener,noreferrer");
+  }
+
   if (!active) return null;
 
   return (
     <div>
       <p className="mb-4 text-sm text-stone-600">
-        Pedidos <strong>pendentes</strong> ou <strong>cancelados</strong> de quem ainda
-        não tem nenhuma compra confirmada. Quando o primeiro pedido for confirmado (PAGO),
-        o contacto passa para <strong>Registados</strong> e deixa de aparecer aqui.
+        Clientes com pedido pendente ou cancelado que ainda não confirmaram a primeira
+        compra. O contador mostra quantas vezes você abriu o WhatsApp de cada número.
       </p>
 
       <button
@@ -94,71 +122,70 @@ export function AbandonedCartsPanel({ active }: Props) {
 
       {!loading && orders.length === 0 && !error && (
         <p className="text-sm text-stone-500">
-          Nenhum pedido pendente ou cancelado de cliente sem compra confirmada.
+          Nenhum carrinho abandonado no momento.
         </p>
       )}
 
-      <ul className="space-y-4">
+      <ul className="space-y-3">
         {orders.map((order) => {
           const msg = recoveryMessage(order);
+          const lines = formatCategoryLines(order);
+          const clicks = clickCounts[order.customer_whatsapp] ?? 0;
+          const isSiteVarejo =
+            order.requested_seller_name?.trim() === SITE_VAREJO_SELLER;
+
           return (
             <li
               key={order.order_id}
-              className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm"
+              className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-sm"
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-stone-900">
-                      {order.display_number != null
-                        ? `PEDIDO #${order.display_number}`
-                        : "Pedido"}
-                    </p>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                        order.status === "PENDENTE_PAGAMENTO"
-                          ? "bg-amber-100 text-amber-950"
-                          : "bg-red-100 text-red-900"
-                      }`}
-                    >
-                      {STATUS_LABEL[order.status]}
-                    </span>
-                  </div>
-                  <p className="mt-1 font-medium text-stone-800">
-                    {order.customer_name?.trim() || "—"}
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-stone-900">
+                  {order.customer_name?.trim() || "—"}
+                </p>
+                <p className="text-sm text-stone-500">
+                  {waDisplay(order.customer_whatsapp)}
+                </p>
+                {isSiteVarejo ? (
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-stone-600">
+                    {SITE_VAREJO_SELLER}
                   </p>
-                  <p className="text-sm text-stone-600">
-                    {waDisplay(order.customer_whatsapp)}
-                  </p>
-                  {order.requested_seller_name && (
-                    <p className="mt-0.5 text-xs text-stone-500">
-                      Vendedor escolhido: {order.requested_seller_name}
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-stone-500">
-                    {new Date(order.created_at).toLocaleString("pt-BR")}
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-                  {order.public_token ? (
-                    <Link
-                      href={`/recibo/${order.public_token}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100"
-                    >
-                      Abrir recibo
-                    </Link>
-                  ) : null}
-                  <a
-                    href={waLink(order.customer_whatsapp, msg)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-md hover:bg-[#20bd5a]"
-                  >
-                    WhatsApp
-                  </a>
-                </div>
+                ) : (
+                  <>
+                    {order.requested_seller_name?.trim() ? (
+                      <p className="mt-1 text-xs text-stone-500">
+                        {order.requested_seller_name.trim()}
+                      </p>
+                    ) : null}
+                    {lines.length > 0 && (
+                      <ul className="mt-2 space-y-0.5 font-mono text-xs uppercase tracking-wide text-stone-700">
+                        {lines.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                )}
+                <p className="mt-2 text-[11px] text-stone-400">
+                  {new Date(order.created_at).toLocaleString("pt-BR")}
+                </p>
+              </div>
+
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <button
+                  type="button"
+                  onClick={() => void trackWhatsAppClick(order.customer_whatsapp, msg)}
+                  className="inline-flex items-center justify-center rounded-xl bg-[#25D366] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#20bd5a]"
+                >
+                  WhatsApp
+                </button>
+                <p className="text-[11px] text-stone-500">
+                  {clicks === 0
+                    ? "Nenhum clique ainda"
+                    : clicks === 1
+                      ? "1 clique no WhatsApp"
+                      : `${clicks} cliques no WhatsApp`}
+                </p>
               </div>
             </li>
           );

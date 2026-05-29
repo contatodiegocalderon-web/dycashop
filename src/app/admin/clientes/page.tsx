@@ -36,6 +36,7 @@ type ProfileFilter =
   | "revendedor"
   | "uso_proprio"
   | "sem_perfil";
+type SegmentFilter = "all" | "novo" | "antigo";
 
 function money(n: number) {
   return n.toLocaleString("pt-BR", {
@@ -118,7 +119,12 @@ export default function AdminClientesPage() {
   const [sellerScope, setSellerScope] = useState<string>("all");
   const [recencyFilter, setRecencyFilter] = useState<RecencyFilter>("all");
   const [profileFilter, setProfileFilter] = useState<ProfileFilter>("all");
+  const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>("all");
   const [sellerFilterOptions, setSellerFilterOptions] = useState<SellerFilterOption[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [recompraStats, setRecompraStats] = useState<
+    Array<{ staffName: string; recompraCount: number }>
+  >([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -130,6 +136,7 @@ export default function AdminClientesPage() {
       }
       if (recencyFilter !== "all") q.set("recency", recencyFilter);
       if (profileFilter !== "all") q.set("profile", profileFilter);
+      if (segmentFilter !== "all") q.set("segment", segmentFilter);
       const qs = q.toString();
       const res = await adminFetch(`/api/admin/clients${qs ? `?${qs}` : ""}`);
       const data = await res.json();
@@ -141,7 +148,7 @@ export default function AdminClientesPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch, isOwner, sellerScope, recencyFilter, profileFilter]);
+  }, [adminFetch, isOwner, sellerScope, recencyFilter, profileFilter, segmentFilter]);
 
   useEffect(() => {
     if (!isOwner) {
@@ -195,6 +202,32 @@ export default function AdminClientesPage() {
   useEffect(() => {
     if (activeTab === "registados") void load();
   }, [load, activeTab]);
+
+  useEffect(() => {
+    if (!isOwner) {
+      setRecompraStats([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await adminFetch("/api/admin/clients/recompra-stats");
+        const data = await res.json();
+        if (!res.ok || cancelled) return;
+        setRecompraStats(
+          ((data.sellers ?? []) as Array<{
+            staffName: string;
+            recompraCount: number;
+          }>).filter((s) => s.recompraCount > 0)
+        );
+      } catch {
+        if (!cancelled) setRecompraStats([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [adminFetch, isOwner, clients.length]);
 
   const counts = useMemo(() => {
     const c = { green: 0, yellow: 0, red: 0 };
@@ -271,24 +304,53 @@ export default function AdminClientesPage() {
     );
   }
 
-  function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onImportLegacyFile(e: React.ChangeEvent<HTMLInputElement>) {
     setImportMsg(null);
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = String(reader.result ?? "");
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      if (lines.length < 2) {
-        setImportMsg("Ficheiro vazio ou inválido.");
-        return;
-      }
+    if (!/\.xlsx?$/i.test(f.name)) {
+      setImportMsg("Use um ficheiro Excel (.xlsx).");
+      return;
+    }
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      const res = await adminFetch("/api/admin/clients/import-legacy", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Falha na importação");
+      const s = data.stats as {
+        registered?: number;
+        abandoned?: number;
+        reconciledToAbandoned?: number;
+        skippedExisting?: number;
+        skippedDuplicateInFile?: number;
+        skippedInvalid?: number;
+        ordersCreated?: number;
+      };
       setImportMsg(
-        `Lidas ${lines.length - 1} linha(s). Importação em massa ainda não está ativa — use exportar para backup.`
+        [
+          `Importação concluída: ${s.registered ?? 0} registrado(s) (uso próprio), ${s.abandoned ?? 0} carrinho(s) abandonado(s) (SITE-VAREJO).`,
+          `Pedidos criados: ${s.ordersCreated ?? 0}.`,
+          s.reconciledToAbandoned
+            ? `Reclassificados de pago para abandonado: ${s.reconciledToAbandoned}.`
+            : "",
+          `Ignorados — já no site: ${s.skippedExisting ?? 0}; duplicado na lista: ${s.skippedDuplicateInFile ?? 0}; inválidos: ${s.skippedInvalid ?? 0}.`,
+          "Ordenação pela coluna criado_em da planilha.",
+        ]
+          .filter(Boolean)
+          .join(" ")
       );
-    };
-    reader.readAsText(f, "UTF-8");
+      await load();
+    } catch (err) {
+      setImportMsg(err instanceof Error ? err.message : "Erro na importação");
+    } finally {
+      setImporting(false);
+    }
   }
 
   return (
@@ -298,10 +360,16 @@ export default function AdminClientesPage() {
           Clientes
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-stone-600">
-          Registados: quem já teve pelo menos um pedido confirmado (pago). Carrinhos
+          Registrados: quem já teve pelo menos um pedido confirmado (pago). Carrinhos
           abandonados: pedidos pendentes ou cancelados de quem ainda não comprou — para
           remarketing até a primeira confirmação.
         </p>
+        {isOwner && recompraStats.length > 0 && (
+          <p className="mt-1 text-xs text-stone-500">
+            Recompra de clientes importados (?):{" "}
+            {recompraStats.map((s) => `${s.staffName} ${s.recompraCount}`).join(" · ")}
+          </p>
+        )}
         <Link
           href="/admin/metricas"
           className="mt-4 inline-block text-sm font-medium text-violet-800 underline hover:text-violet-900"
@@ -326,7 +394,7 @@ export default function AdminClientesPage() {
               : "text-stone-600 hover:bg-stone-50"
           }`}
         >
-          Registados
+          Registrados
         </button>
         <button
           type="button"
@@ -365,15 +433,15 @@ export default function AdminClientesPage() {
       <div className="mb-6 flex flex-wrap gap-3 text-xs">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-900">
           <span className="h-2 w-2 rounded-full bg-emerald-500" />
-          Este mês: {counts.green}
+          Última compra este mês: {counts.green}
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-950">
           <span className="h-2 w-2 rounded-full bg-amber-500" />
-          1 mês: {counts.yellow}
+          Há 1 mês: {counts.yellow}
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-900">
           <span className="h-2 w-2 rounded-full bg-red-500" />
-          2+ meses: {counts.red}
+          Há 2+ meses: {counts.red}
         </span>
       </div>
 
@@ -398,19 +466,22 @@ export default function AdminClientesPage() {
           </div>
         )}
         <div className="flex w-full min-w-[12rem] flex-col gap-1 sm:w-auto">
-          <label htmlFor="clientes-recency-filter" className="text-xs font-medium text-stone-600">
-            Semáforo
+          <label
+            htmlFor="clientes-last-purchase-filter"
+            className="text-xs font-medium text-stone-600"
+          >
+            Última compra
           </label>
           <select
-            id="clientes-recency-filter"
+            id="clientes-last-purchase-filter"
             value={recencyFilter}
             onChange={(e) => setRecencyFilter(e.target.value as RecencyFilter)}
             className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
           >
-            <option value="all">Todos</option>
-            <option value="green">Verde — este mês</option>
-            <option value="yellow">Amarelo — 1 mês</option>
-            <option value="red">Vermelho — 2+ meses</option>
+            <option value="all">Todas</option>
+            <option value="green">Comprou este mês</option>
+            <option value="yellow">Última compra há 1 mês</option>
+            <option value="red">Última compra há 2+ meses</option>
           </select>
         </div>
         <div className="flex w-full min-w-[12rem] flex-col gap-1 sm:w-auto">
@@ -430,6 +501,24 @@ export default function AdminClientesPage() {
             <option value="sem_perfil">Sem perfil</option>
           </select>
         </div>
+        <div className="flex w-full min-w-[12rem] flex-col gap-1 sm:w-auto">
+          <label
+            htmlFor="clientes-segment-filter"
+            className="text-xs font-medium text-stone-600"
+          >
+            Cliente
+          </label>
+          <select
+            id="clientes-segment-filter"
+            value={segmentFilter}
+            onChange={(e) => setSegmentFilter(e.target.value as SegmentFilter)}
+            className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+          >
+            <option value="all">Todos</option>
+            <option value="novo">Novo</option>
+            <option value="antigo">Antigo</option>
+          </select>
+        </div>
         <button
           type="button"
           onClick={exportCsv}
@@ -438,10 +527,18 @@ export default function AdminClientesPage() {
         >
           Exportar CSV
         </button>
-        <label className="cursor-pointer rounded-xl border border-stone-300 bg-stone-50 px-5 py-2.5 text-sm font-semibold text-stone-800 transition hover:bg-stone-100">
-          Importar CSV
-          <input type="file" accept=".csv,text/csv" className="hidden" onChange={onImportFile} />
-        </label>
+        {isOwner && (
+          <label className="cursor-pointer rounded-xl border border-violet-300 bg-violet-50 px-5 py-2.5 text-sm font-semibold text-violet-950 transition hover:bg-violet-100 disabled:opacity-50">
+            {importing ? "A importar…" : "Importar Excel"}
+            <input
+              type="file"
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              disabled={importing}
+              onChange={(e) => void onImportLegacyFile(e)}
+            />
+          </label>
+        )}
         <button
           type="button"
           onClick={load}

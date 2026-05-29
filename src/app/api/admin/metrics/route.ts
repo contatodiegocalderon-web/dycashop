@@ -61,7 +61,8 @@ function applyMetricsOrderFilters(q: any, opts: MetricsFilterOpts): any {
     .eq("status", "PAGO")
     .not("sale_amount", "is", null)
     .gt("sale_amount", 0)
-    .not("confirmed_at", "is", null);
+    .not("confirmed_at", "is", null)
+    .eq("legacy_import", false);
 
   if (opts.sellerId) {
     query = query.eq("confirmed_by_staff_id", opts.sellerId);

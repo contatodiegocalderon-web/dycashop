@@ -8,7 +8,13 @@ import {
   type BrazilUf,
   ufFromWhatsapp,
 } from "@/lib/brazil-ddd";
-import type { BusinessProfile, CrmClientProfileRow } from "@/lib/client-follow-up";
+import type { BusinessProfile } from "@/lib/client-follow-up";
+import {
+  fetchAllCrmPaidOrders,
+  fetchCrmProfilesByWhatsapp,
+  type CrmPaidOrdersListQuery,
+} from "@/lib/admin-orders-query";
+import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -111,33 +117,34 @@ export async function GET(request: NextRequest) {
 
     const admin = createAdminClient();
 
-    let orderQuery = admin
-      .from("orders")
-      .select(
-        "customer_whatsapp, customer_name, sale_amount, confirmed_at, confirmed_by_staff_id"
-      )
-      .eq("status", "PAGO")
-      .not("customer_whatsapp", "is", null);
+    const ownerStaffId = await resolveOwnerStaffId(admin, principal);
 
-    if (sellerId) {
-      orderQuery = orderQuery.eq("confirmed_by_staff_id", sellerId);
-    } else if (isOwnerPrincipal && rawSellerScope && rawSellerScope !== "all") {
-      const ownerStaffId = await resolveOwnerStaffId(admin, principal);
-      if (rawSellerScope === "me") {
-        if (ownerStaffId) {
-          orderQuery = orderQuery.or(
-            `confirmed_by_staff_id.eq.${ownerStaffId},confirmed_by_staff_id.is.null`
-          );
+    const orders = await fetchAllCrmPaidOrders(admin, () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let q: any = admin
+        .from("orders")
+        .select(
+          "customer_whatsapp, customer_name, sale_amount, confirmed_at, confirmed_by_staff_id"
+        )
+        .eq("status", "PAGO")
+        .not("customer_whatsapp", "is", null);
+
+      if (sellerId) {
+        q = q.eq("confirmed_by_staff_id", sellerId);
+      } else if (isOwnerPrincipal && rawSellerScope && rawSellerScope !== "all") {
+        if (rawSellerScope === "me") {
+          if (ownerStaffId) {
+            q = q.or(
+              `confirmed_by_staff_id.eq.${ownerStaffId},confirmed_by_staff_id.is.null`
+            );
+          }
+        } else if (STAFF_UUID_RE.test(rawSellerScope)) {
+          q = q.eq("confirmed_by_staff_id", rawSellerScope);
         }
-      } else if (STAFF_UUID_RE.test(rawSellerScope)) {
-        orderQuery = orderQuery.eq("confirmed_by_staff_id", rawSellerScope);
       }
-    }
 
-    const { data: orders, error } = await orderQuery;
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+      return q as CrmPaidOrdersListQuery;
+    });
 
     const { data: hiddenRows, error: hErr } = await admin
       .from("crm_hidden_contacts")
@@ -153,28 +160,21 @@ export async function GET(request: NextRequest) {
     }
 
     const waKeys = new Set<string>();
-    for (const o of orders ?? []) {
-      const wa = String(
-        (o as { customer_whatsapp: string }).customer_whatsapp ?? ""
-      ).replace(/\D/g, "");
-      if (wa.length >= 10 && !hiddenSet.has(wa)) waKeys.add(wa);
+    for (const o of orders) {
+      const wa = normalizeWhatsappDigits(o.customer_whatsapp);
+      if (wa.length >= 12 && !hiddenSet.has(wa)) waKeys.add(wa);
     }
 
+    const profileRows = await fetchCrmProfilesByWhatsapp(
+      admin,
+      Array.from(waKeys)
+    );
     const profileMap = new Map<string, BusinessProfile | null>();
-    if (waKeys.size > 0) {
-      const { data: profileRows, error: pErr } = await admin
-        .from("crm_client_profiles")
-        .select("whatsapp_digits, business_profile")
-        .in("whatsapp_digits", Array.from(waKeys));
-      if (!pErr) {
-        for (const raw of profileRows ?? []) {
-          const p = raw as CrmClientProfileRow;
-          profileMap.set(
-            p.whatsapp_digits,
-            isValidProfile(p.business_profile) ? p.business_profile : null
-          );
-        }
-      }
+    for (const [wa, p] of Array.from(profileRows.entries())) {
+      profileMap.set(
+        wa,
+        isValidProfile(p.business_profile) ? p.business_profile : null
+      );
     }
 
     const byWa = new Map<
@@ -188,15 +188,10 @@ export async function GET(request: NextRequest) {
         last_confirmed_at: string | null;
       }
     >();
-    for (const o of orders ?? []) {
-      const row = o as {
-        customer_whatsapp: string;
-        customer_name: string | null;
-        sale_amount: number | null;
-        confirmed_at: string | null;
-      };
-      const wa = String(row.customer_whatsapp ?? "").replace(/\D/g, "");
-      if (wa.length < 10 || hiddenSet.has(wa)) continue;
+    for (const o of orders) {
+      const wa = normalizeWhatsappDigits(o.customer_whatsapp);
+      if (wa.length < 12 || hiddenSet.has(wa)) continue;
+      const row = o;
       const cur = byWa.get(wa) ?? {
         customer_whatsapp: wa,
         customer_name: null,
@@ -266,17 +261,13 @@ export async function GET(request: NextRequest) {
       { revenue: number; order_count: number }
     >();
 
-    for (const o of orders ?? []) {
-      const row = o as {
-        customer_whatsapp: string;
-        sale_amount: number | null;
-        confirmed_at: string | null;
-      };
-      const confirmed = row.confirmed_at;
+    for (const o of orders) {
+      const confirmed = o.confirmed_at;
       if (!confirmed || confirmed < sinceIso) continue;
 
-      const wa = String(row.customer_whatsapp ?? "").replace(/\D/g, "");
-      if (wa.length < 10 || hiddenSet.has(wa)) continue;
+      const wa = normalizeWhatsappDigits(o.customer_whatsapp);
+      if (wa.length < 12 || hiddenSet.has(wa)) continue;
+      const row = o;
 
       const uf = ufFromWhatsapp(wa);
       if (!uf) continue;
@@ -307,6 +298,10 @@ export async function GET(request: NextRequest) {
       maxClients,
       clientsWithoutUf,
       totalClients: byWa.size,
+      meta: {
+        ordersLoaded: orders.length,
+        clientsOnMap: byWa.size - clientsWithoutUf,
+      },
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";

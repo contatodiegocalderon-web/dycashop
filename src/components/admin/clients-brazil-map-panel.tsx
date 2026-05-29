@@ -85,10 +85,12 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
   const [states, setStates] = useState<StateClientBreakdown[]>([]);
   const [topSales, setTopSales] = useState<TopSalesState[]>([]);
   const [clientsWithoutUf, setClientsWithoutUf] = useState(0);
+  const [totalRegistered, setTotalRegistered] = useState(0);
   const [hoverUf, setHoverUf] = useState<BrazilUf | null>(null);
   const [selectedUf, setSelectedUf] = useState<BrazilUf | null>(null);
   const [sellerScope, setSellerScope] = useState("all");
-  const [profileFilter, setProfileFilter] = useState<ProfileFilter>("all");
+  const [stateProfileFilter, setStateProfileFilter] =
+    useState<ProfileFilter>("all");
   const [sellerFilterOptions, setSellerFilterOptions] = useState<
     SellerFilterOption[]
   >([]);
@@ -110,6 +112,7 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
       setStates((data.states ?? []) as StateClientBreakdown[]);
       setTopSales((data.topSalesStates ?? []) as TopSalesState[]);
       setClientsWithoutUf(Number(data.clientsWithoutUf ?? 0));
+      setTotalRegistered(Number(data.totalClients ?? 0));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
       setStates([]);
@@ -162,52 +165,61 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
     if (active) void load();
   }, [load, active]);
 
-  const filteredStates = useMemo(() => {
-    if (profileFilter === "all") return states;
-
-    return states.map((state) => {
-      const clients = state.clients.filter(
-        (client) => client.business_profile === profileFilter
-      );
-      const counts = countProfiles(clients);
-      return {
-        ...state,
-        total: clients.length,
-        clients,
-        lojista: counts.lojista,
-        revendedor: counts.revendedor,
-        uso_proprio: counts.uso_proprio,
-        sem_perfil: counts.sem_perfil,
-        desconhecido: 0,
-      };
-    });
-  }, [states, profileFilter]);
-
   const visibleMaxClients = useMemo(
-    () => Math.max(1, ...filteredStates.map((s) => s.total)),
-    [filteredStates]
+    () => Math.max(1, ...states.map((s) => s.total)),
+    [states]
   );
   const visibleTotalClients = useMemo(
-    () => filteredStates.reduce((sum, state) => sum + state.total, 0),
-    [filteredStates]
+    () => states.reduce((sum, state) => sum + state.total, 0),
+    [states]
   );
-  const byUf = useMemo(() => breakdownByUf(filteredStates), [filteredStates]);
+  const byUf = useMemo(() => breakdownByUf(states), [states]);
   const hoverRow = hoverUf ? byUf.get(hoverUf) : null;
-  const selectedRow = selectedUf ? byUf.get(selectedUf) : null;
+
+  const selectedRow = useMemo(() => {
+    if (!selectedUf) return null;
+    const row = byUf.get(selectedUf);
+    if (!row) return null;
+    if (stateProfileFilter === "all") return row;
+
+    const clients = row.clients.filter((client) => {
+      if (stateProfileFilter === "sem_perfil") return !client.business_profile;
+      return client.business_profile === stateProfileFilter;
+    });
+    const counts = countProfiles(clients);
+    return {
+      ...row,
+      total: clients.length,
+      clients,
+      lojista: counts.lojista,
+      revendedor: counts.revendedor,
+      uso_proprio: counts.uso_proprio,
+      sem_perfil: counts.sem_perfil,
+      desconhecido: 0,
+    };
+  }, [selectedUf, byUf, stateProfileFilter]);
 
   const totals = useMemo(() => {
     let lojista = 0;
     let revendedor = 0;
     let uso_proprio = 0;
     let sem_perfil = 0;
-    for (const s of filteredStates) {
+    for (const s of states) {
       lojista += s.lojista;
       revendedor += s.revendedor;
       uso_proprio += s.uso_proprio;
       sem_perfil += s.sem_perfil;
     }
     return { lojista, revendedor, uso_proprio, sem_perfil };
-  }, [filteredStates]);
+  }, [states]);
+
+  const statesByClientCount = useMemo(
+    () =>
+      states
+        .filter((s) => s.total > 0)
+        .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "pt-BR")),
+    [states]
+  );
 
   return (
     <div className="space-y-6">
@@ -239,25 +251,6 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
             </select>
           </div>
         )}
-        <div className="flex min-w-[12rem] flex-col gap-1">
-          <label
-            htmlFor="mapa-profile-filter"
-            className="text-xs font-medium text-stone-600"
-          >
-            Perfil
-          </label>
-          <select
-            id="mapa-profile-filter"
-            value={profileFilter}
-            onChange={(e) => setProfileFilter(e.target.value as ProfileFilter)}
-            className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
-          >
-            <option value="all">Todos</option>
-            <option value="lojista">Lojista</option>
-            <option value="uso_proprio">Uso próprio</option>
-            <option value="revendedor">Revendedor</option>
-          </select>
-        </div>
         <button
           type="button"
           onClick={() => void load()}
@@ -312,7 +305,10 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
                 stroke={isSelected || isHover ? "#5b21b6" : "#e7e5e4"}
                 strokeWidth={isSelected || isHover ? 1.7 : 0.6}
                 className="cursor-pointer transition-[fill,stroke] duration-150"
-                onClick={() => setSelectedUf(uf)}
+                onClick={() => {
+                  setSelectedUf(uf);
+                  setStateProfileFilter("all");
+                }}
                 onMouseEnter={() => setHoverUf(uf)}
                 onMouseLeave={() => setHoverUf(null)}
                 onFocus={() => setHoverUf(uf)}
@@ -321,6 +317,7 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
                     setSelectedUf(uf);
+                    setStateProfileFilter("all");
                   }
                 }}
                 tabIndex={0}
@@ -372,78 +369,103 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
         )}
       </div>
 
-      <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-5">
-        {selectedRow ? (
-          <>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-stone-900">
-                  Clientes em {selectedRow.name} ({selectedRow.uf})
-                </h3>
-                <p className="mt-1 text-sm text-stone-500">
-                  {selectedRow.total} cliente
-                  {selectedRow.total === 1 ? "" : "s"} identificado
-                  {selectedRow.total === 1 ? "" : "s"} pelo DDD.
-                </p>
+      {selectedRow ? (
+        <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-stone-900">
+                Clientes em {selectedRow.name} ({selectedRow.uf})
+              </h3>
+              <p className="mt-1 text-sm text-stone-500">
+                {selectedRow.total} cliente
+                {selectedRow.total === 1 ? "" : "s"} · {selectedRow.lojista}{" "}
+                lojista
+                {selectedRow.lojista === 1 ? "" : "s"} · {selectedRow.revendedor}{" "}
+                revendedor
+                {selectedRow.revendedor === 1 ? "" : "es"} · {selectedRow.uso_proprio}{" "}
+                uso próprio
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex min-w-[10rem] flex-col gap-1">
+                <label
+                  htmlFor="mapa-state-profile-filter"
+                  className="text-xs font-medium text-stone-600"
+                >
+                  Perfil
+                </label>
+                <select
+                  id="mapa-state-profile-filter"
+                  value={stateProfileFilter}
+                  onChange={(e) =>
+                    setStateProfileFilter(e.target.value as ProfileFilter)
+                  }
+                  className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+                >
+                  <option value="all">Todos</option>
+                  <option value="lojista">Lojista</option>
+                  <option value="uso_proprio">Uso próprio</option>
+                  <option value="revendedor">Revendedor</option>
+                  <option value="sem_perfil">Sem perfil</option>
+                </select>
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedUf(null)}
+                onClick={() => {
+                  setSelectedUf(null);
+                  setStateProfileFilter("all");
+                }}
                 className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-50"
               >
                 Limpar seleção
               </button>
             </div>
+          </div>
 
-            {selectedRow.clients.length > 0 ? (
-              <ul className="mt-4 divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-100">
-                {selectedRow.clients.map((client) => (
-                  <li
-                    key={client.customer_whatsapp}
-                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-stone-900">
-                          {client.customer_name?.trim() || "Cliente sem nome"}
-                        </p>
-                        {client.business_profile ? (
-                          <ClientProfileBadge profile={client.business_profile} />
-                        ) : null}
-                      </div>
-                      <p className="mt-0.5 text-sm text-stone-500">
-                        {waDisplay(client.customer_whatsapp)}
+          {selectedRow.clients.length > 0 ? (
+            <ul className="mt-4 divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-100">
+              {selectedRow.clients.map((client) => (
+                <li
+                  key={client.customer_whatsapp}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-stone-900">
+                        {client.customer_name?.trim() || "Cliente sem nome"}
                       </p>
-                      <p className="mt-1 text-xs text-stone-500">
-                        {client.order_count} pedido
-                        {client.order_count === 1 ? "" : "s"} ·{" "}
-                        {money(client.total_spent)} · último pedido em{" "}
-                        {shortDate(client.last_confirmed_at)}
-                      </p>
+                      {client.business_profile ? (
+                        <ClientProfileBadge profile={client.business_profile} />
+                      ) : null}
                     </div>
-                    <a
-                      href={waLink(client.customer_whatsapp)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#20bd5a]"
-                    >
-                      Chamar no WhatsApp
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-4 rounded-xl bg-stone-50 px-4 py-6 text-center text-sm text-stone-500">
-                Nenhum cliente encontrado neste estado para o filtro atual.
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-stone-500">
-            Clique em um estado do mapa para ver os clientes aqui embaixo.
-          </p>
-        )}
-      </div>
+                    <p className="mt-0.5 text-sm text-stone-500">
+                      {waDisplay(client.customer_whatsapp)}
+                    </p>
+                    <p className="mt-1 text-xs text-stone-500">
+                      {client.order_count} pedido
+                      {client.order_count === 1 ? "" : "s"} ·{" "}
+                      {money(client.total_spent)} · último pedido em{" "}
+                      {shortDate(client.last_confirmed_at)}
+                    </p>
+                  </div>
+                  <a
+                    href={waLink(client.customer_whatsapp)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#20bd5a]"
+                  >
+                    Chamar no WhatsApp
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 rounded-xl bg-stone-50 px-4 py-6 text-center text-sm text-stone-500">
+              Nenhum cliente encontrado neste estado para o filtro atual.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-4 text-xs text-stone-600">
         <span className="inline-flex items-center gap-1.5">
@@ -475,20 +497,71 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
       </div>
 
       <p className="text-xs text-stone-500">
-        {visibleTotalClients} cliente(s) mapeado(s)
-        {profileFilter !== "all" ? " neste perfil" : ""}.
-        {profileFilter === "all" && clientsWithoutUf > 0
-          ? ` ${clientsWithoutUf} com DDD não identificado (excluídos do mapa).`
+        {visibleTotalClients} cliente(s) no mapa
+        {totalRegistered > 0
+          ? ` · ${totalRegistered} registrado(s) com pedido pago`
+          : ""}
+        . Só entram quem comprou (Registrados); carrinhos abandonados não aparecem aqui.
+        {clientsWithoutUf > 0
+          ? ` ${clientsWithoutUf} registrado(s) com DDD não identificado (fora do mapa).`
           : null}
       </p>
 
-      <div className="flex flex-wrap gap-2">
-        {(["lojista", "revendedor", "uso_proprio"] as BusinessProfile[]).map(
-          (p) => (
-            <ClientProfileBadge key={p} profile={p} />
-          )
-        )}
-      </div>
+      {statesByClientCount.length > 0 && (
+        <div className="rounded-2xl border border-stone-200 bg-white shadow-sm">
+          <p className="border-b border-stone-100 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-stone-500">
+            Clientes por estado (maior → menor)
+          </p>
+          <ul className="divide-y divide-stone-100">
+            {statesByClientCount.map((state) => (
+              <li key={state.uf}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedUf(state.uf);
+                    setStateProfileFilter("all");
+                  }}
+                  className={`flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left text-sm transition hover:bg-violet-50/80 ${
+                    selectedUf === state.uf ? "bg-violet-50/60" : ""
+                  }`}
+                >
+                  <span className="font-semibold text-stone-900">
+                    {state.name}{" "}
+                    <span className="font-normal text-stone-500">({state.uf})</span>
+                  </span>
+                  <span className="text-xs text-stone-600">
+                    <span className="font-medium text-stone-800">
+                      {state.total}
+                    </span>{" "}
+                    cliente{state.total === 1 ? "" : "s"} ·{" "}
+                    <span
+                      className="inline-flex items-center gap-1"
+                      style={{ color: PROFILE_COLORS.lojista }}
+                    >
+                      {state.lojista} lojista{state.lojista === 1 ? "" : "s"}
+                    </span>
+                    {" · "}
+                    <span
+                      className="inline-flex items-center gap-1"
+                      style={{ color: PROFILE_COLORS.revendedor }}
+                    >
+                      {state.revendedor} revendedor
+                      {state.revendedor === 1 ? "" : "es"}
+                    </span>
+                    {" · "}
+                    <span
+                      className="inline-flex items-center gap-1"
+                      style={{ color: PROFILE_COLORS.uso_proprio }}
+                    >
+                      {state.uso_proprio} uso próprio
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
