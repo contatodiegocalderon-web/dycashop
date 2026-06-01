@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAdminAuth } from "@/contexts/admin-auth";
 
 import { AdminPurpleCard, AdminPurpleStatCard } from "@/components/admin/admin-purple-card";
+import { REAL_APP_ORDERS_HELP } from "@/lib/real-app-orders";
 import {
   CategoryPieChart,
   SegmentPieChart,
@@ -127,6 +128,7 @@ export default function AdminMetricasPage() {
               displayNumber: number | null;
               confirmedAt: string | null;
             };
+            newestDisplayNumber?: number | null;
             sellerScope?: string;
           }
         | undefined;
@@ -143,6 +145,10 @@ export default function AdminMetricasPage() {
               ordersExpected: Number(meta.ordersExpected ?? meta.ordersIncluded),
               newestIncluded: meta.newestIncluded !== false,
               newestInDb: meta.newestInDb,
+              newestDisplayNumber:
+                typeof meta.newestDisplayNumber === "number"
+                  ? meta.newestDisplayNumber
+                  : null,
               sellerScope:
                 typeof meta.sellerScope === "string" ? meta.sellerScope : "all",
             }
@@ -259,6 +265,7 @@ export default function AdminMetricasPage() {
           {periodDescription && (
             <p className="mt-1 text-xs text-stone-500">{periodDescription}</p>
           )}
+          <p className="mt-1 text-xs text-stone-500">{REAL_APP_ORDERS_HELP}</p>
           {loadMeta && (
             <p className="mt-1 text-xs text-stone-500">
               {loadMeta.ordersIncluded}
@@ -270,9 +277,11 @@ export default function AdminMetricasPage() {
               {loadMeta.sellerScope && loadMeta.sellerScope !== "all"
                 ? ` · filtro vendedor: ${loadMeta.sellerScope}`
                 : ""}
-              {loadMeta.newestInDb?.displayNumber != null
-                ? ` · pedido mais recente na loja: #${loadMeta.newestInDb.displayNumber}`
-                : ""}
+              {loadMeta.newestDisplayNumber != null
+                ? ` · pedido mais recente (métricas): #${loadMeta.newestDisplayNumber}`
+                : loadMeta.newestInDb?.displayNumber != null
+                  ? ` · pedido mais recente: #${loadMeta.newestInDb.displayNumber}`
+                  : ""}
               {loadMeta.newestIncluded === false
                 ? " · o pedido mais recente não entrou neste total"
                 : ""}
@@ -394,7 +403,7 @@ export default function AdminMetricasPage() {
           <AdminPurpleStatCard
             label="Vendas"
             value={String(metrics.orderCount)}
-            sub="Pedidos com valor registado"
+            sub="Confirmados no app (sem importação)"
           />
           <AdminPurpleStatCard
             label="Ticket médio"

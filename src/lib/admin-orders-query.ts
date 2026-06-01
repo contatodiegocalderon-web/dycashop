@@ -3,6 +3,10 @@ import type { ConfirmedAtFilter } from "@/lib/admin-period";
 
 const PAGE_SIZE = 1000;
 const IN_CHUNK = 150;
+/** Pedidos por lote ao buscar itens com `.in()` (legado). */
+const ORDER_ITEM_IN_CHUNK = 40;
+/** Pedidos em paralelo ao buscar itens por `order_id` (métricas 100% completas). */
+const ORDER_ITEM_PARALLEL = 12;
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -79,7 +83,7 @@ export async function fetchAllCrmPaidOrders(
     const chunk = (data ?? []) as CrmPaidOrderRow[];
     all.push(...chunk);
     if (chunk.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
+    offset += chunk.length;
   }
   return all;
 }
@@ -127,7 +131,7 @@ export async function fetchAllPaidOrdersWithSale(
     const chunk = (data ?? []) as PaidOrderRow[];
     all.push(...chunk);
     if (chunk.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
+    offset += chunk.length;
   }
   return all;
 }
@@ -143,42 +147,88 @@ export type OrderItemMetricsRow = {
   products?: { category: string | null } | { category: string | null }[] | null;
 };
 
-const ORDER_ITEM_SELECT =
-  "id, order_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size, products(category)";
+/** Métricas / lucro — só snapshots (sem embed em `products`, que distorce paginação). */
+const ORDER_ITEM_METRICS_SELECT =
+  "id, order_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size";
+
+/** Lista admin de pedidos — inclui URLs para miniaturas. */
+const ORDER_ITEM_ADMIN_SELECT =
+  "id, order_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size, snapshot_image_url, snapshot_drive_file_id";
+
+/** Busca itens de um pedido (sem limite prático de linhas por request). */
+async function fetchOrderItemsForSingleOrder(
+  admin: AdminClient,
+  orderId: string,
+  select: string
+): Promise<OrderItemMetricsRow[]> {
+  const all: OrderItemMetricsRow[] = [];
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await admin
+      .from("order_items")
+      .select(select)
+      .eq("order_id", orderId)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as OrderItemMetricsRow[];
+    all.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    offset += rows.length;
+  }
+  return all;
+}
 
 /**
- * Carrega itens dos pedidos pedidos, paginando a tabela inteira (evita cortes do
- * PostgREST com `.in(order_id)` + `range` em bases grandes).
+ * Carrega todos os itens dos pedidos indicados.
+ * Métricas: um pedido de cada vez (evita cortar linhas com `.in()` + milhares de itens).
+ * Admin: lotes `.in()` menores com paginação por `rows.length`.
  */
 export async function fetchOrderItemsByOrderIds(
   admin: AdminClient,
-  orderIds: string[]
+  orderIds: string[],
+  select = ORDER_ITEM_METRICS_SELECT,
+  mode: "per_order" | "chunked" = "per_order"
 ): Promise<Map<string, OrderItemMetricsRow[]>> {
   const map = new Map<string, OrderItemMetricsRow[]>();
   if (!orderIds.length) return map;
 
-  const idSet = new Set(orderIds);
-  let offset = 0;
-
-  for (;;) {
-    const { data, error } = await admin
-      .from("order_items")
-      .select(ORDER_ITEM_SELECT)
-      .order("order_id", { ascending: true })
-      .order("id", { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (error) throw new Error(error.message);
-
-    const rows = (data ?? []) as OrderItemMetricsRow[];
-    for (const it of rows) {
-      if (!idSet.has(it.order_id)) continue;
-      const list = map.get(it.order_id) ?? [];
-      list.push(it);
-      map.set(it.order_id, list);
+  if (mode === "per_order") {
+    for (let i = 0; i < orderIds.length; i += ORDER_ITEM_PARALLEL) {
+      const batch = orderIds.slice(i, i + ORDER_ITEM_PARALLEL);
+      await Promise.all(
+        batch.map(async (orderId) => {
+          const rows = await fetchOrderItemsForSingleOrder(admin, orderId, select);
+          if (rows.length) map.set(orderId, rows);
+        })
+      );
     }
+    return map;
+  }
 
-    if (rows.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
+  for (let i = 0; i < orderIds.length; i += ORDER_ITEM_IN_CHUNK) {
+    const chunk = orderIds.slice(i, i + ORDER_ITEM_IN_CHUNK);
+    let offset = 0;
+
+    for (;;) {
+      const { data, error } = await admin
+        .from("order_items")
+        .select(select)
+        .in("order_id", chunk)
+        .order("id", { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1);
+      if (error) throw new Error(error.message);
+
+      const rows = (data ?? []) as OrderItemMetricsRow[];
+      for (const it of rows) {
+        const list = map.get(it.order_id) ?? [];
+        list.push(it);
+        map.set(it.order_id, list);
+      }
+
+      if (rows.length < PAGE_SIZE) break;
+      offset += rows.length;
+    }
   }
 
   return map;
@@ -240,7 +290,12 @@ export async function fetchOrdersWithItemsPaginated(
   if (!orders.length) return [];
 
   const orderIds = orders.map((o) => o.id);
-  const itemsByOrderId = await fetchOrderItemsByOrderIds(admin, orderIds);
+  const itemsByOrderId = await fetchOrderItemsByOrderIds(
+    admin,
+    orderIds,
+    ORDER_ITEM_ADMIN_SELECT,
+    "chunked"
+  );
 
   return orders.map((o) => ({
     ...o,

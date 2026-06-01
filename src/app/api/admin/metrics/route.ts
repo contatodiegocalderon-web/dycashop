@@ -9,12 +9,12 @@ import {
   parseTzOffsetMinutes,
 } from "@/lib/admin-period";
 import {
-  applyConfirmedAtFilterToOrdersQuery,
   countOrderItemsByOrderIds,
   fetchAllPaidOrdersWithSale,
   fetchOrderItemsByOrderIds,
   type OrdersListQuery,
 } from "@/lib/admin-orders-query";
+import { applyRealAppConfirmedOrdersWithPeriod } from "@/lib/real-app-orders";
 import {
   aggregateSalesMetrics,
   type OrderItemSaleRow,
@@ -57,12 +57,7 @@ type MetricsFilterOpts = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyMetricsOrderFilters(q: any, opts: MetricsFilterOpts): any {
-  let query = q
-    .eq("status", "PAGO")
-    .not("sale_amount", "is", null)
-    .gt("sale_amount", 0)
-    .not("confirmed_at", "is", null)
-    .eq("legacy_import", false);
+  let query = applyRealAppConfirmedOrdersWithPeriod(q, opts.dateFilter);
 
   if (opts.sellerId) {
     query = query.eq("confirmed_by_staff_id", opts.sellerId);
@@ -76,11 +71,11 @@ function applyMetricsOrderFilters(q: any, opts: MetricsFilterOpts): any {
     }
   }
 
-  return applyConfirmedAtFilterToOrdersQuery(query, opts.dateFilter);
+  return query;
 }
 
 /**
- * GET /api/admin/metrics — métricas de vendas (pedidos PAGO com valor registrado).
+ * GET /api/admin/metrics — vendas confirmadas no app (sem importação de planilha).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -103,7 +98,7 @@ export async function GET(request: NextRequest) {
         ? principal.staff.staffId
         : null;
     const { searchParams } = new URL(request.url);
-    const rawSellerScope = searchParams.get("sellerScope")?.trim() ?? "";
+    const rawSellerScope = searchParams.get("sellerScope")?.trim() || "all";
     const period = parseAdminPeriodKey(searchParams.get("period"));
     const tzOffsetMinutes = parseTzOffsetMinutes(
       searchParams.get("tzOffsetMinutes")
@@ -200,7 +195,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: countErr.message }, { status: 500 });
     }
 
-    const itemsByOrderId = await fetchOrderItemsByOrderIds(admin, orderIds);
+    const itemsByOrderId = await fetchOrderItemsByOrderIds(
+      admin,
+      orderIds,
+      undefined,
+      "per_order"
+    );
     const orderItemsLoaded = Array.from(itemsByOrderId.values()).reduce(
       (sum, rows) => sum + rows.length,
       0
@@ -332,6 +332,17 @@ export async function GET(request: NextRequest) {
     });
     const newest = sortedByConfirmed[0];
 
+    let newestDisplayNumber: number | null = null;
+    if (newest?.id) {
+      const { data: dnRow } = await admin
+        .from("orders")
+        .select("display_number")
+        .eq("id", newest.id)
+        .maybeSingle();
+      const dn = Number((dnRow as { display_number?: number } | null)?.display_number);
+      newestDisplayNumber = Number.isFinite(dn) && dn > 0 ? dn : null;
+    }
+
     const { data: newestInDb } = await applyMetricsOrderFilters(
       admin
         .from("orders")
@@ -367,6 +378,7 @@ export async function GET(request: NextRequest) {
                 confirmedAt: newestInDb.confirmed_at ?? null,
               }
             : null,
+          newestDisplayNumber,
           newestInMetrics: newest
             ? { confirmedAt: newest.confirmed_at ?? null }
             : null,
@@ -376,6 +388,7 @@ export async function GET(request: NextRequest) {
           orderItemsExpected,
           orderItemsTruncated,
           sellerScope: rawSellerScope || "all",
+          excludesLegacyImport: true,
           generatedAt: new Date().toISOString(),
         },
       },

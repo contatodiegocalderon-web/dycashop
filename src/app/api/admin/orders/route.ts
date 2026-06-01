@@ -17,6 +17,7 @@ import {
   type ConfirmedAtFilter,
 } from "@/lib/admin-period";
 import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
+import { applyRealAppConfirmedOrdersFilter } from "@/lib/real-app-orders";
 
 export const runtime = "nodejs";
 
@@ -126,8 +127,13 @@ export async function GET(request: NextRequest) {
       q = excludeCrmRemarketingFromOrdersQuery(q);
     }
 
-    if (statusFilter !== "all") {
+    if (statusFilter === "PAGO") {
+      q = applyRealAppConfirmedOrdersFilter(q);
+    } else if (statusFilter !== "all") {
       q = q.eq("status", statusFilter);
+    }
+
+    if (statusFilter !== "all") {
       if (statusFilter === "PAGO") {
         if (sellerId) {
           q = q.eq("confirmed_by_staff_id", sellerId);

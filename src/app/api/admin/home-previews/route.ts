@@ -11,6 +11,7 @@ import {
   type ProductStockRow,
 } from "@/lib/stock-inventory";
 import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
+import { applyRealAppConfirmedOrdersFilter } from "@/lib/real-app-orders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,15 +63,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: pendErr.message }, { status: 500 });
     }
 
-    const { data: lastOrder, error: lastErr } = await admin
-      .from("orders")
-      .select(
-        "id, display_number, sale_amount, confirmed_at, customer_name, customer_whatsapp"
-      )
-      .eq("status", "PAGO")
-      .not("sale_amount", "is", null)
-      .gt("sale_amount", 0)
-      .not("confirmed_at", "is", null)
+    const { data: lastOrder, error: lastErr } = await applyRealAppConfirmedOrdersFilter(
+      admin
+        .from("orders")
+        .select(
+          "id, display_number, sale_amount, confirmed_at, customer_name, customer_whatsapp"
+        )
+    )
       .order("confirmed_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -87,13 +86,9 @@ export async function GET(request: NextRequest) {
       const weekEnd =
         last7Filter.endIso ?? new Date().toISOString();
 
-      const { data: weekOrders, error: weekErr } = await admin
-        .from("orders")
-        .select("confirmed_at, sale_amount")
-        .eq("status", "PAGO")
-        .not("sale_amount", "is", null)
-        .gt("sale_amount", 0)
-        .not("confirmed_at", "is", null)
+      const { data: weekOrders, error: weekErr } = await applyRealAppConfirmedOrdersFilter(
+        admin.from("orders").select("confirmed_at, sale_amount")
+      )
         .gte("confirmed_at", last7Filter.startIso)
         .lt("confirmed_at", weekEnd);
 

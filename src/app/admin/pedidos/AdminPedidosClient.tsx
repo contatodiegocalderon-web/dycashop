@@ -10,7 +10,7 @@ import type {
   ProductSize,
 } from "@/types";
 import { StockConflictNotice } from "@/components/stock-conflict-notice";
-import { publicDriveImageUrl } from "@/lib/drive-image-url";
+import { orderItemImageUrl } from "@/lib/order-item-image-url";
 import { parseOrderStockConflict } from "@/lib/order-stock-conflict";
 
 type SellerFilterOption = { value: string; label: string };
@@ -22,11 +22,7 @@ const EMPTY_IMG =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E";
 
 function adminThumbSrc(it: OrderItemRow): string {
-  const u = it.snapshot_image_url?.trim() ?? "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  const fid = it.snapshot_drive_file_id?.trim();
-  if (!fid) return EMPTY_IMG;
-  return publicDriveImageUrl(fid, 280);
+  return orderItemImageUrl(it, 280) ?? EMPTY_IMG;
 }
 
 function groupItems(items: OrderItemRow[]) {

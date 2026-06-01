@@ -10,7 +10,7 @@ import {
   isValidReceiptToken,
 } from "@/lib/order-receipt";
 import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
-import { publicDriveImageUrl } from "@/lib/drive-image-url";
+import { orderItemImageUrl } from "@/lib/order-item-image-url";
 import type { OrderItemRow, OrderStatus, ProductSize } from "@/types";
 
 type Props = { params: { token: string } };
@@ -30,9 +30,7 @@ function groupItems(items: OrderItemRow[]) {
 }
 
 function itemImageSrc(it: OrderItemRow): string {
-  const u = it.snapshot_image_url?.trim() ?? "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  return publicDriveImageUrl(it.snapshot_drive_file_id, 320);
+  return orderItemImageUrl(it, 320) ?? "";
 }
 
 function statusLabel(s: OrderStatus): string {
