@@ -88,6 +88,7 @@ export default function AdminMetricasPage() {
     ordersExpected?: number;
     newestIncluded?: boolean;
     newestInDb?: { displayNumber: number | null; confirmedAt: string | null };
+    newestDisplayNumber?: number | null;
     sellerScope?: string;
   } | null>(null);
   const loadMetrics = useCallback(async () => {
