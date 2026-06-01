@@ -362,7 +362,9 @@ export default function AdminClientesPage() {
         <p className="mt-2 max-w-2xl text-sm text-stone-600">
           Registrados: quem já teve pelo menos um pedido confirmado (pago). Carrinhos
           abandonados: pedidos pendentes ou cancelados de quem ainda não comprou — para
-          remarketing até a primeira confirmação.
+          remarketing até a primeira confirmação. Semáforo: verde até 29 dias após a
+          compra; amarelo de 30 a 59 dias (ligar pós-compra); vermelho com 60+ dias
+          (reconverter).
         </p>
         {isOwner && recompraStats.length > 0 && (
           <p className="mt-1 text-xs text-stone-500">
@@ -433,15 +435,15 @@ export default function AdminClientesPage() {
       <div className="mb-6 flex flex-wrap gap-3 text-xs">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-900">
           <span className="h-2 w-2 rounded-full bg-emerald-500" />
-          Última compra este mês: {counts.green}
+          Verde (&lt; 30 dias): {counts.green}
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-950">
           <span className="h-2 w-2 rounded-full bg-amber-500" />
-          Há 1 mês: {counts.yellow}
+          Amarelo (30–59 dias): {counts.yellow}
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-900">
           <span className="h-2 w-2 rounded-full bg-red-500" />
-          Há 2+ meses: {counts.red}
+          Vermelho (60+ dias): {counts.red}
         </span>
       </div>
 
@@ -479,9 +481,9 @@ export default function AdminClientesPage() {
             className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
           >
             <option value="all">Todas</option>
-            <option value="green">Comprou este mês</option>
-            <option value="yellow">Última compra há 1 mês</option>
-            <option value="red">Última compra há 2+ meses</option>
+            <option value="green">Verde — menos de 30 dias</option>
+            <option value="yellow">Amarelo — 30 a 59 dias</option>
+            <option value="red">Vermelho — 60 dias ou mais</option>
           </select>
         </div>
         <div className="flex w-full min-w-[12rem] flex-col gap-1 sm:w-auto">
