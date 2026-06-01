@@ -1,13 +1,19 @@
 import type { BusinessProfile } from "@/lib/client-follow-up";
+import {
+  castOrdersQueryAfterFilters,
+  type OrdersQueryOps,
+} from "@/lib/orders-query-ops";
 import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 
 export const SITE_VAREJO_SELLER = "SITE-VAREJO";
 
 /** Remarketing da planilha — não entra na fila de Pedidos do admin. */
-export function excludeCrmRemarketingFromOrdersQuery<
-  Q extends { or(filter: string): Q },
->(q: Q): Q {
-  return q.or("legacy_import.is.null,legacy_import.eq.false");
+export function excludeCrmRemarketingFromOrdersQuery<Q>(q: Q): Q {
+  const ops = q as unknown as OrdersQueryOps;
+  return castOrdersQueryAfterFilters(
+    q,
+    ops.or("legacy_import.is.null,legacy_import.eq.false")
+  );
 }
 
 export type LegacySpreadsheetRow = {

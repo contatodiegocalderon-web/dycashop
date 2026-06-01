@@ -171,7 +171,7 @@ async function fetchOrderItemsForSingleOrder(
       .order("id", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
     if (error) throw new Error(error.message);
-    const rows = (data ?? []) as OrderItemMetricsRow[];
+    const rows = (data ?? []) as unknown as OrderItemMetricsRow[];
     all.push(...rows);
     if (rows.length < PAGE_SIZE) break;
     offset += rows.length;
@@ -219,7 +219,7 @@ export async function fetchOrderItemsByOrderIds(
         .range(offset, offset + PAGE_SIZE - 1);
       if (error) throw new Error(error.message);
 
-      const rows = (data ?? []) as OrderItemMetricsRow[];
+      const rows = (data ?? []) as unknown as OrderItemMetricsRow[];
       for (const it of rows) {
         const list = map.get(it.order_id) ?? [];
         list.push(it);
