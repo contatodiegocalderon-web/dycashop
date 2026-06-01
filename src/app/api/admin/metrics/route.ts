@@ -10,9 +10,11 @@ import {
 } from "@/lib/admin-period";
 import {
   countOrderItemsByOrderIds,
-  fetchAllPaidOrdersWithSale,
+  fetchAllOrderIdsPaginated,
   fetchOrderItemsByOrderIds,
-  type OrdersListQuery,
+  fetchPaidOrdersByIds,
+  METRICS_ORDER_SELECT,
+  type OrdersIdListQuery,
 } from "@/lib/admin-orders-query";
 import { applyRealAppConfirmedOrdersWithPeriod } from "@/lib/real-app-orders";
 import {
@@ -159,15 +161,31 @@ export async function GET(request: NextRequest) {
       dateFilter,
     };
 
-    const orderRows = await fetchAllPaidOrdersWithSale(admin, () => {
-      const q = applyMetricsOrderFilters(
-        admin.from("orders").select(
-          "id, sale_amount, sale_amount_by_category, customer_segment, confirmed_by_staff_id, requested_seller_name, confirmed_at"
-        ),
+    const buildFilteredIdQuery = () =>
+      applyMetricsOrderFilters(
+        admin.from("orders").select("id"),
         filterOpts
-      );
-      return q as unknown as OrdersListQuery;
-    });
+      ) as unknown as OrdersIdListQuery;
+
+    let orderIds = await fetchAllOrderIdsPaginated(buildFilteredIdQuery);
+    let orderRows = await fetchPaidOrdersByIds(
+      admin,
+      orderIds,
+      METRICS_ORDER_SELECT
+    );
+
+    if (orderRows.length < orderIds.length) {
+      const have = new Set(orderRows.map((o) => o.id));
+      const missingIds = orderIds.filter((id) => !have.has(id));
+      if (missingIds.length > 0) {
+        const extra = await fetchPaidOrdersByIds(
+          admin,
+          missingIds,
+          METRICS_ORDER_SELECT
+        );
+        orderRows = [...orderRows, ...extra];
+      }
+    }
 
     if (orderRows.length === 0) {
       const empty = aggregateSalesMetrics([], new Map(), costs);
@@ -185,14 +203,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const orderIds = orderRows.map((o) => o.id);
+    orderIds = orderRows.map((o) => o.id);
 
-    const { count: expectedOrderCount, error: countErr } = await applyMetricsOrderFilters(
+    const { count: headOrderCount, error: countErr } = await applyMetricsOrderFilters(
       admin.from("orders").select("id", { count: "exact", head: true }),
       filterOpts
     );
     if (countErr) {
       return NextResponse.json({ error: countErr.message }, { status: 500 });
+    }
+    const expectedOrderCount = headOrderCount ?? orderIds.length;
+    if (orderIds.length < expectedOrderCount) {
+      orderIds = await fetchAllOrderIdsPaginated(buildFilteredIdQuery);
+      orderRows = await fetchPaidOrdersByIds(
+        admin,
+        orderIds,
+        METRICS_ORDER_SELECT
+      );
     }
 
     const itemsByOrderId = await fetchOrderItemsByOrderIds(
@@ -331,32 +358,40 @@ export async function GET(request: NextRequest) {
       return tb - ta;
     });
     const newest = sortedByConfirmed[0];
+    const dn = Number(newest?.display_number);
+    const newestDisplayNumber =
+      Number.isFinite(dn) && dn > 0 ? dn : null;
 
-    let newestDisplayNumber: number | null = null;
-    if (newest?.id) {
-      const { data: dnRow } = await admin
-        .from("orders")
-        .select("display_number")
-        .eq("id", newest.id)
-        .maybeSingle();
-      const dn = Number((dnRow as { display_number?: number } | null)?.display_number);
-      newestDisplayNumber = Number.isFinite(dn) && dn > 0 ? dn : null;
-    }
+    const newestInDb = newest
+      ? {
+          id: newest.id,
+          display_number: newest.display_number ?? null,
+          confirmed_at: newest.confirmed_at ?? null,
+          sale_amount: newest.sale_amount ?? null,
+        }
+      : null;
 
-    const { data: newestInDb } = await applyMetricsOrderFilters(
-      admin
-        .from("orders")
-        .select("id, display_number, confirmed_at, sale_amount")
+    const ordersTruncated =
+      orderRows.length < expectedOrderCount ||
+      orderIds.length < expectedOrderCount;
+
+    let newestIncluded = !ordersTruncated;
+    if (ordersTruncated && newest?.id) {
+      const { data: topRows, error: topErr } = await applyMetricsOrderFilters(
+        admin.from("orders").select("id"),
+        filterOpts
+      )
         .order("confirmed_at", { ascending: false, nullsFirst: false })
         .order("id", { ascending: false })
-        .limit(1),
-      filterOpts
-    ).maybeSingle();
-
-    const newestIncluded =
-      newest && newestInDb
-        ? newest.id === newestInDb.id
-        : !newestInDb;
+        .limit(1);
+      if (topErr) {
+        return NextResponse.json({ error: topErr.message }, { status: 500 });
+      }
+      const top = Array.isArray(topRows)
+        ? (topRows[0] as { id?: string } | undefined)
+        : (topRows as { id?: string } | null);
+      newestIncluded = top?.id === newest.id;
+    }
 
     return NextResponse.json(
       {
@@ -369,8 +404,7 @@ export async function GET(request: NextRequest) {
         meta: {
           ordersIncluded: orderRows.length,
           ordersExpected: expectedOrderCount ?? orderRows.length,
-          ordersTruncated:
-            expectedOrderCount != null && orderRows.length < expectedOrderCount,
+          ordersTruncated,
           newestIncluded,
           newestInDb: newestInDb
             ? {

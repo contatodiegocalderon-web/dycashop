@@ -12,6 +12,7 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 
 export type PaidOrderRow = {
   id: string;
+  display_number?: number | null;
   sale_amount: number | null;
   sale_amount_by_category?: unknown;
   customer_segment: string | null;
@@ -45,6 +46,58 @@ export type OrdersListQuery = {
     to: number
   ): Promise<{ data: PaidOrderRow[] | null; error: { message: string } | null }>;
 };
+
+export type OrdersIdListQuery = {
+  order(
+    column: string,
+    options?: { ascending?: boolean; nullsFirst?: boolean }
+  ): OrdersIdListQuery;
+  range(
+    from: number,
+    to: number
+  ): Promise<{ data: { id: string }[] | null; error: { message: string } | null }>;
+};
+
+/** Pagina só `id` (ordem estável por PK — evita buracos com vários `.order()` no PostgREST). */
+export async function fetchAllOrderIdsPaginated(
+  buildQuery: () => OrdersIdListQuery
+): Promise<string[]> {
+  const ids: string[] = [];
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await buildQuery()
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const chunk = (data ?? []) as { id: string }[];
+    for (const row of chunk) {
+      if (row.id) ids.push(row.id);
+    }
+    if (chunk.length < PAGE_SIZE) break;
+    offset += chunk.length;
+  }
+  return ids;
+}
+
+/** Carrega pedidos completos a partir de IDs já filtrados (lotes `.in()`). */
+export async function fetchPaidOrdersByIds(
+  admin: AdminClient,
+  orderIds: string[],
+  select: string
+): Promise<PaidOrderRow[]> {
+  if (!orderIds.length) return [];
+  const all: PaidOrderRow[] = [];
+  for (let i = 0; i < orderIds.length; i += IN_CHUNK) {
+    const chunk = orderIds.slice(i, i + IN_CHUNK);
+    const { data, error } = await admin
+      .from("orders")
+      .select(select)
+      .in("id", chunk);
+    if (error) throw new Error(error.message);
+    all.push(...((data ?? []) as unknown as PaidOrderRow[]));
+  }
+  return all;
+}
 
 /** Pedido pago com WhatsApp — base para lista/mapa de clientes. */
 export type CrmPaidOrderRow = {
@@ -115,25 +168,21 @@ export async function fetchCrmProfilesByWhatsapp(
   return map;
 }
 
-/** Pagina pedidos PAGO com valor — evita limite ~1000 do PostgREST. */
+/** Colunas usadas em métricas / histórico de vendas reais. */
+export const METRICS_ORDER_SELECT =
+  "id, display_number, sale_amount, sale_amount_by_category, customer_segment, confirmed_by_staff_id, requested_seller_name, confirmed_at";
+
+/**
+ * Pedidos para métricas: 1) pagina IDs por PK, 2) carrega linhas em lotes.
+ * Mais confiável que paginar linhas largas com `confirmed_at` + `range`.
+ */
 export async function fetchAllPaidOrdersWithSale(
   admin: AdminClient,
-  buildBaseQuery: () => OrdersListQuery
+  buildIdQuery: () => OrdersIdListQuery,
+  select: string = METRICS_ORDER_SELECT
 ): Promise<PaidOrderRow[]> {
-  const all: PaidOrderRow[] = [];
-  let offset = 0;
-  for (;;) {
-    const { data, error } = await buildBaseQuery()
-      .order("confirmed_at", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: false })
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (error) throw new Error(error.message);
-    const chunk = (data ?? []) as PaidOrderRow[];
-    all.push(...chunk);
-    if (chunk.length < PAGE_SIZE) break;
-    offset += chunk.length;
-  }
-  return all;
+  const ids = await fetchAllOrderIdsPaginated(buildIdQuery);
+  return fetchPaidOrdersByIds(admin, ids, select);
 }
 
 export type OrderItemMetricsRow = {
@@ -284,7 +333,7 @@ export async function fetchOrdersWithItemsPaginated(
     const chunk = (data ?? []) as OrdersListRow[];
     orders.push(...chunk);
     if (chunk.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
+    offset += chunk.length;
   }
 
   if (!orders.length) return [];

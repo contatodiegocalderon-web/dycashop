@@ -46,7 +46,7 @@ async function fetchOrders(admin) {
     const chunk = data ?? [];
     all.push(...chunk);
     if (chunk.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
+    offset += chunk.length;
   }
   return all.map((r) => r.id);
 }
@@ -72,7 +72,7 @@ async function fetchItemsChunked(admin, orderIds) {
         map.set(it.order_id, list);
       }
       if (rows.length < PAGE_SIZE) break;
-      offset += PAGE_SIZE;
+      offset += chunk.length;
     }
   }
   let n = 0;
@@ -99,7 +99,7 @@ async function fetchItemsGlobalScan(admin, orderIdSet) {
       map.set(it.order_id, list);
     }
     if (rows.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
+    offset += chunk.length;
   }
   let n = 0;
   for (const list of map.values()) n += list.length;

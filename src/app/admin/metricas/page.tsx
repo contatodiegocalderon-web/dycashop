@@ -380,8 +380,8 @@ export default function AdminMetricasPage() {
           {loadMeta.ordersTruncated ? (
             <p>
               Faltam pedidos no cálculo: entraram {loadMeta.ordersIncluded} de{" "}
-              {loadMeta.ordersExpected} vendas confirmadas. O deploy pode estar com código
-              antigo — faça redeploy e «Atualizar dados».
+              {loadMeta.ordersExpected} vendas confirmadas. Clique em «Atualizar dados»; se
+              persistir, avise o suporte (paginação de pedidos).
             </p>
           ) : null}
           {loadMeta.orderItemsTruncated ? (
@@ -394,8 +394,8 @@ export default function AdminMetricasPage() {
       )}
       {loadMeta?.newestIncluded === false && loadMeta.newestInDb?.displayNumber != null && (
         <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          O pedido mais recente (#{loadMeta.newestInDb.displayNumber}) não está incluído.
-          Verifique o filtro de vendedor (use «Todos») e o período («Todo período»).
+          O pedido mais recente (#{loadMeta.newestInDb.displayNumber}) ainda não entrou no
+          total. Use «Todos» no vendedor e «Todo período», depois «Atualizar dados».
         </div>
       )}
 
