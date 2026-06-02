@@ -14,8 +14,10 @@ import type {
   StateClientBreakdown,
   TopSalesState,
 } from "@/app/api/admin/clients/map/route";
+import type { ClientRecencyStatus } from "@/lib/client-recency";
 
 type SellerFilterOption = { value: string; label: string };
+type RecencyFilter = "all" | ClientRecencyStatus;
 type ProfileFilter =
   | "all"
   | "lojista"
@@ -83,6 +85,47 @@ function countProfiles(clients: StateClientBreakdown["clients"]) {
   return { lojista, revendedor, uso_proprio, sem_perfil };
 }
 
+function filterStateClients(
+  clients: StateClientBreakdown["clients"],
+  profileFilter: ProfileFilter,
+  recencyFilter: RecencyFilter
+) {
+  return clients.filter((client) => {
+    if (profileFilter !== "all") {
+      if (profileFilter === "sem_perfil") {
+        if (client.business_profile) return false;
+      } else if (client.business_profile !== profileFilter) {
+        return false;
+      }
+    }
+    if (recencyFilter !== "all" && client.recency_status !== recencyFilter) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function applyStateClientFilters(
+  row: StateClientBreakdown,
+  profileFilter: ProfileFilter,
+  recencyFilter: RecencyFilter
+): StateClientBreakdown {
+  if (profileFilter === "all" && recencyFilter === "all") return row;
+
+  const clients = filterStateClients(row.clients, profileFilter, recencyFilter);
+  const counts = countProfiles(clients);
+  return {
+    ...row,
+    total: clients.length,
+    clients,
+    lojista: counts.lojista,
+    revendedor: counts.revendedor,
+    uso_proprio: counts.uso_proprio,
+    sem_perfil: counts.sem_perfil,
+    desconhecido: 0,
+  };
+}
+
 export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
   const { adminFetch, isOwner } = useAdminAuth();
   const [loading, setLoading] = useState(false);
@@ -96,6 +139,8 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
   const [sellerScope, setSellerScope] = useState("all");
   const [stateProfileFilter, setStateProfileFilter] =
     useState<ProfileFilter>("all");
+  const [stateRecencyFilter, setStateRecencyFilter] =
+    useState<RecencyFilter>("all");
   const [sellerFilterOptions, setSellerFilterOptions] = useState<
     SellerFilterOption[]
   >([]);
@@ -185,24 +230,8 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
     if (!selectedUf) return null;
     const row = byUf.get(selectedUf);
     if (!row) return null;
-    if (stateProfileFilter === "all") return row;
-
-    const clients = row.clients.filter((client) => {
-      if (stateProfileFilter === "sem_perfil") return !client.business_profile;
-      return client.business_profile === stateProfileFilter;
-    });
-    const counts = countProfiles(clients);
-    return {
-      ...row,
-      total: clients.length,
-      clients,
-      lojista: counts.lojista,
-      revendedor: counts.revendedor,
-      uso_proprio: counts.uso_proprio,
-      sem_perfil: counts.sem_perfil,
-      desconhecido: 0,
-    };
-  }, [selectedUf, byUf, stateProfileFilter]);
+    return applyStateClientFilters(row, stateProfileFilter, stateRecencyFilter);
+  }, [selectedUf, byUf, stateProfileFilter, stateRecencyFilter]);
 
   const totals = useMemo(() => {
     let lojista = 0;
@@ -314,6 +343,7 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
                 onClick={() => {
                   setSelectedUf(uf);
                   setStateProfileFilter("all");
+                  setStateRecencyFilter("all");
                 }}
                 onMouseEnter={() => setHoverUf(uf)}
                 onMouseLeave={() => setHoverUf(null)}
@@ -324,6 +354,7 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
                     e.preventDefault();
                     setSelectedUf(uf);
                     setStateProfileFilter("all");
+                    setStateRecencyFilter("all");
                   }
                 }}
                 tabIndex={0}
@@ -395,6 +426,27 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
             <div className="flex flex-wrap items-end gap-2">
               <div className="flex min-w-[10rem] flex-col gap-1">
                 <label
+                  htmlFor="mapa-state-recency-filter"
+                  className="text-xs font-medium text-stone-600"
+                >
+                  Última compra
+                </label>
+                <select
+                  id="mapa-state-recency-filter"
+                  value={stateRecencyFilter}
+                  onChange={(e) =>
+                    setStateRecencyFilter(e.target.value as RecencyFilter)
+                  }
+                  className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+                >
+                  <option value="all">Todas</option>
+                  <option value="green">Verde — menos de 30 dias</option>
+                  <option value="yellow">Amarelo — 30 a 59 dias</option>
+                  <option value="red">Vermelho — 60 dias ou mais</option>
+                </select>
+              </div>
+              <div className="flex min-w-[10rem] flex-col gap-1">
+                <label
                   htmlFor="mapa-state-profile-filter"
                   className="text-xs font-medium text-stone-600"
                 >
@@ -420,6 +472,7 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
                 onClick={() => {
                   setSelectedUf(null);
                   setStateProfileFilter("all");
+                  setStateRecencyFilter("all");
                 }}
                 className="rounded-xl border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-50"
               >
@@ -545,6 +598,7 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
                   onClick={() => {
                     setSelectedUf(state.uf);
                     setStateProfileFilter("all");
+                    setStateRecencyFilter("all");
                   }}
                   className={`flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left text-sm transition hover:bg-violet-50/80 ${
                     selectedUf === state.uf ? "bg-violet-50/60" : ""
