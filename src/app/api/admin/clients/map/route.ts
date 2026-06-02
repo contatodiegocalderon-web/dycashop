@@ -10,6 +10,11 @@ import {
 } from "@/lib/brazil-ddd";
 import type { BusinessProfile } from "@/lib/client-follow-up";
 import {
+  clientRecencyStatus,
+  type ClientRecencyStatus,
+} from "@/lib/client-recency";
+import { applyCrmSellerOrderScope } from "@/lib/crm-seller-order-filter";
+import {
   fetchAllCrmPaidOrders,
   fetchCrmProfilesByWhatsapp,
   type CrmPaidOrdersListQuery,
@@ -18,9 +23,6 @@ import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const STAFF_UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MS_30_DAYS = 30 * 24 * 60 * 60 * 1000;
 
@@ -31,6 +33,7 @@ export type StateClientMapItem = {
   order_count: number;
   total_spent: number;
   last_confirmed_at: string | null;
+  recency_status: ClientRecencyStatus;
 };
 
 export type StateClientBreakdown = {
@@ -129,19 +132,12 @@ export async function GET(request: NextRequest) {
         .eq("status", "PAGO")
         .not("customer_whatsapp", "is", null);
 
-      if (sellerId) {
-        q = q.eq("confirmed_by_staff_id", sellerId);
-      } else if (isOwnerPrincipal && rawSellerScope && rawSellerScope !== "all") {
-        if (rawSellerScope === "me") {
-          if (ownerStaffId) {
-            q = q.or(
-              `confirmed_by_staff_id.eq.${ownerStaffId},confirmed_by_staff_id.is.null`
-            );
-          }
-        } else if (STAFF_UUID_RE.test(rawSellerScope)) {
-          q = q.eq("confirmed_by_staff_id", rawSellerScope);
-        }
-      }
+      q = applyCrmSellerOrderScope(q, {
+        sellerId,
+        isOwnerPrincipal,
+        rawSellerScope,
+        ownerStaffId,
+      });
 
       return q as CrmPaidOrdersListQuery;
     });
@@ -242,6 +238,7 @@ export async function GET(request: NextRequest) {
         order_count: meta.order_count,
         total_spent: Number(meta.total_spent.toFixed(2)),
         last_confirmed_at: meta.last_confirmed_at,
+        recency_status: clientRecencyStatus(meta.last_confirmed_at),
       });
     }
 

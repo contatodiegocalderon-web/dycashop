@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
 import { resolvePrincipal } from "@/lib/access";
+import { applyCrmSellerOrderScope } from "@/lib/crm-seller-order-filter";
+import type { BusinessProfile } from "@/lib/client-follow-up";
 import {
   clientRecencyStatus,
   type ClientRecencyStatus,
 } from "@/lib/client-recency";
-import type { BusinessProfile } from "@/lib/client-follow-up";
 import {
   fetchAllCrmPaidOrders,
   fetchCrmProfilesByWhatsapp,
@@ -15,9 +16,6 @@ import {
 import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 
 export const runtime = "nodejs";
-
-const STAFF_UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function nameFromEmail(email: string): string {
   const base = email.split("@")[0] ?? email;
@@ -132,19 +130,12 @@ export async function GET(request: NextRequest) {
         .eq("status", "PAGO")
         .not("customer_whatsapp", "is", null);
 
-      if (sellerId) {
-        q = q.eq("confirmed_by_staff_id", sellerId);
-      } else if (isOwnerPrincipal && rawSellerScope && rawSellerScope !== "all") {
-        if (rawSellerScope === "me") {
-          if (ownerStaffId) {
-            q = q.or(
-              `confirmed_by_staff_id.eq.${ownerStaffId},confirmed_by_staff_id.is.null`
-            );
-          }
-        } else if (STAFF_UUID_RE.test(rawSellerScope)) {
-          q = q.eq("confirmed_by_staff_id", rawSellerScope);
-        }
-      }
+      q = applyCrmSellerOrderScope(q, {
+        sellerId,
+        isOwnerPrincipal,
+        rawSellerScope,
+        ownerStaffId,
+      });
 
       return q as CrmPaidOrdersListQuery;
     });

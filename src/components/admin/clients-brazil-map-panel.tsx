@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import brazilMap from "@svg-maps/brazil";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import { ClientProfileBadge } from "@/components/client-profile-badge";
+import { ClientRecencyBadge } from "@/components/client-recency-badge";
 import {
   BRAZIL_UF_LABELS,
   type BrazilUf,
@@ -229,7 +230,8 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
     <div className="space-y-6">
       <p className="text-sm text-stone-600">
         Distribuição por estado inferida pelo DDD do WhatsApp. Clique em um
-        estado para ver a lista de clientes e chamar no WhatsApp.
+        estado para ver a lista de clientes (semáforo da última compra) e chamar
+        no WhatsApp.
       </p>
 
       <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -438,6 +440,7 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
                       <p className="font-semibold text-stone-900">
                         {client.customer_name?.trim() || "Cliente sem nome"}
                       </p>
+                      <ClientRecencyBadge status={client.recency_status} />
                       {client.business_profile ? (
                         <ClientProfileBadge profile={client.business_profile} />
                       ) : null}
@@ -470,6 +473,24 @@ export function ClientsBrazilMapPanel({ active }: { active: boolean }) {
           )}
         </div>
       ) : null}
+
+      <div className="flex flex-wrap gap-4 text-xs text-stone-600">
+        <span className="inline-flex items-center gap-1.5 text-stone-500">
+          Última compra:
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+          Verde (&lt; 30 dias)
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+          Amarelo (30–59 dias)
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+          Vermelho (60+ dias)
+        </span>
+      </div>
 
       <div className="flex flex-wrap gap-4 text-xs text-stone-600">
         <span className="inline-flex items-center gap-1.5">
