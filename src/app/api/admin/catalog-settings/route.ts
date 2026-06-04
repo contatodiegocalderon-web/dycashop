@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertOwnerAccess } from "@/lib/admin-auth";
 import { extractDriveFolderId } from "@/lib/drive-folder-url";
+import {
+  listOAuthRedirectUrisForGoogleConsole,
+  resolveOAuthRedirectUri,
+} from "@/lib/google-drive-oauth";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -37,12 +41,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const requestOrigin = request.nextUrl.origin;
+  const oauthRedirectUri = resolveOAuthRedirectUri(requestOrigin);
+
   return NextResponse.json({
     driveFolderId: data?.drive_folder_id ?? null,
     googleConnected: !!data?.google_refresh_token?.trim(),
     oauthConfigured:
       !!process.env.GOOGLE_CLIENT_ID?.trim() &&
       !!process.env.GOOGLE_CLIENT_SECRET?.trim(),
+    oauthRedirectUri,
+    oauthRedirectUrisHint: listOAuthRedirectUrisForGoogleConsole(),
+    appPublicUrl: process.env.NEXT_PUBLIC_APP_URL?.trim() || null,
   });
 }
 

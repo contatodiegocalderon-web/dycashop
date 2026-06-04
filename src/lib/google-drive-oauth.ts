@@ -74,9 +74,50 @@ export function resolveAppBaseUrl(requestOrigin?: string | null): string {
   return origin;
 }
 
+/**
+ * URI enviado ao Google — tem de estar copiado em «URIs de redirecionamento autorizados».
+ * Em produção usa sempre NEXT_PUBLIC_APP_URL (evita mismatch www / Vercel / domínio custom).
+ */
 export function resolveOAuthRedirectUri(requestOrigin?: string | null): string {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (envUrl) {
+    const fromEnv = normalizeDevOrigin(envUrl);
+    try {
+      const envHost = new URL(fromEnv).hostname;
+      if (!isLocalHostname(envHost)) {
+        return `${fromEnv}/api/auth/google/callback`;
+      }
+    } catch {
+      /* usa lógica dev abaixo */
+    }
+  }
+
   const base = resolveAppBaseUrl(requestOrigin);
   return `${base}/api/auth/google/callback`;
+}
+
+/** URIs que devem existir no Google Cloud (dev + produção, se configurada). */
+export function listOAuthRedirectUrisForGoogleConsole(): string[] {
+  const uris = new Set<string>();
+  uris.add(`${normalizeDevOrigin(DEFAULT_DEV_ORIGIN)}/api/auth/google/callback`);
+
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (envUrl) {
+    try {
+      const fromEnv = normalizeDevOrigin(envUrl);
+      uris.add(`${fromEnv}/api/auth/google/callback`);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) {
+    const host = vercelUrl.replace(/^https?:\/\//i, "");
+    uris.add(`https://${host}/api/auth/google/callback`);
+  }
+
+  return Array.from(uris);
 }
 
 /** Confirma que o refresh token ainda é aceite pelo Google. */
@@ -173,8 +214,9 @@ export function formatOAuthExchangeError(detail: string): string {
     );
   }
   if (lower.includes("redirect_uri_mismatch")) {
+    const needed = listOAuthRedirectUrisForGoogleConsole().join(" · ");
     return (
-      "redirect_uri_mismatch: o URI no Google Cloud deve ser exatamente o callback desta app (ex.: http://localhost:3000/api/auth/google/callback) e NEXT_PUBLIC_APP_URL deve usar o mesmo host (localhost, não 127.0.0.1, ou vice-versa)."
+      `redirect_uri_mismatch: no Google Cloud → Credenciais → OAuth → URIs de redirecionamento, adicione exatamente: ${needed}. Na Vercel, NEXT_PUBLIC_APP_URL deve ser o mesmo domínio (ex.: https://dycashop.vercel.app).`
     );
   }
   return detail;

@@ -26,6 +26,11 @@ function ConfiguracaoInner() {
   const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
   const [googleConnected, setGoogleConnected] = useState(false);
   const [oauthConfigured, setOauthConfigured] = useState(false);
+  const [oauthRedirectUri, setOauthRedirectUri] = useState<string | null>(null);
+  const [oauthRedirectUrisHint, setOauthRedirectUrisHint] = useState<string[]>(
+    []
+  );
+  const [appPublicUrl, setAppPublicUrl] = useState<string | null>(null);
   const [syncProg, setSyncProg] = useState<{
     phase: string;
     current: number;
@@ -40,6 +45,17 @@ function ConfiguracaoInner() {
     setDriveFolderId(data.driveFolderId ?? null);
     setGoogleConnected(!!data.googleConnected);
     setOauthConfigured(!!data.oauthConfigured);
+    setOauthRedirectUri(
+      typeof data.oauthRedirectUri === "string" ? data.oauthRedirectUri : null
+    );
+    setOauthRedirectUrisHint(
+      Array.isArray(data.oauthRedirectUrisHint)
+        ? (data.oauthRedirectUrisHint as string[])
+        : []
+    );
+    setAppPublicUrl(
+      typeof data.appPublicUrl === "string" ? data.appPublicUrl : null
+    );
   }, [adminFetch]);
 
   useEffect(() => {
@@ -304,17 +320,42 @@ function ConfiguracaoInner() {
           Precisa de{" "}
           <code className="rounded bg-white/80 px-1">GOOGLE_CLIENT_ID</code> e{" "}
           <code className="rounded bg-white/80 px-1">GOOGLE_CLIENT_SECRET</code>{" "}
-          no .env (tipo &quot;App Web&quot; na Google Cloud). Redirect:{" "}
-          <code className="break-all">
-            …/api/auth/google/callback
-          </code>
-          . Use sempre{" "}
-          <code className="rounded bg-white/80 px-1">http://localhost:3000</code>{" "}
-          no browser — não abra{" "}
-          <code className="rounded bg-white/80 px-1">0.0.0.0</code> nem{" "}
-          <code className="rounded bg-white/80 px-1">127.0.0.1</code> se o redirect
-          no Google for localhost. Na Google Cloud, em «Utilizadores de teste», adicione
-          o seu Gmail. Após autorizar, não atualize a página do callback.
+          (Google Cloud → Credenciais → OAuth, tipo &quot;Aplicação Web&quot;).
+          Em «URIs de redirecionamento autorizados» cole{" "}
+          <strong>exatamente</strong> o URI abaixo (erro 400 redirect_uri_mismatch =
+          falta este URI ou NEXT_PUBLIC_APP_URL errado na Vercel).
+        </p>
+        {oauthRedirectUri ? (
+          <p className="mt-2 break-all rounded-lg border border-amber-200 bg-white px-3 py-2 font-mono text-xs text-stone-800">
+            {oauthRedirectUri}
+          </p>
+        ) : null}
+        {oauthRedirectUrisHint.length > 1 ? (
+          <p className="mt-2 text-xs text-amber-900/80">
+            Se usar dev e produção, registe também:{" "}
+            {oauthRedirectUrisHint.map((u) => (
+              <code key={u} className="mr-1 block break-all sm:inline">
+                {u}
+              </code>
+            ))}
+          </p>
+        ) : null}
+        {appPublicUrl ? (
+          <p className="mt-2 text-xs text-amber-900/80">
+            NEXT_PUBLIC_APP_URL no servidor:{" "}
+            <code className="break-all">{appPublicUrl}</code>
+          </p>
+        ) : (
+          <p className="mt-2 text-xs font-medium text-amber-950">
+            NEXT_PUBLIC_APP_URL não definido no servidor — em produção defina na
+            Vercel (ex.: https://dycashop.vercel.app).
+          </p>
+        )}
+        <p className="mt-2 text-xs text-amber-900/80">
+          Em dev, abra só{" "}
+          <code className="rounded bg-white/80 px-1">http://localhost:3000</code>.
+          Em «Utilizadores de teste» do OAuth, adicione o seu Gmail. Após
+          autorizar, não atualize a página do callback.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
