@@ -1,28 +1,14 @@
 "use client";
 
-const PAUL_DIGITS = "5511916485901";
-const RAFAEL_DIGITS = "5511990041490";
-const STORAGE_KEY = "dy_video_call_wa_round";
+const PAULO_DIGITS = "5511916485901";
 
 const MESSAGE =
   "Opa gostaria de saber como funciona a separação por video chamada";
 
 export function VideoCallCta() {
   function handleClick() {
-    let n = 0;
-    try {
-      n = Number.parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10) || 0;
-    } catch {
-      n = 0;
-    }
-    const phone = n % 2 === 0 ? PAUL_DIGITS : RAFAEL_DIGITS;
-    try {
-      localStorage.setItem(STORAGE_KEY, String(n + 1));
-    } catch {
-      /* ignore */
-    }
     const enc = encodeURIComponent(MESSAGE);
-    window.location.href = `https://wa.me/${phone}?text=${enc}`;
+    window.location.href = `https://wa.me/${PAULO_DIGITS}?text=${enc}`;
   }
 
   return (

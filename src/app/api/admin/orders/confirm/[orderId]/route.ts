@@ -224,6 +224,11 @@ export async function POST(
     >();
     const nextStockByProductId = new Map<string, number>();
     const zeroAfterConfirm: string[] = [];
+    const partialStock: {
+      productId: string;
+      requested: number;
+      deducted: number;
+    }[] = [];
 
     for (const productId of productIdList) {
       const qty = totals.get(productId)!;
@@ -249,19 +254,21 @@ export async function POST(
           { status: 400 }
         );
       }
-      if (product.stock < qty) {
-        await releaseLock();
-        return NextResponse.json(
-          {
-            error: `Estoque insuficiente no produto ${productId}. Atual: ${product.stock}, necessário: ${qty}`,
-          },
-          { status: 400 }
-        );
+
+      const available = Number(product.stock);
+      const deducted = Math.min(available, qty);
+      const newStock = available - deducted;
+
+      if (deducted < qty) {
+        partialStock.push({
+          productId,
+          requested: qty,
+          deducted,
+        });
       }
 
-      const newStock = product.stock - qty;
       originalByProductId.set(productId, {
-        stock: Number(product.stock),
+        stock: available,
         status: (product.status as "ATIVO" | "ESGOTADO") ?? "ATIVO",
       });
       nextStockByProductId.set(productId, newStock);
@@ -429,6 +436,7 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       flaggedPending,
+      partialStock: partialStock.length > 0 ? partialStock : undefined,
       driveRename: {
         renamed: driveRename.ok.length,
         errors: driveRename.errors,

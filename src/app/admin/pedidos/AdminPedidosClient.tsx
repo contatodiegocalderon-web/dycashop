@@ -361,6 +361,11 @@ export default function AdminPedidosClient() {
       let data: {
         error?: string;
         flaggedPending?: number;
+        partialStock?: Array<{
+          productId: string;
+          requested: number;
+          deducted: number;
+        }>;
         driveRename?: {
           errors?: Array<{ productId?: string; message?: string }>;
           details?: string;
@@ -402,13 +407,22 @@ export default function AdminPedidosClient() {
         flaggedPending > 0
           ? ` ${flaggedPending} outro(s) pedido(s) pendente(s) ficaram com aviso de peça esgotada (cliente deve refazer).`
           : "";
+      const partialNote =
+        Array.isArray(data.partialStock) && data.partialStock.length > 0
+          ? ` Stock parcial: ${data.partialStock
+              .map(
+                (p) =>
+                  `${p.deducted} de ${p.requested} unidade(s) baixada(s); peça removida do catálogo.`
+              )
+              .join(" ")}`
+          : "";
       if (renameErrors?.length) {
         setConfirmSuccessMsg(
-          `Pedido confirmado. Atenção: ${renameErrors.length} renomeação(ões) no Drive falhou(aram). Verifique a API / logs.${conflictNote}`
+          `Pedido confirmado. Atenção: ${renameErrors.length} renomeação(ões) no Drive falhou(aram). Verifique a API / logs.${partialNote}${conflictNote}`
         );
       } else {
         setConfirmSuccessMsg(
-          `Pedido confirmado; nomes no Drive atualizados conforme o stock.${conflictNote}`
+          `Pedido confirmado; nomes no Drive atualizados conforme o stock.${partialNote}${conflictNote}`
         );
       }
       setConfirmOpenId(null);
