@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertOwnerAccess } from "@/lib/admin-auth";
 import { extractDriveFolderId } from "@/lib/drive-folder-url";
+import { getOAuthClientIdHint, clearStaleGoogleRefreshToken } from "@/lib/drive-auth";
 import {
   listOAuthRedirectUrisForGoogleConsole,
   resolveOAuthRedirectUri,
+  verifyGoogleRefreshToken,
 } from "@/lib/google-drive-oauth";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -43,13 +45,24 @@ export async function GET(request: NextRequest) {
 
   const requestOrigin = request.nextUrl.origin;
   const oauthRedirectUri = resolveOAuthRedirectUri(requestOrigin);
+  const storedToken = data?.google_refresh_token?.trim() ?? "";
+  let googleTokenValid = false;
+  if (storedToken && process.env.GOOGLE_CLIENT_ID?.trim()) {
+    googleTokenValid = await verifyGoogleRefreshToken(storedToken);
+    if (!googleTokenValid) {
+      await clearStaleGoogleRefreshToken().catch(() => {});
+    }
+  }
 
   return NextResponse.json({
     driveFolderId: data?.drive_folder_id ?? null,
-    googleConnected: !!data?.google_refresh_token?.trim(),
+    googleConnected: googleTokenValid,
+    googleTokenStored: googleTokenValid ? true : false,
+    googleTokenValid,
     oauthConfigured:
       !!process.env.GOOGLE_CLIENT_ID?.trim() &&
       !!process.env.GOOGLE_CLIENT_SECRET?.trim(),
+    oauthClientIdHint: getOAuthClientIdHint(),
     oauthRedirectUri,
     oauthRedirectUrisHint: listOAuthRedirectUrisForGoogleConsole(),
     appPublicUrl: process.env.NEXT_PUBLIC_APP_URL?.trim() || null,

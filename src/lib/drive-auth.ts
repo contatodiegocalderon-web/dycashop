@@ -15,6 +15,31 @@ export function clearDriveAuthCache(): void {
   cachedDriveAuthAt = 0;
 }
 
+function isInvalidGrantError(e: unknown): boolean {
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return msg.includes("invalid_grant") || msg.includes("invalid grant");
+}
+
+/** Remove refresh token inválido da BD (credenciais OAuth alteradas ou revogação). */
+export async function clearStaleGoogleRefreshToken(): Promise<void> {
+  const admin = getAdminClient();
+  await admin
+    .from("catalog_settings")
+    .update({ google_refresh_token: null, updated_at: new Date().toISOString() })
+    .eq("id", 1);
+  clearDriveAuthCache();
+}
+
+export function getOAuthClientIdHint(): string | null {
+  const id = process.env.GOOGLE_CLIENT_ID?.trim();
+  if (!id) return null;
+  const dash = id.indexOf("-");
+  if (dash >= 0 && dash < id.length - 1) {
+    return id.slice(dash + 1, dash + 13);
+  }
+  return id.slice(0, 12);
+}
+
 function oauthRefreshErrorHint(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   const lower = msg.toLowerCase();
@@ -31,6 +56,9 @@ export async function ensureDriveAuthorized(auth: DriveAuthClient): Promise<void
     try {
       await auth.getAccessToken();
     } catch (e) {
+      if (isInvalidGrantError(e)) {
+        await clearStaleGoogleRefreshToken().catch(() => {});
+      }
       throw new Error(oauthRefreshErrorHint(e));
     }
     return;

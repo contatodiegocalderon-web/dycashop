@@ -25,6 +25,8 @@ function ConfiguracaoInner() {
   const [status, setStatus] = useState<string | null>(null);
   const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleTokenStored, setGoogleTokenStored] = useState(false);
+  const [oauthClientIdHint, setOauthClientIdHint] = useState<string | null>(null);
   const [oauthConfigured, setOauthConfigured] = useState(false);
   const [oauthRedirectUri, setOauthRedirectUri] = useState<string | null>(null);
   const [oauthRedirectUrisHint, setOauthRedirectUrisHint] = useState<string[]>(
@@ -44,6 +46,10 @@ function ConfiguracaoInner() {
     if (!res.ok) throw new Error(data.error ?? "Falha ao carregar");
     setDriveFolderId(data.driveFolderId ?? null);
     setGoogleConnected(!!data.googleConnected);
+    setGoogleTokenStored(!!data.googleTokenStored);
+    setOauthClientIdHint(
+      typeof data.oauthClientIdHint === "string" ? data.oauthClientIdHint : null
+    );
     setOauthConfigured(!!data.oauthConfigured);
     setOauthRedirectUri(
       typeof data.oauthRedirectUri === "string" ? data.oauthRedirectUri : null
@@ -383,16 +389,26 @@ function ConfiguracaoInner() {
         <p className="mt-2 text-xs text-amber-900/80">
           Estado:{" "}
           {googleConnected ? (
-            <span className="font-semibold text-violet-800">token guardado</span>
+            <span className="font-semibold text-emerald-800">
+              Google aceita o token (Drive OK)
+            </span>
+          ) : googleTokenStored ? (
+            <span className="font-semibold text-red-800">
+              token inválido (invalid_grant) — clique «Conectar conta Google»
+            </span>
           ) : (
-            <span className="font-semibold text-red-800">sem token</span>
+            <span className="font-semibold text-red-800">sem token — conecte o Google</span>
           )}
-          {" "}
-          (só indica se existe refresh token na base —{" "}
-          <strong>não</strong> prova que o Google ainda o aceita. Use «Testar ligação ao Drive».)
+          {oauthClientIdHint ? (
+            <>
+              {" "}
+              · Cliente OAuth neste servidor:{" "}
+              <code className="rounded bg-white/80 px-1">{oauthClientIdHint}…</code>
+            </>
+          ) : null}
           {!oauthConfigured && (
             <span className="block mt-1">
-              OAuth não configurado no servidor — veja o .env.local.
+              OAuth não configurado no servidor — veja o .env / Vercel.
             </span>
           )}
         </p>
