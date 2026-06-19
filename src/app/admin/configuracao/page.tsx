@@ -89,14 +89,14 @@ function ConfiguracaoInner() {
     if (err) setStatus(`Erro: ${decodeURIComponent(err)}`);
   }, [searchParams]);
 
-  async function connectGoogle() {
+  async function connectGoogle(forceReconnect = false) {
     setLoading(true);
     setStatus(null);
     try {
       const res = await adminFetch("/api/auth/google/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force: true }),
+        body: JSON.stringify({ force: forceReconnect }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao iniciar OAuth");
@@ -386,7 +386,9 @@ function ConfiguracaoInner() {
           <button
             type="button"
             disabled={loading}
-            onClick={() => void connectGoogle()}
+            onClick={() =>
+              void connectGoogle(!googleConnected && googleTokenStored)
+            }
             className="rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-40"
           >
             Conectar conta Google
@@ -425,6 +427,11 @@ function ConfiguracaoInner() {
               <code className="rounded bg-white/80 px-1">{oauthClientIdHint}…</code>
             </>
           ) : null}
+          <span className="mt-1 block text-amber-800/90">
+            A ligação Google é <strong>uma só</strong> para toda a loja (guardada na
+            base). Importar ou reconectar noutro PC substitui o token — use sempre o
+            mesmo site (produção ou localhost) e alinhe as credenciais na Vercel.
+          </span>
           {!oauthConfigured && (
             <span className="block mt-1">
               OAuth não configurado no servidor — veja o .env / Vercel.

@@ -56,17 +56,12 @@ export async function GET(request: NextRequest) {
   let googleTokenValid = false;
   if (storedToken && currentClientId && !oauthClientMismatch) {
     googleTokenValid = await verifyGoogleRefreshToken(storedToken);
-    if (!googleTokenValid) {
-      await clearStaleGoogleRefreshToken().catch(() => {});
-    }
-  } else if (oauthClientMismatch) {
-    await clearStaleGoogleRefreshToken().catch(() => {});
   }
 
   return NextResponse.json({
     driveFolderId: data?.drive_folder_id ?? null,
     googleConnected: googleTokenValid,
-    googleTokenStored: googleTokenValid ? true : false,
+    googleTokenStored: !!storedToken,
     googleTokenValid,
     oauthClientMismatch,
     oauthConfigured:

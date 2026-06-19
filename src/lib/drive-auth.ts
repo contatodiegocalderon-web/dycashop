@@ -113,9 +113,8 @@ export async function getDriveAuth(): Promise<DriveAuthClient> {
     currentClientId &&
     storedClientId !== currentClientId
   ) {
-    await clearStaleGoogleRefreshToken().catch(() => {});
     throw new Error(
-      `OAuth: o token foi emitido para outro cliente Google (${getOAuthClientIdHint(storedClientId)}…) mas este servidor usa ${getOAuthClientIdHint(currentClientId)}…. Alinhe GOOGLE_CLIENT_ID/SECRET na Vercel com o cliente novo e clique «Conectar conta Google».`
+      `OAuth: o token foi emitido para outro cliente Google (${getOAuthClientIdHint(storedClientId)}…) mas este servidor usa ${getOAuthClientIdHint(currentClientId)}…. Alinhe GOOGLE_CLIENT_ID/SECRET na Vercel com o cliente novo e clique «Conectar conta Google». Não abra localhost e produção ao mesmo tempo com credenciais diferentes.`
     );
   }
 
