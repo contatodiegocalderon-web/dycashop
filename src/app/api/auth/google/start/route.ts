@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       const admin = getAdminClient();
       await admin
         .from("catalog_settings")
-        .update({ google_refresh_token: null })
+        .update({ google_refresh_token: null, google_oauth_client_id: null })
         .eq("id", 1);
       clearDriveAuthCache();
     }

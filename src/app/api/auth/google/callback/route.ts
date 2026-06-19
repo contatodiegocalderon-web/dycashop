@@ -7,6 +7,7 @@ import {
   verifyGoogleAuthState,
   verifyGoogleRefreshToken,
 } from "@/lib/google-drive-oauth";
+import { getOAuthClientId } from "@/lib/drive-auth";
 import { supabaseFailureHint } from "@/lib/supabase-connect-hint";
 import { clearDriveAuthCache } from "@/lib/drive-auth";
 import { getAdminClient } from "@/lib/supabase/admin";
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest) {
 
     const { data: row, error: selErr } = await admin
       .from("catalog_settings")
-      .select("drive_folder_id, google_refresh_token")
+      .select("drive_folder_id, google_refresh_token, google_oauth_client_id")
       .eq("id", 1)
       .maybeSingle();
 
@@ -142,10 +143,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const oauthClientId = getOAuthClientId();
+    if (!oauthClientId) {
+      return fail("GOOGLE_CLIENT_ID não configurado no servidor.");
+    }
+
     const { error: upErr } = await admin.from("catalog_settings").upsert(
       {
         id: 1,
         google_refresh_token: refreshToStore,
+        google_oauth_client_id: oauthClientId,
         drive_folder_id: row?.drive_folder_id ?? null,
         updated_at: new Date().toISOString(),
       },

@@ -25,13 +25,17 @@ export async function clearStaleGoogleRefreshToken(): Promise<void> {
   const admin = getAdminClient();
   await admin
     .from("catalog_settings")
-    .update({ google_refresh_token: null, updated_at: new Date().toISOString() })
+    .update({
+      google_refresh_token: null,
+      google_oauth_client_id: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", 1);
   clearDriveAuthCache();
 }
 
-export function getOAuthClientIdHint(): string | null {
-  const id = process.env.GOOGLE_CLIENT_ID?.trim();
+export function getOAuthClientIdHint(clientId?: string | null): string | null {
+  const id = (clientId ?? process.env.GOOGLE_CLIENT_ID)?.trim();
   if (!id) return null;
   const dash = id.indexOf("-");
   if (dash >= 0 && dash < id.length - 1) {
@@ -40,12 +44,19 @@ export function getOAuthClientIdHint(): string | null {
   return id.slice(0, 12);
 }
 
+export function getOAuthClientId(): string | null {
+  return process.env.GOOGLE_CLIENT_ID?.trim() || null;
+}
+
 function oauthRefreshErrorHint(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   const lower = msg.toLowerCase();
   if (lower.includes("invalid_grant") || lower.includes("invalid grant")) {
+    const hint = getOAuthClientIdHint();
     return (
-      "invalid_grant: o token Google na base de dados já não é válido (revogado, app OAuth alterada ou credenciais .env diferentes). Em /admin/configuracao clique «Conectar conta Google» de novo; se persistir, remova o acesso em myaccount.google.com/permissions e volte a conectar. Não atualize a página do callback do Google."
+      `invalid_grant: credenciais OAuth deste servidor não coincidem com o token guardado (comum na Vercel com GOOGLE_CLIENT_ID antigo). ` +
+      `Na Vercel, defina GOOGLE_CLIENT_ID=543934835594-7195cqo60j5jimda5h605haq9nmdv8qi.apps.googleusercontent.com e o GOOGLE_CLIENT_SECRET novo, redeploy, depois em Configuração clique «Conectar conta Google». ` +
+      (hint ? `Cliente activo neste pedido: ${hint}…` : "")
     );
   }
   return msg;
@@ -81,7 +92,7 @@ export async function getDriveAuth(): Promise<DriveAuthClient> {
   const admin = getAdminClient();
   const { data, error } = await admin
     .from("catalog_settings")
-    .select("google_refresh_token")
+    .select("google_refresh_token, google_oauth_client_id")
     .eq("id", 1)
     .maybeSingle();
 
@@ -90,9 +101,23 @@ export async function getDriveAuth(): Promise<DriveAuthClient> {
   }
 
   const rt = data?.google_refresh_token?.trim();
+  const storedClientId = data?.google_oauth_client_id?.trim() || null;
+  const currentClientId = getOAuthClientId();
   const hasOAuthEnv =
-    !!process.env.GOOGLE_CLIENT_ID?.trim() &&
-    !!process.env.GOOGLE_CLIENT_SECRET?.trim();
+    !!currentClientId && !!process.env.GOOGLE_CLIENT_SECRET?.trim();
+
+  if (
+    rt &&
+    hasOAuthEnv &&
+    storedClientId &&
+    currentClientId &&
+    storedClientId !== currentClientId
+  ) {
+    await clearStaleGoogleRefreshToken().catch(() => {});
+    throw new Error(
+      `OAuth: o token foi emitido para outro cliente Google (${getOAuthClientIdHint(storedClientId)}…) mas este servidor usa ${getOAuthClientIdHint(currentClientId)}…. Alinhe GOOGLE_CLIENT_ID/SECRET na Vercel com o cliente novo e clique «Conectar conta Google».`
+    );
+  }
 
   if (rt && hasOAuthEnv) {
     const oauth2 = createOAuth2Client();

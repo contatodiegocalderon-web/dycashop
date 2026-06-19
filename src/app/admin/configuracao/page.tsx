@@ -27,6 +27,10 @@ function ConfiguracaoInner() {
   const [googleConnected, setGoogleConnected] = useState(false);
   const [googleTokenStored, setGoogleTokenStored] = useState(false);
   const [oauthClientIdHint, setOauthClientIdHint] = useState<string | null>(null);
+  const [storedOAuthClientIdHint, setStoredOAuthClientIdHint] = useState<
+    string | null
+  >(null);
+  const [oauthClientMismatch, setOauthClientMismatch] = useState(false);
   const [oauthConfigured, setOauthConfigured] = useState(false);
   const [oauthRedirectUri, setOauthRedirectUri] = useState<string | null>(null);
   const [oauthRedirectUrisHint, setOauthRedirectUrisHint] = useState<string[]>(
@@ -50,6 +54,12 @@ function ConfiguracaoInner() {
     setOauthClientIdHint(
       typeof data.oauthClientIdHint === "string" ? data.oauthClientIdHint : null
     );
+    setStoredOAuthClientIdHint(
+      typeof data.storedOAuthClientIdHint === "string"
+        ? data.storedOAuthClientIdHint
+        : null
+    );
+    setOauthClientMismatch(!!data.oauthClientMismatch);
     setOauthConfigured(!!data.oauthConfigured);
     setOauthRedirectUri(
       typeof data.oauthRedirectUri === "string" ? data.oauthRedirectUri : null
@@ -357,6 +367,15 @@ function ConfiguracaoInner() {
             Vercel (ex.: https://dycashop.vercel.app).
           </p>
         )}
+        {oauthClientMismatch ? (
+          <p className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-900">
+            Credenciais OAuth deste servidor ({oauthClientIdHint ?? "?"}…) não
+            coincidem com o token guardado ({storedOAuthClientIdHint ?? "?"}…).
+            Corrija GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET na Vercel (cliente{" "}
+            <code className="break-all">7195cqo60j5ji…</code>), redeploy e clique
+            «Conectar conta Google».
+          </p>
+        ) : null}
         <p className="mt-2 text-xs text-amber-900/80">
           Em dev, abra só{" "}
           <code className="rounded bg-white/80 px-1">http://localhost:3000</code>.
