@@ -12,6 +12,7 @@ import {
 type Props = {
   categoryLabel: string;
   onComplete: (selection: GuidedWizardSelection) => void;
+  onViewAll: (size: ProductSize) => void;
 };
 
 type WizardStep = 1 | 2 | 3;
@@ -106,7 +107,11 @@ function ChoiceChip({
   );
 }
 
-export function CategoryGuidedWizard({ categoryLabel, onComplete }: Props) {
+export function CategoryGuidedWizard({
+  categoryLabel,
+  onComplete,
+  onViewAll,
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -173,6 +178,11 @@ export function CategoryGuidedWizard({ categoryLabel, onComplete }: Props) {
       colors: selectedColors,
       brands: selectedBrands,
     });
+  }
+
+  function viewAllForSize() {
+    if (!size) return;
+    onViewAll(size);
   }
 
   function goBack() {
@@ -309,7 +319,7 @@ export function CategoryGuidedWizard({ categoryLabel, onComplete }: Props) {
         )}
 
         {step === 2 && colors.length > 0 && (
-          <div className="mt-8 flex justify-center">
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <button
               type="button"
               disabled={selectedColors.length === 0}
@@ -321,11 +331,18 @@ export function CategoryGuidedWizard({ categoryLabel, onComplete }: Props) {
                 ? ` (${selectedColors.length} cor${selectedColors.length > 1 ? "es" : ""})`
                 : ""}
             </button>
+            <button
+              type="button"
+              onClick={viewAllForSize}
+              className="rounded-2xl border border-white/15 px-8 py-3 text-sm font-semibold text-stone-200 transition hover:border-white/25 hover:bg-white/[0.06]"
+            >
+              Ver tudo
+            </button>
           </div>
         )}
 
         {step === 3 && brands.length > 0 && (
-          <div className="mt-8 flex justify-center">
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <button
               type="button"
               disabled={selectedBrands.length === 0}
@@ -336,6 +353,13 @@ export function CategoryGuidedWizard({ categoryLabel, onComplete }: Props) {
               {selectedBrands.length > 0
                 ? ` (${selectedBrands.length} marca${selectedBrands.length > 1 ? "s" : ""})`
                 : ""}
+            </button>
+            <button
+              type="button"
+              onClick={viewAllForSize}
+              className="rounded-2xl border border-white/15 px-8 py-3 text-sm font-semibold text-stone-200 transition hover:border-white/25 hover:bg-white/[0.06]"
+            >
+              Ver tudo
             </button>
           </div>
         )}

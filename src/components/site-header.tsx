@@ -4,6 +4,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useCart } from "@/providers/cart-provider";
+import {
+  markCatalogBrowseRestore,
+  updateCatalogBrowseScroll,
+} from "@/lib/catalog-browse-session";
 
 export function SiteHeader() {
   const { lines } = useCart();
@@ -52,6 +56,10 @@ export function SiteHeader() {
         <Link
           href="/carrinho"
           prefetch
+          onClick={() => {
+            updateCatalogBrowseScroll(window.scrollY);
+            markCatalogBrowseRestore();
+          }}
           className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-white/[0.06] text-stone-100 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1]"
           aria-label={`Carrinho, ${totalItems} itens`}
         >

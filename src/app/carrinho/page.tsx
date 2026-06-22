@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCatalogReturnUrl, markCatalogBrowseRestore } from "@/lib/catalog-return-url";
 import { CART_STORAGE_KEY, useCart } from "@/providers/cart-provider";
 import type { CartLine, ProductSize } from "@/types";
 import type { WhatsAppSeller } from "@/lib/sellers";
@@ -93,6 +94,7 @@ function SellerChoiceAvatar({ seller }: { seller: WhatsAppSeller }) {
 }
 
 export default function CarrinhoPage() {
+  const router = useRouter();
   const { lines, hydrated, setLineQuantity, removeLine, clear, reconcileWithCatalog } =
     useCart();
   const [customerName, setCustomerName] = useState("");
@@ -113,6 +115,11 @@ export default function CarrinhoPage() {
   const nameManuallyEditedRef = useRef(false);
 
   const groups = useMemo(() => groupBySize(lines), [lines]);
+
+  const goBackToCatalog = useCallback(() => {
+    markCatalogBrowseRestore();
+    router.push(getCatalogReturnUrl());
+  }, [router]);
 
   useEffect(() => {
     setPortalReady(true);
@@ -441,12 +448,13 @@ export default function CarrinhoPage() {
       {lines.length === 0 ? (
         <p className="mt-8 text-stone-400">
           Carrinho vazio.{" "}
-          <Link
-            href="/"
+          <button
+            type="button"
+            onClick={goBackToCatalog}
             className="font-medium text-stone-400 transition-colors hover:text-stone-200"
           >
-            Voltar ao catálogo
-          </Link>
+            Voltar
+          </button>
         </p>
       ) : (
         <div className="mt-8 space-y-8">
@@ -661,21 +669,23 @@ export default function CarrinhoPage() {
             >
               Enviar pedido no WhatsApp
             </button>
-            <Link
-              href="/"
+            <button
+              type="button"
+              onClick={goBackToCatalog}
               className="rounded-xl border border-white/15 px-5 py-3 text-sm font-medium text-stone-300 transition-colors hover:border-white/25 hover:bg-white/[0.04]"
             >
               Continuar comprando
-            </Link>
+            </button>
           </div>
 
           <p className="mt-10 text-center text-xs text-stone-600">
-            <Link
-              href="/"
+            <button
+              type="button"
+              onClick={goBackToCatalog}
               className="font-medium text-stone-400 transition-colors hover:text-stone-200"
             >
-              Voltar às categorias
-            </Link>
+              Voltar
+            </button>
           </p>
         </div>
       )}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertOwnerAccess } from "@/lib/admin-auth";
 import { extractDriveFolderId } from "@/lib/drive-folder-url";
-import { getOAuthClientId, getOAuthClientIdHint, clearStaleGoogleRefreshToken } from "@/lib/drive-auth";
+import { getOAuthClientId, getOAuthClientIdHint } from "@/lib/drive-auth";
 import {
   listOAuthRedirectUrisForGoogleConsole,
   resolveOAuthRedirectUri,

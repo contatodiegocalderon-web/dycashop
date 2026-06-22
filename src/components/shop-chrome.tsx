@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { rememberCatalogReturnUrl } from "@/lib/catalog-return-url";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
@@ -9,6 +10,13 @@ import { SiteHeader } from "@/components/site-header";
 export function ShopChrome({ children }: { children: ReactNode }) {
   const path = usePathname();
   const admin = path?.startsWith("/admin") ?? false;
+
+  useEffect(() => {
+    if (!path) return;
+    const search =
+      typeof window !== "undefined" ? window.location.search : "";
+    rememberCatalogReturnUrl(path, search);
+  }, [path]);
 
   if (admin) {
     return <>{children}</>;
