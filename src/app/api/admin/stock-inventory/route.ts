@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertOwnerAccess } from "@/lib/admin-auth";
+import { fetchAllProductsPaginated } from "@/lib/fetch-all-products";
 import {
   aggregateStockInventory,
   type ProductStockRow,
@@ -8,8 +9,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const PAGE_SIZE = 1000;
 
 /**
  * GET /api/admin/stock-inventory
@@ -28,26 +27,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const admin = createAdminClient();
-    const all: ProductStockRow[] = [];
-    let offset = 0;
-
-    for (;;) {
-      const { data, error } = await admin
-        .from("products")
-        .select("category, size, stock, status, updated_at")
-        .order("category", { ascending: true })
-        .order("size", { ascending: true })
-        .range(offset, offset + PAGE_SIZE - 1);
-
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-
-      const chunk = (data ?? []) as ProductStockRow[];
-      all.push(...chunk);
-      if (chunk.length < PAGE_SIZE) break;
-      offset += PAGE_SIZE;
-    }
+    const all = await fetchAllProductsPaginated<ProductStockRow>(
+      admin,
+      "category, size, stock, status, updated_at"
+    );
 
     const snapshot = aggregateStockInventory(all);
 

@@ -10,13 +10,12 @@ import {
   aggregateStockInventory,
   type ProductStockRow,
 } from "@/lib/stock-inventory";
+import { fetchAllProductsPaginated } from "@/lib/fetch-all-products";
 import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
 import { applyRealAppConfirmedOrdersFilter } from "@/lib/real-app-orders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const PAGE = 1000;
 
 function localDayKey(iso: string, tzOffsetMinutes: number): string {
   const d = new Date(new Date(iso).getTime() - tzOffsetMinutes * 60_000);
@@ -115,19 +114,10 @@ export async function GET(request: NextRequest) {
     } | null = null;
 
     if (isOwner) {
-      const products: ProductStockRow[] = [];
-      let offset = 0;
-      for (;;) {
-        const { data, error } = await admin
-          .from("products")
-          .select("category, size, stock, status, updated_at")
-          .range(offset, offset + PAGE - 1);
-        if (error) break;
-        const chunk = (data ?? []) as ProductStockRow[];
-        products.push(...chunk);
-        if (chunk.length < PAGE) break;
-        offset += PAGE;
-      }
+      const products = await fetchAllProductsPaginated<ProductStockRow>(
+        admin,
+        "category, size, stock, status, updated_at"
+      );
       const snap = aggregateStockInventory(products);
       estoque = {
         totalPieces: snap.grandTotal.pieces,

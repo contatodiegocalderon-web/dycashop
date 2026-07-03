@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
         .gt("stock", 0)
         .order("brand", { ascending: true })
         .order("color", { ascending: true })
+        .order("id", { ascending: true })
         .range(offset, offset + PAGE_SIZE - 1);
 
       if (size && ["M", "G", "GG"].includes(size)) {
