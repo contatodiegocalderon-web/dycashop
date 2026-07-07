@@ -6,6 +6,9 @@ import {
   type ShippingQuotePayload,
 } from "@/lib/shipping-quote-types";
 
+const FOOTER_MESSAGE =
+  "O vendedor vai te passar o orçamento completo e finalizar seu pedido o quanto antes, aguarde só um momento!";
+
 export function buildOrderWhatsAppText(
   lines: CartLine[],
   opts?: {
@@ -30,57 +33,55 @@ export function buildOrderWhatsAppText(
   const parts: string[] = [header, ""];
 
   if (receiptUrl) {
-    parts.push("📎 Ver sua seleção com fotos:");
-    parts.push(receiptUrl);
+    parts.push(`  📎 Ver sua seleção com fotos: ${receiptUrl}`);
     parts.push("");
   }
 
   const name = opts?.customerName?.trim();
   if (name) {
-    parts.push(`Nome: ${name}`);
-    parts.push("");
-  }
-
-  const cep = opts?.customerCep?.trim();
-  if (cep) {
-    parts.push(`CEP: ${cep}`);
+    parts.push(`  Nome: ${name}`);
     parts.push("");
   }
 
   for (const { label, qty } of totals) {
-    parts.push(`x${qty} ${label}`);
+    parts.push(`🛒*x${qty} ${label}*`);
   }
   if (totals.length) parts.push("");
+
+  const cepRaw = opts?.customerCep?.trim();
+  const cepDigits = cepRaw?.replace(/\D/g, "") ?? "";
+  if (cepDigits) {
+    parts.push(`CEP: ${cepDigits}`);
+  }
 
   const quote = opts?.shippingQuote;
   const selected = opts?.selectedShipping ?? null;
   const pac = quote && isShippingOption(quote.pac) ? quote.pac : null;
   const sedex = quote && isShippingOption(quote.sedex) ? quote.sedex : null;
 
+  const shippingLines: string[] = [];
   if (selected) {
-    parts.push(
-      `FRETE: ${selected.label} ${selected.priceFormatted}, ${selected.deliveryLabel}`
-    );
-    parts.push("");
-    parts.push(
-      "Valores de frete são estimativa dos Correios; o vendedor confirma e finaliza seu pedido em seguida."
-    );
-  } else if (pac || sedex) {
-    if (pac) {
-      parts.push(`FRETE: PAC ${pac.priceFormatted}, ${pac.deliveryLabel}`);
-    }
-    if (sedex) {
-      parts.push(`FRETE: SEDEX ${sedex.priceFormatted}, ${sedex.deliveryLabel}`);
-    }
-    parts.push("");
-    parts.push(
-      "Valores de frete são estimativa dos Correios; o vendedor confirma e finaliza seu pedido em seguida."
+    shippingLines.push(
+      `*${selected.label} ${selected.priceFormatted}, ${selected.deliveryLabel}*`
     );
   } else {
-    parts.push(
-      "O vendedor vai calcular seu frete e finalizar seu pedido o quanto antes, aguarde só um momento!"
-    );
+    if (sedex) {
+      shippingLines.push(
+        `*SEDEX ${sedex.priceFormatted}, ${sedex.deliveryLabel}*`
+      );
+    }
+    if (pac) {
+      shippingLines.push(`*PAC ${pac.priceFormatted}, ${pac.deliveryLabel}*`);
+    }
   }
+
+  if (shippingLines.length) {
+    parts.push("FRETE👇");
+    parts.push(...shippingLines);
+    parts.push("");
+  }
+
+  parts.push(FOOTER_MESSAGE);
 
   return parts.join("\n").trim();
 }
