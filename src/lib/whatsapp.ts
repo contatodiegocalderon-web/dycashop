@@ -2,6 +2,7 @@ import type { CartLine } from "@/types";
 import { totalsByCategoryFromCartLines } from "@/lib/order-category-totals";
 import {
   isShippingOption,
+  type ShippingQuoteOption,
   type ShippingQuotePayload,
 } from "@/lib/shipping-quote-types";
 
@@ -14,6 +15,7 @@ export function buildOrderWhatsAppText(
     customerName?: string;
     orderDisplayNumber?: number;
     shippingQuote?: ShippingQuotePayload | null;
+    selectedShipping?: ShippingQuoteOption | null;
   }
 ): string {
   const totals = totalsByCategoryFromCartLines(lines);
@@ -51,11 +53,19 @@ export function buildOrderWhatsAppText(
   if (totals.length) parts.push("");
 
   const quote = opts?.shippingQuote;
+  const selected = opts?.selectedShipping ?? null;
   const pac = quote && isShippingOption(quote.pac) ? quote.pac : null;
   const sedex = quote && isShippingOption(quote.sedex) ? quote.sedex : null;
 
-  if (pac || sedex) {
-    parts.push("*Frete estimado:*");
+  if (selected) {
+    parts.push(
+      `FRETE: ${selected.label} ${selected.priceFormatted}, ${selected.deliveryLabel}`
+    );
+    parts.push("");
+    parts.push(
+      "Valores de frete são estimativa dos Correios; o vendedor confirma e finaliza seu pedido em seguida."
+    );
+  } else if (pac || sedex) {
     if (pac) {
       parts.push(`FRETE: PAC ${pac.priceFormatted}, ${pac.deliveryLabel}`);
     }

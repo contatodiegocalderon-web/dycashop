@@ -9,11 +9,11 @@ import {
   type CategoryWeightMap,
 } from "@/lib/cart-shipping-weight";
 import {
-  fetchCorreiosPacSedexQuote,
   formatDeliveryDaysRange,
   formatFreightMoneyBrl,
-  type CorreiosServiceQuote,
 } from "@/lib/correios-quote";
+import { fetchPacSedexQuote } from "@/lib/shipping-providers";
+import type { PacSedexServiceQuote } from "@/lib/shipping-providers/types";
 import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 
 export const runtime = "nodejs";
@@ -66,7 +66,7 @@ async function loadCategoryWeights(
   return map;
 }
 
-function serializeService(q: CorreiosServiceQuote | null) {
+function serializeService(q: PacSedexServiceQuote | null) {
   if (!q || q.error || q.price <= 0) {
     return q?.error ? { error: q.error } : null;
   }
@@ -75,6 +75,10 @@ function serializeService(q: CorreiosServiceQuote | null) {
     code: q.code,
     price: q.price,
     priceFormatted: formatFreightMoneyBrl(q.price),
+    originalPrice: q.originalPrice,
+    originalPriceFormatted: q.originalPrice
+      ? formatFreightMoneyBrl(q.originalPrice)
+      : undefined,
     deliveryDays: q.deliveryDays,
     deliveryLabel: formatDeliveryDaysRange(q.deliveryDays),
   };
@@ -139,10 +143,11 @@ export async function POST(request: NextRequest) {
     const totalPieces = normalizedItems.reduce((s, it) => s + it.quantity, 0);
     const weightKg = gramsToCorreiosKg(totalGrams);
 
-    const correios = await fetchCorreiosPacSedexQuote({
+    const quote = await fetchPacSedexQuote({
       originCep,
       destinationCep: destCep,
       weightKg,
+      totalPieces,
     });
 
     return NextResponse.json(
@@ -151,13 +156,15 @@ export async function POST(request: NextRequest) {
         totalPieces,
         totalWeightGrams: totalGrams,
         totalWeightKg: weightKg,
-        pac: serializeService(correios.pac),
-        sedex: serializeService(correios.sedex),
+        provider: quote.provider,
+        pac: serializeService(quote.pac),
+        sedex: serializeService(quote.sedex),
       },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao calcular frete";
-    return NextResponse.json({ error: msg }, { status: 502 });
+    const status = msg.includes("não configurado") ? 503 : 502;
+    return NextResponse.json({ error: msg }, { status });
   }
 }

@@ -2,6 +2,10 @@
 export const CORREIOS_PAC_CODE = "04510";
 export const CORREIOS_SEDEX_CODE = "04014";
 
+const CORREIOS_CALC_URL =
+  "https://ws.correios.com.br/calculador/CalcPrecoPrazo.aspx";
+const CORREIOS_FETCH_TIMEOUT_MS = 12_000;
+
 export type CorreiosServiceQuote = {
   code: string;
   label: "PAC" | "SEDEX";
@@ -39,7 +43,8 @@ function parseServiceBlock(
     };
   }
   const valorRaw = block.match(/<Valor>([^<]+)<\/Valor>/i)?.[1] ?? "0";
-  const prazoRaw = block.match(/<PrazoEntrega>(\d+)<\/PrazoEntrega>/i)?.[1] ?? "0";
+  const prazoRaw =
+    block.match(/<PrazoEntrega>(\d+)<\/PrazoEntrega>/i)?.[1] ?? "0";
   const price = parseBrazilianMoney(valorRaw);
   const deliveryDays = Number.parseInt(prazoRaw, 10);
   if (!Number.isFinite(price) || price <= 0) {
@@ -55,12 +60,84 @@ function parseServiceBlock(
     code: codigo || expectedCode,
     label,
     price,
-    deliveryDays: Number.isFinite(deliveryDays) && deliveryDays > 0 ? deliveryDays : 1,
+    deliveryDays:
+      Number.isFinite(deliveryDays) && deliveryDays > 0 ? deliveryDays : 1,
   };
+}
+
+async function fetchCorreiosXml(
+  params: URLSearchParams,
+  signal?: AbortSignal
+): Promise<string> {
+  const url = `${CORREIOS_CALC_URL}?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: { Accept: "application/xml,text/xml,*/*" },
+    cache: "no-store",
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`Correios indisponível (${res.status}).`);
+  }
+  const xml = await res.text();
+  if (!xml.includes("cServico") && !xml.includes("Servicos")) {
+    throw new Error("Resposta inválida dos Correios.");
+  }
+  return xml;
+}
+
+async function fetchSingleServiceQuote(opts: {
+  originCep: string;
+  destinationCep: string;
+  weightKg: number;
+  serviceCode: string;
+  label: "PAC" | "SEDEX";
+}): Promise<CorreiosServiceQuote | null> {
+  const weightKg = Math.max(0.1, Math.min(30, opts.weightKg));
+  const params = new URLSearchParams({
+    nCdEmpresa: "",
+    sDsSenha: "",
+    nCdServico: opts.serviceCode,
+    sCepOrigem: opts.originCep,
+    sCepDestino: opts.destinationCep,
+    nVlPeso: weightKg.toFixed(2).replace(".", ","),
+    nCdFormato: "1",
+    nVlComprimento: "25",
+    nVlAltura: "12",
+    nVlLargura: "20",
+    nVlDiametro: "0",
+    sCdMaoPropria: "n",
+    nVlValorDeclarado: "0",
+    sCdAvisoRecebimento: "n",
+    StrRetorno: "xml",
+  });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    CORREIOS_FETCH_TIMEOUT_MS
+  );
+
+  try {
+    const xml = await fetchCorreiosXml(params, controller.signal);
+    const blocks = xml.match(/<cServico>[\s\S]*?<\/cServico>/gi) ?? [];
+    const block = blocks[0];
+    if (!block) return null;
+    return parseServiceBlock(block, opts.label, opts.serviceCode);
+  } catch (e) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        "Os Correios demoraram para responder. Tente novamente em instantes."
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /**
  * Cota PAC e SEDEX via webservice público dos Correios (balcão, sem contrato).
+ * Consultas em paralelo com timeout para evitar travamento.
  */
 export async function fetchCorreiosPacSedexQuote(opts: {
   originCep: string;
@@ -74,52 +151,45 @@ export async function fetchCorreiosPacSedexQuote(opts: {
   }
 
   const weightKg = Math.max(0.1, Math.min(30, opts.weightKg));
-  const params = new URLSearchParams({
-    nCdEmpresa: "",
-    sDsSenha: "",
-    nCdServico: `${CORREIOS_PAC_CODE},${CORREIOS_SEDEX_CODE}`,
-    sCepOrigem: origin,
-    sCepDestino: dest,
-    nVlPeso: weightKg.toFixed(2).replace(".", ","),
-    nCdFormato: "1",
-    nVlComprimento: "25",
-    nVlAltura: "12",
-    nVlLargura: "20",
-    nVlDiametro: "0",
-    sCdMaoPropria: "n",
-    nVlValorDeclarado: "0",
-    sCdAvisoRecebimento: "n",
-    StrRetorno: "xml",
-  });
+  const base = { originCep: origin, destinationCep: dest, weightKg };
 
-  const url = `https://ws.correios.com.br/calculador/CalcPrecoPrazo.aspx?${params.toString()}`;
-  const res = await fetch(url, {
-    headers: { Accept: "application/xml,text/xml,*/*" },
-    next: { revalidate: 0 },
-  });
-  if (!res.ok) {
-    throw new Error(`Correios indisponível (${res.status}).`);
-  }
-  const xml = await res.text();
-  if (!xml.includes("cServico") && !xml.includes("Servicos")) {
-    throw new Error("Resposta inválida dos Correios.");
-  }
+  const [pacResult, sedexResult] = await Promise.allSettled([
+    fetchSingleServiceQuote({
+      ...base,
+      serviceCode: CORREIOS_PAC_CODE,
+      label: "PAC",
+    }),
+    fetchSingleServiceQuote({
+      ...base,
+      serviceCode: CORREIOS_SEDEX_CODE,
+      label: "SEDEX",
+    }),
+  ]);
 
-  const blocks = xml.match(/<cServico>[\s\S]*?<\/cServico>/gi) ?? [];
-  let pac: CorreiosServiceQuote | null = null;
-  let sedex: CorreiosServiceQuote | null = null;
+  const pac =
+    pacResult.status === "fulfilled" ? pacResult.value : null;
+  const sedex =
+    sedexResult.status === "fulfilled" ? sedexResult.value : null;
 
-  for (const block of blocks) {
-    const codigo = block.match(/<Codigo>(\d+)<\/Codigo>/i)?.[1] ?? "";
-    if (codigo === CORREIOS_PAC_CODE || codigo.endsWith("4510")) {
-      pac = parseServiceBlock(block, "PAC", CORREIOS_PAC_CODE);
-    } else if (codigo === CORREIOS_SEDEX_CODE || codigo.endsWith("4014")) {
-      sedex = parseServiceBlock(block, "SEDEX", CORREIOS_SEDEX_CODE);
-    }
-  }
+  const pacOk = pac && !pac.error && pac.price > 0;
+  const sedexOk = sedex && !sedex.error && sedex.price > 0;
 
-  if (!pac && !sedex) {
-    throw new Error("Não foi possível obter cotação PAC/SEDEX para este CEP.");
+  if (!pacOk && !sedexOk) {
+    const reason =
+      (pacResult.status === "rejected"
+        ? pacResult.reason
+        : sedexResult.status === "rejected"
+          ? sedexResult.reason
+          : null) ??
+      pac?.error ??
+      sedex?.error;
+    const msg =
+      reason instanceof Error
+        ? reason.message
+        : typeof reason === "string"
+          ? reason
+          : "Não foi possível obter cotação PAC/SEDEX para este CEP.";
+    throw new Error(msg);
   }
 
   return { pac, sedex };
@@ -127,7 +197,8 @@ export async function fetchCorreiosPacSedexQuote(opts: {
 
 export function formatDeliveryDaysRange(days: number): string {
   const max = Math.max(1, Math.round(days));
-  return `1 A ${max} DIAS ÚTEIS`;
+  if (max === 1) return "Até 1 dia útil";
+  return `Até ${max} dias úteis`;
 }
 
 export function formatFreightMoneyBrl(price: number): string {

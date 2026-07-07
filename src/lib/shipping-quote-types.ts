@@ -3,6 +3,8 @@ export type ShippingQuoteOption = {
   code: string;
   price: number;
   priceFormatted: string;
+  originalPrice?: number;
+  originalPriceFormatted?: string;
   deliveryDays: number;
   deliveryLabel: string;
 };
@@ -12,6 +14,7 @@ export type ShippingQuotePayload = {
   totalPieces: number;
   totalWeightGrams: number;
   totalWeightKg: number;
+  provider?: "superfrete" | "melhorenvio";
   pac: ShippingQuoteOption | { error: string } | null;
   sedex: ShippingQuoteOption | { error: string } | null;
 };

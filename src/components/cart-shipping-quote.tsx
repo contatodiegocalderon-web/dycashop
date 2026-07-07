@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CartLine } from "@/types";
-import { cartLinesToWeightInput, normalizeCepDigits } from "@/lib/cart-shipping-weight";
+import {
+  cartLinesToWeightInput,
+  normalizeCepDigits,
+} from "@/lib/cart-shipping-weight";
 import {
   isShippingOption,
+  type ShippingQuoteOption,
   type ShippingQuotePayload,
 } from "@/lib/shipping-quote-types";
 
@@ -12,12 +16,96 @@ type Props = {
   lines: CartLine[];
   cep: string;
   onQuoteChange?: (quote: ShippingQuotePayload | null) => void;
+  onSelectionChange?: (option: ShippingQuoteOption | null) => void;
 };
 
-export function CartShippingQuote({ lines, cep, onQuoteChange }: Props) {
+function CorreiosLogo({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      width={28}
+      height={28}
+      className={className}
+      aria-hidden
+    >
+      <rect width="32" height="32" rx="6" fill="#FFCC00" />
+      <path
+        fill="#00416B"
+        d="M6 22 L16 8 L26 22 Z"
+        opacity="0.9"
+      />
+      <path
+        fill="#0066A1"
+        d="M8 20 L16 10 L24 20 Z"
+      />
+    </svg>
+  );
+}
+
+function ShippingOptionCard({
+  option,
+  selected,
+  onSelect,
+}: {
+  option: ShippingQuoteOption;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+        selected
+          ? "border-emerald-500/60 bg-emerald-950/25 ring-1 ring-emerald-500/30"
+          : "border-white/15 bg-zinc-950/40 hover:border-white/25"
+      }`}
+    >
+      <span
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+          selected
+            ? "border-emerald-500 bg-emerald-500"
+            : "border-stone-500 bg-transparent"
+        }`}
+        aria-hidden
+      >
+        {selected ? (
+          <span className="h-2 w-2 rounded-full bg-white" />
+        ) : null}
+      </span>
+      <CorreiosLogo className="shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-stone-100">{option.label}</p>
+        <p className="text-xs text-stone-500">{option.deliveryLabel}</p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="text-base font-bold text-emerald-400">
+          {option.priceFormatted}
+        </p>
+        {option.originalPriceFormatted &&
+          option.originalPriceFormatted !== option.priceFormatted && (
+            <p className="text-xs text-stone-500 line-through">
+              {option.originalPriceFormatted}
+            </p>
+          )}
+      </div>
+    </button>
+  );
+}
+
+export function CartShippingQuote({
+  lines,
+  cep,
+  onQuoteChange,
+  onSelectionChange,
+}: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quote, setQuote] = useState<ShippingQuotePayload | null>(null);
+  const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const requestSeq = useRef(0);
 
   const cepDigits = useMemo(() => normalizeCepDigits(cep), [cep]);
   const itemsKey = useMemo(
@@ -30,44 +118,65 @@ export function CartShippingQuote({ lines, cep, onQuoteChange }: Props) {
     [lines]
   );
 
+  const weightItems = useMemo(
+    () =>
+      JSON.parse(itemsKey) as ReturnType<typeof cartLinesToWeightInput>,
+    [itemsKey]
+  );
+
   useEffect(() => {
     onQuoteChange?.(quote);
   }, [quote, onQuoteChange]);
 
   useEffect(() => {
-    if (!cepDigits || lines.length === 0) {
+    if (!cepDigits || weightItems.length === 0) {
       setQuote(null);
       setError(null);
       setLoading(false);
+      setSelectedCode(null);
+      onSelectionChange?.(null);
       return;
     }
 
+    const seq = ++requestSeq.current;
     const ac = new AbortController();
     const timer = window.setTimeout(() => {
       setLoading(true);
       setError(null);
       void (async () => {
+        const timeout = window.setTimeout(() => ac.abort(), 25_000);
         try {
           const res = await fetch("/api/shipping/quote", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               cep: cepDigits,
-              items: cartLinesToWeightInput(lines),
+              items: weightItems,
             }),
             signal: ac.signal,
           });
           const data = (await res.json()) as ShippingQuotePayload & {
             error?: string;
           };
+          if (requestSeq.current !== seq) return;
           if (!res.ok) throw new Error(data.error ?? "Falha ao calcular frete");
           setQuote(data);
         } catch (e) {
-          if (ac.signal.aborted) return;
+          if (requestSeq.current !== seq) return;
+          if (e instanceof DOMException && e.name === "AbortError") {
+            setError(
+              "O cálculo demorou demais. Verifique o CEP e tente de novo."
+            );
+            setQuote(null);
+            setSelectedCode(null);
+            return;
+          }
           setQuote(null);
           setError(e instanceof Error ? e.message : "Erro ao calcular frete");
+          setSelectedCode(null);
         } finally {
-          if (!ac.signal.aborted) setLoading(false);
+          window.clearTimeout(timeout);
+          if (requestSeq.current === seq) setLoading(false);
         }
       })();
     }, 500);
@@ -76,7 +185,37 @@ export function CartShippingQuote({ lines, cep, onQuoteChange }: Props) {
       ac.abort();
       window.clearTimeout(timer);
     };
-  }, [cepDigits, itemsKey, lines]);
+  }, [cepDigits, itemsKey, weightItems]);
+
+  const pac = quote && isShippingOption(quote.pac) ? quote.pac : null;
+  const sedex = quote && isShippingOption(quote.sedex) ? quote.sedex : null;
+
+  useEffect(() => {
+    if (!quote) return;
+    const options = [sedex, pac].filter(Boolean) as ShippingQuoteOption[];
+    if (!options.length) {
+      setSelectedCode(null);
+      return;
+    }
+    setSelectedCode((prev) => {
+      if (prev && options.some((o) => o.code === prev)) return prev;
+      return (sedex ?? pac ?? options[0]!).code;
+    });
+  }, [quote, pac, sedex]);
+
+  useEffect(() => {
+    if (!selectedCode) {
+      onSelectionChange?.(null);
+      return;
+    }
+    const opt =
+      pac?.code === selectedCode
+        ? pac
+        : sedex?.code === selectedCode
+          ? sedex
+          : null;
+    onSelectionChange?.(opt);
+  }, [selectedCode, pac, sedex, onSelectionChange]);
 
   if (!cepDigits) {
     return (
@@ -104,9 +243,6 @@ export function CartShippingQuote({ lines, cep, onQuoteChange }: Props) {
 
   if (!quote) return null;
 
-  const pac = isShippingOption(quote.pac) ? quote.pac : null;
-  const sedex = isShippingOption(quote.sedex) ? quote.sedex : null;
-
   if (!pac && !sedex) {
     return (
       <p className="mt-3 text-xs text-stone-500">
@@ -116,37 +252,27 @@ export function CartShippingQuote({ lines, cep, onQuoteChange }: Props) {
   }
 
   return (
-    <div
-      className="mt-3 space-y-2 rounded-xl border border-white/10 bg-zinc-900/50 p-3"
-      aria-live="polite"
-    >
-      <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-        Frete estimado (Correios)
-      </p>
-      <p className="text-[11px] text-stone-500">
-        {quote.totalPieces} peça(s) · {(quote.totalWeightGrams / 1000).toFixed(2)}{" "}
-        kg
-      </p>
-      <ul className="space-y-2">
-        {pac && (
-          <li className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg bg-black/25 px-3 py-2">
-            <span className="font-semibold text-stone-100">PAC</span>
-            <span className="text-sm text-emerald-300">
-              {pac.priceFormatted} · {pac.deliveryLabel}
-            </span>
-          </li>
-        )}
-        {sedex && (
-          <li className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg bg-black/25 px-3 py-2">
-            <span className="font-semibold text-stone-100">SEDEX</span>
-            <span className="text-sm text-emerald-300">
-              {sedex.priceFormatted} · {sedex.deliveryLabel}
-            </span>
-          </li>
-        )}
-      </ul>
+    <div className="mt-3 space-y-2" aria-live="polite" role="radiogroup">
+      {sedex && (
+        <ShippingOptionCard
+          option={sedex}
+          selected={selectedCode === sedex.code}
+          onSelect={() => setSelectedCode(sedex.code)}
+        />
+      )}
+      {pac && (
+        <ShippingOptionCard
+          option={pac}
+          selected={selectedCode === pac.code}
+          onSelect={() => setSelectedCode(pac.code)}
+        />
+      )}
       <p className="text-[10px] text-stone-600">
-        Valores aproximados (balcão Correios). O vendedor confirma no WhatsApp.
+        {quote.provider === "superfrete"
+          ? "Valores via SuperFrete (Correios). O vendedor confirma no WhatsApp."
+          : quote.provider === "melhorenvio"
+            ? "Valores via Melhor Envio (Correios). O vendedor confirma no WhatsApp."
+            : "Valores aproximados. O vendedor confirma no WhatsApp."}
       </p>
     </div>
   );

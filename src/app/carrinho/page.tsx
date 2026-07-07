@@ -12,7 +12,7 @@ import { WHATSAPP_SELLERS } from "@/lib/sellers";
 import { normalizeCheckoutWaDigits } from "@/lib/abandoned-checkout";
 import { buildOrderWhatsAppText, waMeUrl } from "@/lib/whatsapp";
 import { CartShippingQuote } from "@/components/cart-shipping-quote";
-import type { ShippingQuotePayload } from "@/lib/shipping-quote-types";
+import type { ShippingQuotePayload, ShippingQuoteOption } from "@/lib/shipping-quote-types";
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
 
@@ -105,6 +105,8 @@ export default function CarrinhoPage() {
   const [shippingQuote, setShippingQuote] = useState<ShippingQuotePayload | null>(
     null
   );
+  const [selectedShipping, setSelectedShipping] =
+    useState<ShippingQuoteOption | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
@@ -289,6 +291,7 @@ export default function CarrinhoPage() {
         customerCep: cep,
         customerName: trimmedName,
         shippingQuote,
+        selectedShipping,
         orderDisplayNumber:
           typeof data.orderDisplayNumber === "number"
             ? data.orderDisplayNumber
@@ -306,6 +309,7 @@ export default function CarrinhoPage() {
       setCustomerWhatsApp("+55 ");
       setCep("");
       setShippingQuote(null);
+      setSelectedShipping(null);
       setSellerModalOpen(false);
       window.location.assign(url);
     } catch (e) {
@@ -664,6 +668,7 @@ export default function CarrinhoPage() {
               lines={lines}
               cep={cep}
               onQuoteChange={setShippingQuote}
+              onSelectionChange={setSelectedShipping}
             />
           </div>
 
