@@ -11,6 +11,8 @@ import type { WhatsAppSeller } from "@/lib/sellers";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
 import { normalizeCheckoutWaDigits } from "@/lib/abandoned-checkout";
 import { buildOrderWhatsAppText, waMeUrl } from "@/lib/whatsapp";
+import { CartShippingQuote } from "@/components/cart-shipping-quote";
+import type { ShippingQuotePayload } from "@/lib/shipping-quote-types";
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
 
@@ -100,6 +102,9 @@ export default function CarrinhoPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerWhatsApp, setCustomerWhatsApp] = useState("+55 ");
   const [cep, setCep] = useState("");
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuotePayload | null>(
+    null
+  );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
@@ -283,6 +288,7 @@ export default function CarrinhoPage() {
         receiptUrl: receiptUrl || undefined,
         customerCep: cep,
         customerName: trimmedName,
+        shippingQuote,
         orderDisplayNumber:
           typeof data.orderDisplayNumber === "number"
             ? data.orderDisplayNumber
@@ -299,6 +305,7 @@ export default function CarrinhoPage() {
       setCustomerName("");
       setCustomerWhatsApp("+55 ");
       setCep("");
+      setShippingQuote(null);
       setSellerModalOpen(false);
       window.location.assign(url);
     } catch (e) {
@@ -640,7 +647,7 @@ export default function CarrinhoPage() {
               CEP para frete
             </label>
             <p className="mt-0.5 text-xs text-stone-500">
-              O vendedor usa o CEP para calcular o envio e responder no WhatsApp.
+              Calculamos PAC e SEDEX automaticamente com o peso das categorias.
             </p>
             <input
               id="checkout-cep"
@@ -652,6 +659,11 @@ export default function CarrinhoPage() {
               maxLength={9}
               className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm tabular-nums text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
               placeholder="00000-000"
+            />
+            <CartShippingQuote
+              lines={lines}
+              cep={cep}
+              onQuoteChange={setShippingQuote}
             />
           </div>
 

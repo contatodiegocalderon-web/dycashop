@@ -11,6 +11,7 @@ import type { WholesaleTier } from "@/lib/category-showcase";
 type CostRow = {
   category_label: string;
   cost_per_piece: number;
+  weight_grams_per_piece: number;
 };
 
 type ShowcaseRow = {
@@ -73,6 +74,7 @@ export default function AdminCategoriasPage() {
 
   const [categories, setCategories] = useState<string[]>([]);
   const [costEdits, setCostEdits] = useState<Record<string, string>>({});
+  const [weightEdits, setWeightEdits] = useState<Record<string, string>>({});
   const [videoEdits, setVideoEdits] = useState<Record<string, string>>({});
   const [posterEdits, setPosterEdits] = useState<Record<string, string>>({});
   const [tiersEdits, setTiersEdits] = useState<Record<string, string>>({});
@@ -125,6 +127,7 @@ export default function AdminCategoriasPage() {
       const sortedLabels = sortCategoryLabelsForCatalog(allLabels, orderVals);
 
       const costMap: Record<string, string> = {};
+      const weightMap: Record<string, string> = {};
       const videoMap: Record<string, string> = {};
       const posterMap: Record<string, string> = {};
       const tiersMap: Record<string, string> = {};
@@ -132,8 +135,12 @@ export default function AdminCategoriasPage() {
       const catCoverMap: Record<string, string> = {};
       for (const label of sortedLabels) {
         const cost = costRows.find((r) => r.category_label === label)?.cost_per_piece ?? 0;
+        const weight =
+          costRows.find((r) => r.category_label === label)?.weight_grams_per_piece ??
+          250;
         const showcase = showcaseRowsParsed.find((r) => r.category_label === label);
         costMap[label] = String(cost);
+        weightMap[label] = String(weight);
         videoMap[label] = showcase?.video_url ?? "";
         posterMap[label] = showcase?.video_poster_url ?? "";
         tiersMap[label] = tiersToText(showcase?.wholesale_tiers ?? []);
@@ -143,6 +150,7 @@ export default function AdminCategoriasPage() {
 
       setCategories(sortedLabels);
       setCostEdits(costMap);
+      setWeightEdits(weightMap);
       setVideoEdits(videoMap);
       setPosterEdits(posterMap);
       setTiersEdits(tiersMap);
@@ -168,6 +176,9 @@ export default function AdminCategoriasPage() {
       const costEntries = categories.map((category_label) => ({
         category_label,
         cost_per_piece: Number(String(costEdits[category_label] ?? "0").replace(",", ".")),
+        weight_grams_per_piece: Number(
+          String(weightEdits[category_label] ?? "250").replace(",", ".")
+        ),
       }));
       const showcaseEntries = categories.map((category_label) => ({
         category_label,
@@ -403,7 +414,7 @@ export default function AdminCategoriasPage() {
                   )}
                 </div>
 
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
                   <label className="text-sm text-stone-700">
                     Custo por peça (R$)
                     <input
@@ -415,6 +426,20 @@ export default function AdminCategoriasPage() {
                         setCostEdits((prev) => ({ ...prev, [label]: e.target.value }))
                       }
                       className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 disabled:bg-stone-100"
+                    />
+                  </label>
+                  <label className="text-sm text-stone-700">
+                    Peso por peça (gramas)
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      disabled={!isOwner}
+                      value={weightEdits[label] ?? ""}
+                      onChange={(e) =>
+                        setWeightEdits((prev) => ({ ...prev, [label]: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 disabled:bg-stone-100"
+                      placeholder="Ex.: 200 camiseta, 350 bermuda"
                     />
                   </label>
                   <label className="text-sm text-stone-700">

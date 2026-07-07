@@ -86,6 +86,7 @@ create table if not exists public.order_items (
 create table if not exists public.category_cost_defaults (
   category_label text primary key,
   cost_per_piece numeric(12,2) not null default 0,
+  weight_grams_per_piece integer not null default 250,
   updated_at timestamptz not null default now()
 );
 
