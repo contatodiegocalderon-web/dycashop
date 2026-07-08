@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CartLine } from "@/types";
 import {
@@ -21,24 +22,13 @@ type Props = {
 
 function CorreiosLogo({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 32 32"
-      width={28}
+    <Image
+      src="/correios-logo.png"
+      alt="Correios"
+      width={72}
       height={28}
-      className={className}
-      aria-hidden
-    >
-      <rect width="32" height="32" rx="6" fill="#FFCC00" />
-      <path
-        fill="#00416B"
-        d="M6 22 L16 8 L26 22 Z"
-        opacity="0.9"
-      />
-      <path
-        fill="#0066A1"
-        d="M8 20 L16 10 L24 20 Z"
-      />
-    </svg>
+      className={`h-7 w-auto object-contain object-left ${className ?? ""}`}
+    />
   );
 }
 
