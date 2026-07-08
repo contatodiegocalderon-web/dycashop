@@ -12,6 +12,7 @@ import {
   type ShippingQuoteOption,
   type ShippingQuotePayload,
 } from "@/lib/shipping-quote-types";
+import { formatCepCityState } from "@/lib/cep-lookup";
 
 type Props = {
   lines: CartLine[];
@@ -180,6 +181,14 @@ export function CartShippingQuote({
   const pac = quote && isShippingOption(quote.pac) ? quote.pac : null;
   const sedex = quote && isShippingOption(quote.sedex) ? quote.sedex : null;
 
+  const destinationLabel =
+    quote?.destinationCity && quote?.destinationState
+      ? formatCepCityState({
+          city: quote.destinationCity,
+          state: quote.destinationState,
+        })
+      : null;
+
   useEffect(() => {
     if (!quote) return;
     const options = [sedex, pac].filter(Boolean) as ShippingQuoteOption[];
@@ -257,13 +266,14 @@ export function CartShippingQuote({
           onSelect={() => setSelectedCode(pac.code)}
         />
       )}
-      <p className="text-[10px] text-stone-600">
-        {quote.provider === "superfrete"
-          ? "Valores via SuperFrete (Correios). O vendedor confirma no WhatsApp."
-          : quote.provider === "melhorenvio"
-            ? "Valores via Melhor Envio (Correios). O vendedor confirma no WhatsApp."
-            : "Valores aproximados. O vendedor confirma no WhatsApp."}
-      </p>
+      <div className="space-y-0.5 pt-0.5">
+        {destinationLabel ? (
+          <p className="text-xs font-semibold text-stone-400">{destinationLabel}</p>
+        ) : null}
+        <p className="text-[10px] leading-snug text-stone-600">
+          Os demais dados para entrega serão solicitados pelo vendedor no WhatsApp.
+        </p>
+      </div>
     </div>
   );
 }

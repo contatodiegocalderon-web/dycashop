@@ -8,6 +8,7 @@ import {
   totalCartWeightGrams,
   type CategoryWeightMap,
 } from "@/lib/cart-shipping-weight";
+import { lookupCepAddress } from "@/lib/cep-lookup";
 import {
   formatDeliveryDaysRange,
   formatFreightMoneyBrl,
@@ -143,16 +144,21 @@ export async function POST(request: NextRequest) {
     const totalPieces = normalizedItems.reduce((s, it) => s + it.quantity, 0);
     const weightKg = gramsToCorreiosKg(totalGrams);
 
-    const quote = await fetchPacSedexQuote({
-      originCep,
-      destinationCep: destCep,
-      weightKg,
-      totalPieces,
-    });
+    const [quote, cepAddress] = await Promise.all([
+      fetchPacSedexQuote({
+        originCep,
+        destinationCep: destCep,
+        weightKg,
+        totalPieces,
+      }),
+      lookupCepAddress(destCep),
+    ]);
 
     return NextResponse.json(
       {
         destinationCep: destCep,
+        destinationCity: cepAddress?.city ?? null,
+        destinationState: cepAddress?.state ?? null,
         totalPieces,
         totalWeightGrams: totalGrams,
         totalWeightKg: weightKg,

@@ -11,6 +11,8 @@ export type ShippingQuoteOption = {
 
 export type ShippingQuotePayload = {
   destinationCep: string;
+  destinationCity?: string | null;
+  destinationState?: string | null;
   totalPieces: number;
   totalWeightGrams: number;
   totalWeightKg: number;
