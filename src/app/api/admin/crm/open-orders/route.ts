@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
 import { resolvePrincipal } from "@/lib/access";
-import { fetchCrmProfilesByWhatsapp } from "@/lib/admin-orders-query";
 import {
-  CRM_ABANDONED_FOLLOW_UP_MAX,
+  fetchCrmProfilesByWhatsapp,
+} from "@/lib/admin-orders-query";
+import {
   matchesProfileFilter,
   sortLeadsRepeatBuyersFirst,
   totalPiecesFromItems,
@@ -12,13 +13,14 @@ import {
   type CrmProfileFilter,
 } from "@/lib/crm-funnel";
 import { applyPendingOrdersSellerScope } from "@/lib/crm-pending-seller-filter";
+import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
 import { normalizeWhatsappDigits, whatsappMatchesLookup, buildWhatsappLookup, lookupWhatsappMapValue, expandWhatsappQueryKeys } from "@/lib/whatsapp-normalize";
 import type { BusinessProfile } from "@/lib/client-follow-up";
 import type { OrderItemRow } from "@/types";
 
 export const runtime = "nodejs";
 
-export type AbandonedOrderRow = {
+export type OpenOrderRow = {
   order_id: string;
   customer_whatsapp: string;
   customer_name: string | null;
@@ -27,31 +29,12 @@ export type AbandonedOrderRow = {
   order_items: OrderItemRow[];
   total_pieces: number;
   volume_tier: "atacado" | "varejo";
-  whatsapp_click_count: number;
-  follow_up_count: number;
-  follow_up_remaining: number;
-  business_profile: BusinessProfile | null;
   has_paid_before: boolean;
+  business_profile: BusinessProfile | null;
 };
 
-async function loadHiddenWa(admin: ReturnType<typeof createAdminClient>) {
-  const { data, error } = await admin
-    .from("crm_hidden_contacts")
-    .select("whatsapp_digits");
-  if (error) {
-    const missing = /does not exist|schema cache|relation/i.test(error.message);
-    if (missing) return new Set<string>();
-    throw new Error(error.message);
-  }
-  return new Set(
-    (data ?? []).map((r: { whatsapp_digits: string }) =>
-      normalizeWhatsappDigits(r.whatsapp_digits)
-    )
-  );
-}
-
 /**
- * Pedidos pendentes ou cancelados de clientes que ainda não têm nenhum pedido PAGO.
+ * GET /api/admin/crm/open-orders — pedidos PENDENTE_PAGAMENTO (mesma base da aba Pedidos).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -82,11 +65,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: paidErr.message }, { status: 500 });
     }
 
-    const registeredWa = buildWhatsappLookup(
+    const paidWa = buildWhatsappLookup(
       (paidRows ?? []) as Array<{ customer_whatsapp: string }>
     );
-
-    const hiddenSet = await loadHiddenWa(admin);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let q: any = admin
@@ -103,22 +84,23 @@ export async function GET(request: NextRequest) {
           order_id,
           product_id,
           quantity,
-          snapshot_image_url,
-          snapshot_original_name,
+          snapshot_category,
           snapshot_brand,
           snapshot_color,
           snapshot_size,
+          snapshot_image_url,
           snapshot_drive_file_id,
-          snapshot_category,
+          snapshot_original_name,
           created_at
         )
       `
       )
-      .in("status", ["PENDENTE_PAGAMENTO", "CANCELADO"])
+      .eq("status", "PENDENTE_PAGAMENTO")
       .not("customer_whatsapp", "is", null)
       .order("created_at", { ascending: false })
       .limit(500);
 
+    q = excludeCrmRemarketingFromOrdersQuery(q);
     q = await applyPendingOrdersSellerScope(admin, q, {
       principal,
       rawSellerScope,
@@ -130,9 +112,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: oErr.message }, { status: 500 });
     }
 
-    const carts: AbandonedOrderRow[] = [];
-    const waForMeta = new Set<string>();
-    const waForProfile = new Set<string>();
+    const waSet = new Set<string>();
+    for (const raw of orders ?? []) {
+      const wa = normalizeWhatsappDigits(
+        (raw as { customer_whatsapp: string }).customer_whatsapp
+      );
+      if (wa.length >= 10) waSet.add(wa);
+    }
+
+    const profileMap = await fetchCrmProfilesByWhatsapp(
+      admin,
+      expandWhatsappQueryKeys(Array.from(waSet))
+    );
+
+    const rows: OpenOrderRow[] = [];
 
     for (const raw of orders ?? []) {
       const o = raw as {
@@ -145,18 +138,22 @@ export async function GET(request: NextRequest) {
       };
 
       const wa = normalizeWhatsappDigits(o.customer_whatsapp);
-      if (wa.length < 10 || hiddenSet.has(wa)) continue;
+      if (wa.length < 10) continue;
 
-      const has_paid_before = whatsappMatchesLookup(wa, registeredWa);
+      const business_profile =
+        (lookupWhatsappMapValue(wa, profileMap)?.business_profile as
+          | BusinessProfile
+          | null) ?? null;
 
-      waForProfile.add(wa);
+      if (!matchesProfileFilter(business_profile, profileFilter)) continue;
 
       const items = o.order_items ?? [];
       const total_pieces = totalPiecesFromItems(items);
       const volume_tier = volumeTierFromPieces(total_pieces);
 
-      waForMeta.add(wa);
-      carts.push({
+      const hasPaidHistory = whatsappMatchesLookup(wa, paidWa);
+
+      rows.push({
         order_id: o.id,
         customer_whatsapp: wa,
         customer_name: o.customer_name,
@@ -165,67 +162,15 @@ export async function GET(request: NextRequest) {
         order_items: items,
         total_pieces,
         volume_tier,
-        whatsapp_click_count: 0,
-        follow_up_count: 0,
-        follow_up_remaining: CRM_ABANDONED_FOLLOW_UP_MAX,
-        business_profile: null,
-        has_paid_before,
+        has_paid_before: hasPaidHistory || !!business_profile,
+        business_profile,
       });
     }
 
-    const profileMap = await fetchCrmProfilesByWhatsapp(
-      admin,
-      expandWhatsappQueryKeys(Array.from(waForProfile))
-    );
+    const sorted = sortLeadsRepeatBuyersFirst(rows);
 
-    const filtered: AbandonedOrderRow[] = [];
-    for (const cart of carts) {
-      const business_profile =
-        (lookupWhatsappMapValue(cart.customer_whatsapp, profileMap)
-          ?.business_profile as BusinessProfile | null) ?? null;
-      cart.business_profile = business_profile;
-      if (!matchesProfileFilter(business_profile, profileFilter)) continue;
-      cart.has_paid_before = cart.has_paid_before || !!business_profile;
-      filtered.push(cart);
-    }
-
-    const clickMap = new Map<string, number>();
-    const followMap = new Map<string, number>();
-
-    if (waForMeta.size > 0) {
-      const waList = Array.from(waForMeta);
-      const { data: clickRows } = await admin
-        .from("crm_abandoned_whatsapp_clicks")
-        .select("whatsapp_digits, click_count")
-        .in("whatsapp_digits", waList);
-      for (const row of clickRows ?? []) {
-        const r = row as { whatsapp_digits: string; click_count: number };
-        clickMap.set(r.whatsapp_digits, Number(r.click_count) || 0);
-      }
-
-      const { data: followRows } = await admin
-        .from("crm_abandoned_follow_ups")
-        .select("whatsapp_digits, follow_up_count")
-        .in("whatsapp_digits", waList);
-      for (const row of followRows ?? []) {
-        const r = row as { whatsapp_digits: string; follow_up_count: number };
-        followMap.set(r.whatsapp_digits, Number(r.follow_up_count) || 0);
-      }
-    }
-
-    for (const cart of filtered) {
-      cart.whatsapp_click_count = clickMap.get(cart.customer_whatsapp) ?? 0;
-      cart.follow_up_count = followMap.get(cart.customer_whatsapp) ?? 0;
-      cart.follow_up_remaining = Math.max(
-        0,
-        CRM_ABANDONED_FOLLOW_UP_MAX - cart.follow_up_count
-      );
-    }
-
-    const sorted = sortLeadsRepeatBuyersFirst(filtered);
-
-    const atacado = sorted.filter((c) => c.volume_tier === "atacado").length;
-    const varejo = sorted.filter((c) => c.volume_tier === "varejo").length;
+    const atacado = sorted.filter((r) => r.volume_tier === "atacado").length;
+    const varejo = sorted.filter((r) => r.volume_tier === "varejo").length;
 
     return NextResponse.json({
       orders: sorted,

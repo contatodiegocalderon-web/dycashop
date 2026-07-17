@@ -11,6 +11,7 @@ import {
   type DriveRetryPayload,
 } from "@/lib/order-drive-retry";
 import { flagPendingOrdersAfterConfirm } from "@/lib/order-stock-conflict";
+import { upsertAutoBusinessProfileOnConfirm } from "@/lib/crm-auto-profile";
 import type { CustomerSegment } from "@/types";
 
 export const runtime = "nodejs";
@@ -411,6 +412,16 @@ export async function POST(
       }
       await releaseLock();
       return NextResponse.json({ error: fErr.message }, { status: 500 });
+    }
+
+    try {
+      await upsertAutoBusinessProfileOnConfirm(
+        admin,
+        bodyParsed.customerWhatsApp,
+        computedSaleAmount
+      );
+    } catch (profileErr) {
+      console.error("[confirm] auto profile:", profileErr);
     }
 
     const stockAfterByProductId = new Map<string, number>();

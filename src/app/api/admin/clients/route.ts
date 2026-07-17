@@ -13,6 +13,7 @@ import {
   fetchCrmProfilesByWhatsapp,
   type CrmPaidOrdersListQuery,
 } from "@/lib/admin-orders-query";
+import { classifyBusinessProfileFromPaidOrders } from "@/lib/crm-auto-profile";
 import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 
 export const runtime = "nodejs";
@@ -286,6 +287,22 @@ export async function GET(request: NextRequest) {
           recency_status: clientRecencyStatus(lastAt),
         };
       });
+
+    if (recencyFilter && recencyFilter !== "all") {
+      const paidRowsForProfile = orderRows.map((o) => ({
+        customer_whatsapp: o.customer_whatsapp,
+        sale_amount: o.sale_amount,
+      }));
+      for (const client of clients) {
+        if (client.business_profile) continue;
+        const profile = await classifyBusinessProfileFromPaidOrders(
+          admin,
+          client.customer_whatsapp,
+          { paidRows: paidRowsForProfile }
+        );
+        if (profile) client.business_profile = profile;
+      }
+    }
 
     if (recencyFilter && recencyFilter !== "all") {
       clients = clients.filter((c) => c.recency_status === recencyFilter);

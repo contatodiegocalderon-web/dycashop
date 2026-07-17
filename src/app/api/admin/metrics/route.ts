@@ -167,7 +167,18 @@ export async function GET(request: NextRequest) {
         filterOpts
       ) as unknown as OrdersIdListQuery;
 
-    let orderIds = await fetchAllOrderIdsPaginated(buildFilteredIdQuery);
+    const { count: headOrderCount, error: countErr } = await applyMetricsOrderFilters(
+      admin.from("orders").select("id", { count: "exact", head: true }),
+      filterOpts
+    );
+    if (countErr) {
+      return NextResponse.json({ error: countErr.message }, { status: 500 });
+    }
+    const expectedOrderCount = headOrderCount ?? 0;
+
+    let orderIds = await fetchAllOrderIdsPaginated(buildFilteredIdQuery, {
+      expectedCount: expectedOrderCount > 0 ? expectedOrderCount : undefined,
+    });
     let orderRows = await fetchPaidOrdersByIds(
       admin,
       orderIds,
@@ -205,16 +216,13 @@ export async function GET(request: NextRequest) {
 
     orderIds = orderRows.map((o) => o.id);
 
-    const { count: headOrderCount, error: countErr } = await applyMetricsOrderFilters(
-      admin.from("orders").select("id", { count: "exact", head: true }),
-      filterOpts
-    );
-    if (countErr) {
-      return NextResponse.json({ error: countErr.message }, { status: 500 });
-    }
-    const expectedOrderCount = headOrderCount ?? orderIds.length;
-    if (orderIds.length < expectedOrderCount) {
-      orderIds = await fetchAllOrderIdsPaginated(buildFilteredIdQuery);
+    if (
+      expectedOrderCount > 0 &&
+      (orderIds.length < expectedOrderCount || orderRows.length < expectedOrderCount)
+    ) {
+      orderIds = await fetchAllOrderIdsPaginated(buildFilteredIdQuery, {
+        expectedCount: expectedOrderCount,
+      });
       orderRows = await fetchPaidOrdersByIds(
         admin,
         orderIds,

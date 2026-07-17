@@ -56,26 +56,56 @@ export type OrdersIdListQuery = {
     from: number,
     to: number
   ): Promise<{ data: { id: string }[] | null; error: { message: string } | null }>;
+  limit(count: number): OrdersIdCursorQuery;
 };
 
-/** Pagina só `id` (ordem estável por PK — evita buracos com vários `.order()` no PostgREST). */
+type OrdersIdCursorQuery = {
+  gt(column: string, value: string): OrdersIdCursorQuery;
+  then?: PromiseLike<{ data: { id: string }[] | null; error: { message: string } | null }>["then"];
+};
+
+async function runIdCursorQuery(
+  q: OrdersIdCursorQuery
+): Promise<{ data: { id: string }[] | null; error: { message: string } | null }> {
+  return q as unknown as Promise<{
+    data: { id: string }[] | null;
+    error: { message: string } | null;
+  }>;
+}
+
+/**
+ * Pagina só `id` (ordem estável por PK).
+ * Usa cursor (`id` > último) para não parar cedo quando o PostgREST limita linhas por request.
+ */
 export async function fetchAllOrderIdsPaginated(
-  buildQuery: () => OrdersIdListQuery
+  buildQuery: () => OrdersIdListQuery,
+  options?: { expectedCount?: number }
 ): Promise<string[]> {
   const ids: string[] = [];
-  let offset = 0;
+  const seen = new Set<string>();
+  let lastId: string | null = null;
+  const BATCH = 500;
+
   for (;;) {
-    const { data, error } = await buildQuery()
-      .order("id", { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
+    let q = buildQuery().order("id", { ascending: true }).limit(BATCH);
+    if (lastId) q = q.gt("id", lastId);
+    const { data, error } = await runIdCursorQuery(q);
     if (error) throw new Error(error.message);
     const chunk = (data ?? []) as { id: string }[];
+    if (chunk.length === 0) break;
+
     for (const row of chunk) {
-      if (row.id) ids.push(row.id);
+      if (!row.id || seen.has(row.id)) continue;
+      seen.add(row.id);
+      ids.push(row.id);
     }
-    if (chunk.length < PAGE_SIZE) break;
-    offset += chunk.length;
+
+    lastId = chunk[chunk.length - 1]?.id ?? lastId;
+    const expected = options?.expectedCount;
+    if (expected != null && ids.length >= expected) break;
+    if (chunk.length < BATCH) break;
   }
+
   return ids;
 }
 
