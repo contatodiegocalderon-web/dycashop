@@ -12,7 +12,20 @@ import {
   type CrmProfileFilter,
 } from "@/lib/crm-funnel";
 import { applyPendingOrdersSellerScope } from "@/lib/crm-pending-seller-filter";
-import { normalizeWhatsappDigits, whatsappMatchesLookup, buildWhatsappLookup, lookupWhatsappMapValue, expandWhatsappQueryKeys } from "@/lib/whatsapp-normalize";
+import {
+  cancelledOrderQualifiesForAbandoned,
+  hasOpenOrderFlag,
+  loadLastPaidAtByWhatsapp,
+  loadOpenOrderWhatsappLookup,
+} from "@/lib/crm-abandoned-query";
+import {
+  normalizeWhatsappDigits,
+  whatsappMatchesLookup,
+  buildWhatsappLookup,
+  lookupWhatsappMapValue,
+  expandWhatsappQueryKeys,
+  whatsappDedupeKeys,
+} from "@/lib/whatsapp-normalize";
 import type { BusinessProfile } from "@/lib/client-follow-up";
 import type { OrderItemRow } from "@/types";
 
@@ -32,6 +45,19 @@ export type AbandonedOrderRow = {
   follow_up_remaining: number;
   business_profile: BusinessProfile | null;
   has_paid_before: boolean;
+  /** Pedidos cancelados válidos após última compra (ou sem compra). */
+  cancelled_order_count: number;
+  /** Cliente também tem pedido PENDENTE na etapa 2. */
+  has_open_order: boolean;
+};
+
+type RawCancelledOrder = {
+  id: string;
+  customer_whatsapp: string;
+  customer_name: string | null;
+  requested_seller_name: string | null;
+  created_at: string;
+  order_items?: OrderItemRow[] | null;
 };
 
 async function loadHiddenWa(admin: ReturnType<typeof createAdminClient>) {
@@ -51,7 +77,8 @@ async function loadHiddenWa(admin: ReturnType<typeof createAdminClient>) {
 }
 
 /**
- * Pedidos pendentes ou cancelados de clientes que ainda não têm nenhum pedido PAGO.
+ * Pedidos cancelados no sistema — um card por lead.
+ * Só entram cancelamentos após a última compra confirmada; histórico zera ao confirmar.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -87,6 +114,8 @@ export async function GET(request: NextRequest) {
     );
 
     const hiddenSet = await loadHiddenWa(admin);
+    const openOrderLookup = await loadOpenOrderWhatsappLookup(admin);
+    const lastPaidAtByWa = await loadLastPaidAtByWhatsapp(admin);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let q: any = admin
@@ -114,10 +143,10 @@ export async function GET(request: NextRequest) {
         )
       `
       )
-      .in("status", ["PENDENTE_PAGAMENTO", "CANCELADO"])
+      .eq("status", "CANCELADO")
       .not("customer_whatsapp", "is", null)
       .order("created_at", { ascending: false })
-      .limit(500);
+      .limit(2000);
 
     q = await applyPendingOrdersSellerScope(admin, q, {
       principal,
@@ -130,77 +159,93 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: oErr.message }, { status: 500 });
     }
 
-    const carts: AbandonedOrderRow[] = [];
-    const waForMeta = new Set<string>();
-    const waForProfile = new Set<string>();
+    const grouped = new Map<
+      string,
+      { latest: RawCancelledOrder; count: number }
+    >();
 
     for (const raw of orders ?? []) {
-      const o = raw as {
-        id: string;
-        customer_whatsapp: string;
-        customer_name: string | null;
-        requested_seller_name: string | null;
-        created_at: string;
-        order_items?: OrderItemRow[] | null;
-      };
-
+      const o = raw as RawCancelledOrder;
       const wa = normalizeWhatsappDigits(o.customer_whatsapp);
       if (wa.length < 10 || hiddenSet.has(wa)) continue;
+      if (
+        !cancelledOrderQualifiesForAbandoned(
+          o.created_at,
+          wa,
+          lastPaidAtByWa
+        )
+      ) {
+        continue;
+      }
 
-      const has_paid_before = whatsappMatchesLookup(wa, registeredWa);
+      const cur = grouped.get(wa);
+      if (!cur) {
+        grouped.set(wa, { latest: o, count: 1 });
+      } else {
+        cur.count += 1;
+        if (o.created_at > cur.latest.created_at) {
+          cur.latest = o;
+        }
+      }
+    }
 
-      waForProfile.add(wa);
+    const waForProfile = Array.from(grouped.keys());
+    const profileMap = await fetchCrmProfilesByWhatsapp(
+      admin,
+      expandWhatsappQueryKeys(waForProfile)
+    );
 
-      const items = o.order_items ?? [];
+    const carts: AbandonedOrderRow[] = [];
+    const waForMeta = new Set<string>();
+
+    for (const [wa, { latest, count }] of Array.from(grouped.entries())) {
+      const business_profile =
+        (lookupWhatsappMapValue(wa, profileMap)?.business_profile as
+          | BusinessProfile
+          | null) ?? null;
+
+      if (!matchesProfileFilter(business_profile, profileFilter)) continue;
+
+      const items = latest.order_items ?? [];
       const total_pieces = totalPiecesFromItems(items);
-      const volume_tier = volumeTierFromPieces(total_pieces);
+      const has_paid_before =
+        whatsappMatchesLookup(wa, registeredWa) || !!business_profile;
 
       waForMeta.add(wa);
       carts.push({
-        order_id: o.id,
+        order_id: latest.id,
         customer_whatsapp: wa,
-        customer_name: o.customer_name,
-        requested_seller_name: o.requested_seller_name,
-        created_at: o.created_at,
+        customer_name: latest.customer_name,
+        requested_seller_name: latest.requested_seller_name,
+        created_at: latest.created_at,
         order_items: items,
         total_pieces,
-        volume_tier,
+        volume_tier: volumeTierFromPieces(total_pieces),
         whatsapp_click_count: 0,
         follow_up_count: 0,
         follow_up_remaining: CRM_ABANDONED_FOLLOW_UP_MAX,
-        business_profile: null,
+        business_profile,
         has_paid_before,
+        cancelled_order_count: count,
+        has_open_order: hasOpenOrderFlag(wa, openOrderLookup),
       });
-    }
-
-    const profileMap = await fetchCrmProfilesByWhatsapp(
-      admin,
-      expandWhatsappQueryKeys(Array.from(waForProfile))
-    );
-
-    const filtered: AbandonedOrderRow[] = [];
-    for (const cart of carts) {
-      const business_profile =
-        (lookupWhatsappMapValue(cart.customer_whatsapp, profileMap)
-          ?.business_profile as BusinessProfile | null) ?? null;
-      cart.business_profile = business_profile;
-      if (!matchesProfileFilter(business_profile, profileFilter)) continue;
-      cart.has_paid_before = cart.has_paid_before || !!business_profile;
-      filtered.push(cart);
     }
 
     const clickMap = new Map<string, number>();
     const followMap = new Map<string, number>();
 
     if (waForMeta.size > 0) {
-      const waList = Array.from(waForMeta);
+      const waList = expandWhatsappQueryKeys(Array.from(waForMeta));
       const { data: clickRows } = await admin
         .from("crm_abandoned_whatsapp_clicks")
         .select("whatsapp_digits, click_count")
         .in("whatsapp_digits", waList);
       for (const row of clickRows ?? []) {
         const r = row as { whatsapp_digits: string; click_count: number };
-        clickMap.set(r.whatsapp_digits, Number(r.click_count) || 0);
+        const count = Number(r.click_count) || 0;
+        for (const key of whatsappDedupeKeys(r.whatsapp_digits)) {
+          clickMap.set(key, count);
+        }
       }
 
       const { data: followRows } = await admin
@@ -209,11 +254,14 @@ export async function GET(request: NextRequest) {
         .in("whatsapp_digits", waList);
       for (const row of followRows ?? []) {
         const r = row as { whatsapp_digits: string; follow_up_count: number };
-        followMap.set(r.whatsapp_digits, Number(r.follow_up_count) || 0);
+        const count = Number(r.follow_up_count) || 0;
+        for (const key of whatsappDedupeKeys(r.whatsapp_digits)) {
+          followMap.set(key, count);
+        }
       }
     }
 
-    for (const cart of filtered) {
+    for (const cart of carts) {
       cart.whatsapp_click_count = clickMap.get(cart.customer_whatsapp) ?? 0;
       cart.follow_up_count = followMap.get(cart.customer_whatsapp) ?? 0;
       cart.follow_up_remaining = Math.max(
@@ -222,7 +270,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const sorted = sortLeadsRepeatBuyersFirst(filtered);
+    const sorted = sortLeadsRepeatBuyersFirst(carts);
 
     const atacado = sorted.filter((c) => c.volume_tier === "atacado").length;
     const varejo = sorted.filter((c) => c.volume_tier === "varejo").length;

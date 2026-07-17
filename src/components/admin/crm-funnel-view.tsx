@@ -6,6 +6,14 @@ import type { AbandonedOrderRow } from "@/app/api/admin/abandoned-carts/route";
 import type { OpenOrderRow } from "@/app/api/admin/crm/open-orders/route";
 import { ClientProfileBadge } from "@/components/client-profile-badge";
 import { ClientsBrazilMapPanel } from "@/components/admin/clients-brazil-map-panel";
+import { CrmBotPanel } from "@/components/admin/crm-bot-panel";
+import {
+  botLeadKey,
+  botLeadsFromMap,
+  toggleBotColumnInMap,
+  toggleBotLeadInMap,
+  type BotSelectedLead,
+} from "@/lib/crm-bot/selection";
 import type { BusinessProfile } from "@/lib/client-follow-up";
 import {
   CRM_ABANDONED_FOLLOW_UP_MAX,
@@ -162,6 +170,10 @@ function PipelineColumn({
   count,
   accentClass,
   children,
+  selectionMode,
+  columnLeads,
+  selectedWa,
+  onToggleColumn,
 }: {
   columnKey: string;
   title: string;
@@ -169,10 +181,19 @@ function PipelineColumn({
   count: number;
   accentClass: string;
   children: React.ReactNode[];
+  selectionMode?: boolean;
+  columnLeads?: BotSelectedLead[];
+  selectedWa?: Set<string>;
+  onToggleColumn?: (leads: BotSelectedLead[]) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const preview = expanded ? children : children.slice(0, CRM_COLUMN_PREVIEW);
   const hidden = Math.max(0, children.length - CRM_COLUMN_PREVIEW);
+  const allColumnSelected =
+    !!selectionMode &&
+    !!columnLeads &&
+    columnLeads.length > 0 &&
+    columnLeads.every((l) => selectedWa?.has(botLeadKey(l.customer_whatsapp)));
 
   return (
     <section
@@ -182,13 +203,26 @@ function PipelineColumn({
       <header
         className={`rounded-t-xl border-b border-stone-200 bg-white px-4 py-3 ${accentClass} border-t-4`}
       >
-        <h3 className="text-sm font-bold text-stone-900">{title}</h3>
-        {subtitle ? (
-          <p className="mt-0.5 text-[11px] text-stone-500">{subtitle}</p>
-        ) : null}
-        <p className="mt-1.5 text-xs font-semibold text-stone-600">
-          {count} {count === 1 ? "lead" : "leads"}
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-stone-900">{title}</h3>
+            {subtitle ? (
+              <p className="mt-0.5 text-[11px] text-stone-500">{subtitle}</p>
+            ) : null}
+            <p className="mt-1.5 text-xs font-semibold text-stone-600">
+              {count} {count === 1 ? "lead" : "leads"}
+            </p>
+          </div>
+          {selectionMode && columnLeads && columnLeads.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => onToggleColumn?.(columnLeads)}
+              className="shrink-0 rounded-lg border border-violet-300 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-900 hover:bg-violet-100"
+            >
+              {allColumnSelected ? "Desmarcar todos" : "Selecionar todos"}
+            </button>
+          ) : null}
+        </div>
       </header>
       <div className="flex min-h-[120px] flex-1 flex-col gap-2 overflow-y-auto p-2">
         {preview.length === 0 ? (
@@ -227,12 +261,26 @@ function PipelineBoard({ children }: { children: React.ReactNode }) {
   );
 }
 
-function VolumePipeline<T extends { volume_tier: CrmVolumeTier }>({
+function VolumePipeline<
+  T extends {
+    volume_tier: CrmVolumeTier;
+    customer_whatsapp: string;
+    customer_name: string | null;
+  },
+>({
   items,
   renderCard,
+  selectionMode,
+  selectedWa,
+  onToggleLead,
+  onToggleColumn,
 }: {
   items: T[];
   renderCard: (item: T) => React.ReactNode;
+  selectionMode?: boolean;
+  selectedWa?: Set<string>;
+  onToggleLead?: (lead: BotSelectedLead) => void;
+  onToggleColumn?: (leads: BotSelectedLead[]) => void;
 }) {
   const tiers: Array<{ tier: CrmVolumeTier; accent: string }> = [
     { tier: "atacado", accent: "border-t-indigo-500" },
@@ -243,6 +291,10 @@ function VolumePipeline<T extends { volume_tier: CrmVolumeTier }>({
     <PipelineBoard>
       {tiers.map(({ tier, accent }) => {
         const list = items.filter((i) => i.volume_tier === tier);
+        const columnLeads: BotSelectedLead[] = list.map((item) => ({
+          customer_whatsapp: item.customer_whatsapp,
+          customer_name: item.customer_name,
+        }));
         return (
           <PipelineColumn
             key={tier}
@@ -250,16 +302,55 @@ function VolumePipeline<T extends { volume_tier: CrmVolumeTier }>({
             title={volumeTierLabel(tier)}
             count={list.length}
             accentClass={accent}
+            selectionMode={selectionMode}
+            columnLeads={columnLeads}
+            selectedWa={selectedWa}
+            onToggleColumn={onToggleColumn}
           >
             {list.map((item) => {
               const rowKey =
                 "order_id" in item && typeof item.order_id === "string"
                   ? item.order_id
-                  : "customer_whatsapp" in item &&
-                      typeof item.customer_whatsapp === "string"
-                    ? item.customer_whatsapp
-                    : JSON.stringify(item);
-              return <div key={rowKey}>{renderCard(item)}</div>;
+                  : item.customer_whatsapp;
+              const lead: BotSelectedLead = {
+                customer_whatsapp: item.customer_whatsapp,
+                customer_name: item.customer_name,
+              };
+              const selected =
+                !!selectedWa?.has(botLeadKey(item.customer_whatsapp));
+              return (
+                <div
+                  key={rowKey}
+                  role={selectionMode ? "button" : undefined}
+                  tabIndex={selectionMode ? 0 : undefined}
+                  onClick={
+                    selectionMode
+                      ? () => onToggleLead?.(lead)
+                      : undefined
+                  }
+                  onKeyDown={
+                    selectionMode
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onToggleLead?.(lead);
+                          }
+                        }
+                      : undefined
+                  }
+                  className={
+                    selectionMode
+                      ? `cursor-pointer rounded-lg transition ${
+                          selected
+                            ? "ring-2 ring-violet-500 ring-offset-1"
+                            : "hover:ring-1 hover:ring-violet-300"
+                        }`
+                      : undefined
+                  }
+                >
+                  {renderCard(item)}
+                </div>
+              );
             })}
           </PipelineColumn>
         );
@@ -271,9 +362,17 @@ function VolumePipeline<T extends { volume_tier: CrmVolumeTier }>({
 function ProfilePipeline({
   clients,
   profileFilter,
+  selectionMode,
+  selectedWa,
+  onToggleLead,
+  onToggleColumn,
 }: {
   clients: CrmClientRow[];
   profileFilter: CrmProfileFilter;
+  selectionMode?: boolean;
+  selectedWa?: Set<string>;
+  onToggleLead?: (lead: BotSelectedLead) => void;
+  onToggleColumn?: (leads: BotSelectedLead[]) => void;
 }) {
   const groups = useMemo(() => {
     const g = {
@@ -314,26 +413,92 @@ function ProfilePipeline({
 
   return (
     <PipelineBoard>
-      {colsToShow.map(({ key, label, accent }) => (
-        <PipelineColumn
-          key={key}
-          columnKey={key}
-          title={label}
-          count={groups[key].length}
-          accentClass={accent}
-        >
-          {groups[key].map((c) => (
-            <ClientCard key={c.customer_whatsapp} client={c} />
-          ))}
-        </PipelineColumn>
-      ))}
+      {colsToShow.map(({ key, label, accent }) => {
+        const columnLeads: BotSelectedLead[] = groups[key].map((c) => ({
+          customer_whatsapp: c.customer_whatsapp,
+          customer_name: c.customer_name,
+        }));
+        return (
+          <PipelineColumn
+            key={key}
+            columnKey={key}
+            title={label}
+            count={groups[key].length}
+            accentClass={accent}
+            selectionMode={selectionMode}
+            columnLeads={columnLeads}
+            selectedWa={selectedWa}
+            onToggleColumn={onToggleColumn}
+          >
+            {groups[key].map((c) => {
+              const lead: BotSelectedLead = {
+                customer_whatsapp: c.customer_whatsapp,
+                customer_name: c.customer_name,
+              };
+              const selected = !!selectedWa?.has(botLeadKey(c.customer_whatsapp));
+              return (
+                <div
+                  key={c.customer_whatsapp}
+                  role={selectionMode ? "button" : undefined}
+                  tabIndex={selectionMode ? 0 : undefined}
+                  onClick={
+                    selectionMode ? () => onToggleLead?.(lead) : undefined
+                  }
+                  onKeyDown={
+                    selectionMode
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onToggleLead?.(lead);
+                          }
+                        }
+                      : undefined
+                  }
+                  className={
+                    selectionMode
+                      ? `cursor-pointer rounded-lg transition ${
+                          selected
+                            ? "ring-2 ring-violet-500 ring-offset-1"
+                            : "hover:ring-1 hover:ring-violet-300"
+                        }`
+                      : undefined
+                  }
+                >
+                  <ClientCard
+                    client={c}
+                    selectionMode={selectionMode}
+                    selected={selected}
+                  />
+                </div>
+              );
+            })}
+          </PipelineColumn>
+        );
+      })}
     </PipelineBoard>
   );
 }
 
-function ClientCard({ client: c }: { client: CrmClientRow }) {
+function ClientCard({
+  client: c,
+  selectionMode,
+  selected,
+}: {
+  client: CrmClientRow;
+  selectionMode?: boolean;
+  selected?: boolean;
+}) {
   return (
-    <article className="rounded-lg border border-stone-200 bg-white p-3 shadow-sm transition hover:shadow-md">
+    <article
+      className={`rounded-lg border bg-white p-3 shadow-sm transition hover:shadow-md ${
+        selected ? "border-violet-400 bg-violet-50/40" : "border-stone-200"
+      }`}
+    >
+      {selectionMode ? (
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-violet-700">
+          {selected ? "✓ Selecionado" : "Clique para selecionar"}
+        </p>
+      ) : null}
       <div className="flex items-start justify-between gap-2">
         <p className="font-semibold text-stone-900">{c.customer_name ?? "—"}</p>
         {c.business_profile ? (
@@ -352,6 +517,7 @@ function ClientCard({ client: c }: { client: CrmClientRow }) {
         href={waLink(c.customer_whatsapp)}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
         className="mt-2 inline-flex rounded-md bg-[#25D366] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#20bd5a]"
       >
         WhatsApp
@@ -382,6 +548,11 @@ function OrderMiniCard({
   profile,
   hasPaidBefore,
   actions,
+  selectionMode,
+  selected,
+  onRemove,
+  cancelledOrderCount,
+  hasOpenOrder,
 }: {
   name: string | null;
   wa: string;
@@ -393,15 +564,27 @@ function OrderMiniCard({
   profile?: BusinessProfile | null;
   hasPaidBefore?: boolean;
   actions: React.ReactNode;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onRemove?: () => void;
+  cancelledOrderCount?: number;
+  hasOpenOrder?: boolean;
 }) {
   return (
     <article
-      className={`rounded-lg border bg-white p-3 shadow-sm transition hover:shadow-md ${
-        hasPaidBefore
-          ? "border-amber-300 ring-1 ring-amber-200/80"
-          : "border-stone-200"
+      className={`relative rounded-lg border bg-white p-3 shadow-sm transition hover:shadow-md ${
+        selected
+          ? "border-violet-400 bg-violet-50/40 ring-0"
+          : hasPaidBefore
+            ? "border-amber-300 ring-1 ring-amber-200/80"
+            : "border-stone-200"
       }`}
     >
+      {selectionMode ? (
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-violet-700">
+          {selected ? "✓ Selecionado" : "Clique para selecionar"}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -412,6 +595,16 @@ function OrderMiniCard({
           {hasPaidBefore ? (
             <p className="mt-0.5 text-[10px] font-semibold text-amber-700">
               Já comprou antes
+            </p>
+          ) : null}
+          {cancelledOrderCount != null && cancelledOrderCount > 1 ? (
+            <p className="mt-0.5 text-[10px] font-semibold text-stone-600">
+              {cancelledOrderCount} pedidos abandonados
+            </p>
+          ) : null}
+          {hasOpenOrder ? (
+            <p className="mt-1 inline-flex rounded-md border border-sky-300 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-800">
+              Pedido em aberto
             </p>
           ) : null}
           <p className="text-xs text-stone-500">{waDisplay(wa)}</p>
@@ -433,8 +626,27 @@ function OrderMiniCard({
             {new Date(createdAt).toLocaleString("pt-BR")}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col gap-1">{actions}</div>
+        <div
+          className="flex shrink-0 flex-col gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {actions}
+        </div>
       </div>
+      {onRemove && !selectionMode ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className="absolute bottom-2 right-2 flex h-5 w-5 items-center justify-center rounded-full text-base font-bold leading-none text-red-600 hover:bg-red-50"
+          title="Remover da lista"
+          aria-label="Remover lead"
+        >
+          ×
+        </button>
+      ) : null}
     </article>
   );
 }
@@ -465,6 +677,45 @@ export function CrmFunnelView({
   const [openOrders, setOpenOrders] = useState<OpenOrderRow[]>([]);
   const [clients, setClients] = useState<CrmClientRow[]>([]);
   const [followUpBusy, setFollowUpBusy] = useState<string | null>(null);
+  const [hideConfirm, setHideConfirm] = useState<{
+    wa: string;
+    name: string | null;
+  } | null>(null);
+  const [hideBusy, setHideBusy] = useState(false);
+  const [botOpen, setBotOpen] = useState(false);
+  const [botSelectMode, setBotSelectMode] = useState(false);
+  const [selectedBotLeads, setSelectedBotLeads] = useState<
+    Map<string, BotSelectedLead>
+  >(() => new Map());
+
+  const selectedWa = useMemo(
+    () => new Set(selectedBotLeads.keys()),
+    [selectedBotLeads]
+  );
+  const selectedBotCount = selectedBotLeads.size;
+
+  const toggleBotLead = useCallback((lead: BotSelectedLead) => {
+    setSelectedBotLeads((prev) => toggleBotLeadInMap(prev, lead));
+  }, []);
+
+  const toggleBotColumn = useCallback((leads: BotSelectedLead[]) => {
+    setSelectedBotLeads((prev) => toggleBotColumnInMap(prev, leads));
+  }, []);
+
+  const startBotSelection = useCallback(() => {
+    setBotSelectMode(true);
+    if (activeTab === "mapa") setActiveTab("abandonados");
+  }, [activeTab]);
+
+  const closeBotSelection = useCallback(() => {
+    setBotSelectMode(false);
+  }, []);
+
+  const closeBotPanel = useCallback(() => {
+    setBotOpen(false);
+    setBotSelectMode(false);
+    setSelectedBotLeads(new Map());
+  }, []);
 
   const recencyForTab = useMemo((): ClientRecencyStatus | null => {
     if (activeTab === "pos_30") return "green";
@@ -562,6 +813,34 @@ export function CrmFunnelView({
   useEffect(() => {
     if (activeTab !== "mapa") void load();
   }, [load, activeTab]);
+
+  async function confirmHideAbandoned() {
+    if (!hideConfirm) return;
+    setHideBusy(true);
+    try {
+      const res = await adminFetch("/api/admin/abandoned-carts/hide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer_whatsapp: hideConfirm.wa }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Falha ao remover");
+      setAbandoned((prev) =>
+        prev.filter((o) => o.customer_whatsapp !== hideConfirm.wa)
+      );
+      setSelectedBotLeads((prev) => {
+        const next = new Map(prev);
+        next.delete(botLeadKey(hideConfirm.wa));
+        return next;
+      });
+      setHideConfirm(null);
+      void loadStats();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao remover");
+    } finally {
+      setHideBusy(false);
+    }
+  }
 
   async function registerFollowUp(wa: string) {
     setFollowUpBusy(wa);
@@ -721,6 +1000,45 @@ export function CrmFunnelView({
           >
             {loading ? "A carregar…" : "Atualizar"}
           </button>
+          <button
+            type="button"
+            onClick={() => setBotOpen(true)}
+            className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-violet-700"
+          >
+            Ligar bot
+          </button>
+        </div>
+      )}
+
+      {botOpen && (
+        <div className="mb-6">
+          <CrmBotPanel
+            sellerScope={sellerScope}
+            selectedLeads={botLeadsFromMap(selectedBotLeads)}
+            selectionMode={botSelectMode}
+            onStartSelection={startBotSelection}
+            onCloseSelection={closeBotSelection}
+            onClose={closeBotPanel}
+          />
+        </div>
+      )}
+
+      {botOpen && botSelectMode && (
+        <div className="sticky top-2 z-20 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-300 bg-violet-100 px-4 py-3 shadow-md">
+          <p className="text-sm font-bold text-violet-950">
+            {selectedBotCount}{" "}
+            {selectedBotCount === 1 ? "lead selecionado" : "leads selecionados"}
+          </p>
+          <p className="text-xs text-violet-800">
+            Clique nos cards do funil para adicionar ou remover leads.
+          </p>
+          <button
+            type="button"
+            onClick={closeBotSelection}
+            className="rounded-lg border border-violet-400 bg-white px-4 py-2 text-xs font-bold text-violet-900 hover:bg-violet-50"
+          >
+            Fechar lista
+          </button>
         </div>
       )}
 
@@ -730,11 +1048,18 @@ export function CrmFunnelView({
         </div>
       )}
 
-      {activeTab === "mapa" && <ClientsBrazilMapPanel active />}
+      {activeTab === "mapa" && !botSelectMode && <ClientsBrazilMapPanel active />}
+
+      {activeTab === "mapa" && botSelectMode && (
+        <p className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+          Selecione uma etapa do funil (Abandonados, Em aberto, etc.) para escolher
+          leads.
+        </p>
+      )}
 
       {activeTab === "abandonados" && (
         <div>
-          {pendingFollowUps > 0 && (
+          {pendingFollowUps > 0 && !botSelectMode && (
             <p className="mb-4 text-sm">
               <span className="font-semibold text-violet-800">
                 {pendingFollowUps} aguardando follow-up.
@@ -743,15 +1068,22 @@ export function CrmFunnelView({
           )}
           <VolumePipeline
             items={abandoned}
+            selectionMode={botSelectMode}
+            selectedWa={selectedWa}
+            onToggleLead={toggleBotLead}
+            onToggleColumn={toggleBotColumn}
             renderCard={(order) => {
               const msg = recoveryMessage(order);
               const lines = totalsByCategoryFromOrderItems(
                 order.order_items
               ).map((c) => `x${c.qty} ${c.label.toUpperCase()}`);
               const alert = nextFollowUpLabel(order.follow_up_count);
+              const isSelected = selectedWa.has(
+                botLeadKey(order.customer_whatsapp)
+              );
               return (
                 <OrderMiniCard
-                  key={order.order_id}
+                  key={order.customer_whatsapp}
                   name={order.customer_name}
                   wa={order.customer_whatsapp}
                   pieces={order.total_pieces}
@@ -759,6 +1091,19 @@ export function CrmFunnelView({
                   createdAt={order.created_at}
                   profile={order.business_profile}
                   hasPaidBefore={order.has_paid_before || !!order.business_profile}
+                  selectionMode={botSelectMode}
+                  selected={isSelected}
+                  cancelledOrderCount={order.cancelled_order_count}
+                  hasOpenOrder={order.has_open_order}
+                  onRemove={
+                    botSelectMode
+                      ? undefined
+                      : () =>
+                          setHideConfirm({
+                            wa: order.customer_whatsapp,
+                            name: order.customer_name,
+                          })
+                  }
                   lines={
                     order.requested_seller_name?.trim() === SITE_VAREJO_SELLER
                       ? undefined
@@ -812,10 +1157,17 @@ export function CrmFunnelView({
         <div>
           <VolumePipeline
             items={openOrders}
+            selectionMode={botSelectMode}
+            selectedWa={selectedWa}
+            onToggleLead={toggleBotLead}
+            onToggleColumn={toggleBotColumn}
             renderCard={(order) => {
               const lines = totalsByCategoryFromOrderItems(
                 order.order_items
               ).map((c) => `x${c.qty} ${c.label.toUpperCase()}`);
+              const isSelected = selectedWa.has(
+                botLeadKey(order.customer_whatsapp)
+              );
               return (
                 <OrderMiniCard
                   key={order.order_id}
@@ -826,6 +1178,8 @@ export function CrmFunnelView({
                   createdAt={order.created_at}
                   profile={order.business_profile}
                   hasPaidBefore={order.has_paid_before || !!order.business_profile}
+                  selectionMode={botSelectMode}
+                  selected={isSelected}
                   lines={lines}
                   extra={
                     order.has_paid_before || order.business_profile ? (
@@ -865,8 +1219,51 @@ export function CrmFunnelView({
             <ProfilePipeline
               clients={clients}
               profileFilter={profileFilter}
+              selectionMode={botSelectMode}
+              selectedWa={selectedWa}
+              onToggleLead={toggleBotLead}
+              onToggleColumn={toggleBotColumn}
             />
           )}
+        </div>
+      )}
+      {hideConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="hide-abandoned-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-5 shadow-xl">
+            <h3
+              id="hide-abandoned-title"
+              className="text-base font-bold text-stone-900"
+            >
+              Remover lead?
+            </h3>
+            <p className="mt-2 text-sm text-stone-600">
+              {hideConfirm.name?.trim() || "Este contacto"} deixará de aparecer na
+              etapa Abandonados. Os pedidos cancelados permanecem no sistema.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={hideBusy}
+                onClick={() => setHideConfirm(null)}
+                className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={hideBusy}
+                onClick={() => void confirmHideAbandoned()}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {hideBusy ? "A remover…" : "Remover"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

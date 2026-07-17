@@ -12,6 +12,7 @@ import {
 } from "@/lib/order-drive-retry";
 import { flagPendingOrdersAfterConfirm } from "@/lib/order-stock-conflict";
 import { upsertAutoBusinessProfileOnConfirm } from "@/lib/crm-auto-profile";
+import { clearAbandonedCrmHistory } from "@/lib/crm-abandoned-query";
 import type { CustomerSegment } from "@/types";
 
 export const runtime = "nodejs";
@@ -422,6 +423,12 @@ export async function POST(
       );
     } catch (profileErr) {
       console.error("[confirm] auto profile:", profileErr);
+    }
+
+    try {
+      await clearAbandonedCrmHistory(admin, bodyParsed.customerWhatsApp);
+    } catch (histErr) {
+      console.error("[confirm] clear abandoned history:", histErr);
     }
 
     const stockAfterByProductId = new Map<string, number>();

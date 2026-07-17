@@ -101,8 +101,8 @@ export function AbandonedCartsPanel({ active }: Props) {
   return (
     <div>
       <p className="mb-4 text-sm text-stone-600">
-        Clientes com pedido pendente ou cancelado que ainda não confirmaram a primeira
-        compra. O contador mostra quantas vezes você abriu o WhatsApp de cada número.
+        Clientes com pedido cancelado no sistema (sem pedido em aberto). O contador
+        mostra quantas vezes você abriu o WhatsApp de cada número.
       </p>
 
       <button

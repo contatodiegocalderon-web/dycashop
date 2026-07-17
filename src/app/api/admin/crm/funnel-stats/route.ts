@@ -7,6 +7,10 @@ import { applyPendingOrdersSellerScope } from "@/lib/crm-pending-seller-filter";
 import { clientRecencyStatus } from "@/lib/client-recency";
 import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
 import {
+  cancelledOrderQualifiesForAbandoned,
+  loadLastPaidAtByWhatsapp,
+} from "@/lib/crm-abandoned-query";
+import {
   fetchAllCrmPaidOrders,
   type CrmPaidOrdersListQuery,
 } from "@/lib/admin-orders-query";
@@ -59,20 +63,6 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get("sellerScope")?.trim() ?? "all";
     const ownerStaffId = await resolveOwnerStaffId(admin, principal);
 
-    const { data: paidWaRows } = await admin
-      .from("orders")
-      .select("customer_whatsapp")
-      .eq("status", "PAGO")
-      .not("customer_whatsapp", "is", null);
-
-    const paidWa = new Set<string>();
-    for (const row of paidWaRows ?? []) {
-      const wa = normalizeWhatsappDigits(
-        (row as { customer_whatsapp: string }).customer_whatsapp
-      );
-      if (wa.length >= 10) paidWa.add(wa);
-    }
-
     const { data: hiddenRows } = await admin
       .from("crm_hidden_contacts")
       .select("whatsapp_digits");
@@ -82,20 +72,30 @@ export async function GET(request: NextRequest) {
       )
     );
 
+    const lastPaidAtByWa = await loadLastPaidAtByWhatsapp(admin);
+
     const { data: abandonRows } = await admin
       .from("orders")
-      .select("customer_whatsapp")
-      .in("status", ["PENDENTE_PAGAMENTO", "CANCELADO"])
+      .select("customer_whatsapp, created_at")
+      .eq("status", "CANCELADO")
       .not("customer_whatsapp", "is", null)
       .order("created_at", { ascending: false })
       .limit(5000);
 
     const abandonWa = new Set<string>();
     for (const row of abandonRows ?? []) {
-      const wa = normalizeWhatsappDigits(
-        (row as { customer_whatsapp: string }).customer_whatsapp
-      );
-      if (wa.length < 10 || paidWa.has(wa) || hidden.has(wa)) continue;
+      const r = row as { customer_whatsapp: string; created_at: string };
+      const wa = normalizeWhatsappDigits(r.customer_whatsapp);
+      if (wa.length < 10 || hidden.has(wa)) continue;
+      if (
+        !cancelledOrderQualifiesForAbandoned(
+          r.created_at,
+          wa,
+          lastPaidAtByWa
+        )
+      ) {
+        continue;
+      }
       abandonWa.add(wa);
     }
     const abandonados = abandonWa.size;
