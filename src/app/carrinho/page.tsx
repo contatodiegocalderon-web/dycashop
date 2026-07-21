@@ -13,6 +13,11 @@ import { normalizeCheckoutWaDigits } from "@/lib/abandoned-checkout";
 import { buildOrderWhatsAppText, waMeUrl } from "@/lib/whatsapp";
 import { CartShippingQuote } from "@/components/cart-shipping-quote";
 import type { ShippingQuotePayload, ShippingQuoteOption } from "@/lib/shipping-quote-types";
+import {
+  isRetailPieceCount,
+  RETAIL_MAX_PIECES,
+  WHOLESALE_MIN_PIECES,
+} from "@/lib/sales-channel";
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
 
@@ -122,6 +127,11 @@ export default function CarrinhoPage() {
   const nameManuallyEditedRef = useRef(false);
 
   const groups = useMemo(() => groupBySize(lines), [lines]);
+  const totalPieces = useMemo(
+    () => lines.reduce((s, l) => s + Math.max(0, Number(l.quantity) || 0), 0),
+    [lines]
+  );
+  const isRetailCheckout = isRetailPieceCount(totalPieces);
 
   const goBackToCatalog = useCallback(() => {
     markCatalogBrowseRestore();
@@ -132,6 +142,13 @@ export default function CarrinhoPage() {
     setPortalReady(true);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("mp") === "falhou") {
+      setErr("Pagamento não concluído. Pode tentar de novo ou escolher outra forma.");
+    }
+  }, []);
   useEffect(() => {
     if (!hydrated || initialReconcileDoneRef.current) return;
     initialReconcileDoneRef.current = true;
@@ -181,6 +198,16 @@ export default function CarrinhoPage() {
   const openSellerModal = useCallback(() => {
     setErr(null);
     if (!lines.length) return;
+    const pieces = lines.reduce(
+      (s, l) => s + Math.max(0, Number(l.quantity) || 0),
+      0
+    );
+    if (isRetailPieceCount(pieces)) {
+      setErr(
+        `Com até ${RETAIL_MAX_PIECES} peças use «Pagar com Mercado Pago». WhatsApp é para ${WHOLESALE_MIN_PIECES}+.`
+      );
+      return;
+    }
     const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
     if (waDigits.length < 10) {
       setErr("Informe um WhatsApp válido (com DDD, mínimo 10 dígitos).");
@@ -199,7 +226,7 @@ export default function CarrinhoPage() {
       return WHATSAPP_SELLERS[0]!.phone;
     });
     setSellerModalOpen(true);
-  }, [lines.length, customerWhatsApp, customerName]);
+  }, [lines, customerWhatsApp, customerName]);
 
   const closeSellerModal = useCallback(() => {
     if (!busy) setSellerModalOpen(false);
@@ -221,6 +248,12 @@ export default function CarrinhoPage() {
       return;
     }
     if (!lines.length) return;
+    if (isRetailPieceCount(totalPieces)) {
+      setErr(
+        `Com ${totalPieces} peça(s) use o pagamento online (Mercado Pago). WhatsApp é para ${WHOLESALE_MIN_PIECES}+ peças.`
+      );
+      return;
+    }
     const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
     if (waDigits.length < 10) {
       setErr("Informe um WhatsApp válido (com DDD).");
@@ -312,6 +345,104 @@ export default function CarrinhoPage() {
       setSelectedShipping(null);
       setSellerModalOpen(false);
       window.location.assign(url);
+    } catch (e) {
+      setErr(
+        e instanceof Error ? e.message : "Falha de rede ou do servidor."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitRetailMercadoPago() {
+    if (!lines.length) return;
+    setErr(null);
+    setCartNotice(null);
+
+    if (!isRetailPieceCount(totalPieces)) {
+      setErr(
+        `Pagamento online é para 1–${RETAIL_MAX_PIECES} peças. Com ${totalPieces} use WhatsApp.`
+      );
+      return;
+    }
+    const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
+    if (waDigits.length < 10) {
+      setErr("Informe um WhatsApp válido (com DDD).");
+      return;
+    }
+    const trimmedName = customerName.trim();
+    if (!trimmedName) {
+      setErr("Informe o seu nome.");
+      return;
+    }
+    const cepDigits = cep.replace(/\D/g, "");
+    if (cepDigits.length !== 8) {
+      setErr("Informe um CEP válido.");
+      return;
+    }
+    if (!selectedShipping || !(Number(selectedShipping.price) >= 0)) {
+      setErr("Calcule o frete e selecione PAC ou SEDEX.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const staleNotice = await reconcileWithCatalog();
+      if (staleNotice) {
+        setCartNotice(staleNotice);
+        throw new Error(
+          "O carrinho mudou: algumas peças já não estão disponíveis. Revise e tente outra vez."
+        );
+      }
+
+      const res = await fetch("/api/payments/mercadopago/create-preference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: lines.map((l) => ({
+            productId: l.productId,
+            quantity: l.quantity,
+          })),
+          customerName: trimmedName,
+          customerWhatsApp: customerWhatsApp.trim(),
+          cep: cepDigits,
+          shipping: {
+            service: selectedShipping.code,
+            label: selectedShipping.label,
+            price: selectedShipping.price,
+            deadlineDays: selectedShipping.deliveryDays ?? null,
+          },
+        }),
+      });
+
+      const rawText = await res.text();
+      let data: {
+        error?: string;
+        hint?: string;
+        initPoint?: string;
+      } = {};
+      try {
+        data = rawText ? (JSON.parse(rawText) as typeof data) : {};
+      } catch {
+        throw new Error("Resposta inválida do servidor.");
+      }
+      if (!res.ok) {
+        throw new Error(
+          [data.error, data.hint].filter(Boolean).join(" — ") ||
+            "Falha ao iniciar pagamento"
+        );
+      }
+      if (!data.initPoint) {
+        throw new Error("Link de pagamento não recebido.");
+      }
+
+      clear();
+      try {
+        localStorage.removeItem(CART_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      window.location.assign(data.initPoint);
     } catch (e) {
       setErr(
         e instanceof Error ? e.message : "Falha de rede ou do servidor."
@@ -673,19 +804,39 @@ export default function CarrinhoPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              disabled={
-                busy ||
-                reconciling ||
-                normalizeCheckoutWaDigits(customerWhatsApp).length < 10 ||
-                !customerName.trim()
-              }
-              onClick={openSellerModal}
-              className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
-            >
-              Enviar pedido no WhatsApp
-            </button>
+            {isRetailCheckout ? (
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  reconciling ||
+                  normalizeCheckoutWaDigits(customerWhatsApp).length < 10 ||
+                  !customerName.trim() ||
+                  cep.replace(/\D/g, "").length !== 8 ||
+                  !selectedShipping
+                }
+                onClick={() => void submitRetailMercadoPago()}
+                className="rounded-xl bg-sky-600 px-5 py-3 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+              >
+                {busy
+                  ? "A abrir pagamento…"
+                  : `Pagar com Mercado Pago (1–${RETAIL_MAX_PIECES} peças)`}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  reconciling ||
+                  normalizeCheckoutWaDigits(customerWhatsApp).length < 10 ||
+                  !customerName.trim()
+                }
+                onClick={openSellerModal}
+                className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                Enviar pedido no WhatsApp ({WHOLESALE_MIN_PIECES}+ peças)
+              </button>
+            )}
             <button
               type="button"
               onClick={goBackToCatalog}
@@ -694,6 +845,11 @@ export default function CarrinhoPage() {
               Continuar comprando
             </button>
           </div>
+          <p className="mt-3 text-xs text-stone-500">
+            {isRetailCheckout
+              ? `Varejo: pagamento online automático (PIX/cartão). Atacado a partir de ${WHOLESALE_MIN_PIECES} peças via WhatsApp.`
+              : `Atacado (${totalPieces} peças): o vendedor fecha frete e pagamento no WhatsApp.`}
+          </p>
 
           <p className="mt-10 text-center text-xs text-stone-600">
             <button

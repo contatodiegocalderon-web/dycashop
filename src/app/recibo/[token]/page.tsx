@@ -33,10 +33,12 @@ function itemImageSrc(it: OrderItemRow): string {
   return orderItemImageUrl(it, 320) ?? "";
 }
 
-function statusLabel(s: OrderStatus): string {
+function statusLabel(s: OrderStatus, salesChannel?: string | null): string {
   switch (s) {
     case "PENDENTE_PAGAMENTO":
-      return "Aguardando confirmação do vendedor";
+      return salesChannel === "VAREJO"
+        ? "Aguardando pagamento (Mercado Pago)"
+        : "Aguardando confirmação do vendedor";
     case "PAGO":
       return "Pagamento confirmado";
     case "CANCELADO":
@@ -46,7 +48,13 @@ function statusLabel(s: OrderStatus): string {
   }
 }
 
-export default async function ReciboPage({ params }: Props) {
+export default async function ReciboPage({
+  params,
+  searchParams,
+}: {
+  params: { token: string };
+  searchParams?: { pago?: string };
+}) {
   const token = params.token;
   if (!isValidReceiptToken(token)) notFound();
 
@@ -69,6 +77,8 @@ export default async function ReciboPage({ params }: Props) {
       : await fetchOrderDisplayNumberPublic(order.id);
   const bySize = groupItems(items);
   const categoryTotals = totalsByCategoryFromOrderItems(items);
+  const pagoFlag = searchParams?.pago;
+  const salesChannel = (order as { sales_channel?: string | null }).sales_channel;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -78,6 +88,23 @@ export default async function ReciboPage({ params }: Props) {
         </Link>
       </nav>
 
+      {pagoFlag === "1" && order.status === "PAGO" ? (
+        <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          Pagamento aprovado. Obrigado pela compra!
+        </div>
+      ) : null}
+      {pagoFlag === "1" && order.status === "PENDENTE_PAGAMENTO" ? (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          Recebemos o retorno do Mercado Pago. Se o PIX/cartão foi pago, a
+          confirmação chega em instantes — atualize esta página.
+        </div>
+      ) : null}
+      {pagoFlag === "pendente" ? (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          Pagamento pendente. Assim que o Mercado Pago confirmar, o pedido fica
+          como pago.
+        </div>
+      ) : null}
       <header className="mb-8 space-y-4 border-b border-white/[0.06] pb-6">
         <div>
           <p className="text-lg font-semibold uppercase tracking-wide text-stone-100">
@@ -113,6 +140,11 @@ export default async function ReciboPage({ params }: Props) {
 
         {order.stock_conflict ? (
           <StockConflictNotice conflict={order.stock_conflict} variant="client" />
+        ) : salesChannel === "VAREJO" ? (
+          <p className="text-sm leading-relaxed text-stone-400">
+            Checkout varejo: após o pagamento no Mercado Pago, o pedido é
+            confirmado automaticamente.
+          </p>
         ) : (
           <p className="text-sm leading-relaxed text-stone-400">
             O vendedor vai calcular seu frete e finalizar seu pedido o quanto antes,
@@ -121,7 +153,9 @@ export default async function ReciboPage({ params }: Props) {
         )}
 
         <div className="border-t border-white/[0.06] pt-4">
-          <p className="text-sm text-stone-500">{statusLabel(order.status)}</p>
+          <p className="text-sm text-stone-500">
+            {statusLabel(order.status, salesChannel)}
+          </p>
           <p className="mt-1 text-xs text-stone-600">
             {new Date(order.created_at).toLocaleString("pt-BR")}
           </p>
