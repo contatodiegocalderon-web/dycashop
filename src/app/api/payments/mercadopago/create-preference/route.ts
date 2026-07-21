@@ -332,6 +332,22 @@ export async function POST(request: NextRequest) {
       return undefined;
     };
 
+    // Checkout Pro (ecrã PIX) costuma colapsar vários itens em «Produtos».
+    // Um item de mercadoria com o resumo no título + 1.ª imagem aparece melhor.
+    const firstProduct = Array.from(qtyByProduct.keys())
+      .map((id) => byId.get(id)!)
+      .find(Boolean);
+    const firstPicture = firstProduct
+      ? toAbsoluteImageUrl(productPublicImageUrl(firstProduct, 320))
+      : undefined;
+
+    const productLines = Array.from(qtyByProduct.entries()).map(
+      ([productId, quantity]) => {
+        const p = byId.get(productId)!;
+        return `${quantity}x ${p.brand} ${p.color} (${p.size})`;
+      }
+    );
+
     type PreferenceItem = {
       id: string;
       title: string;
@@ -343,35 +359,23 @@ export async function POST(request: NextRequest) {
       category_id?: string;
     };
 
-    const preferenceItems: PreferenceItem[] = Array.from(
-      qtyByProduct.entries()
-    ).map(([productId, quantity]) => {
-      const p = byId.get(productId)!;
-      const cat =
-        p.category != null && String(p.category).trim() !== ""
-          ? String(p.category).trim()
-          : "Sem categoria";
-      const unit = retailByCat.get(cat)!;
-      const title = `${p.brand} — ${p.color} (${p.size})`.slice(0, 250);
-      const picture = toAbsoluteImageUrl(productPublicImageUrl(p, 320));
-      return {
-        id: productId.slice(0, 60),
-        title,
-        description: `${quantity}x ${cat.toUpperCase()} · varejo`.slice(0, 250),
-        ...(picture ? { picture_url: picture } : {}),
-        quantity,
-        unit_price: unit,
+    const preferenceItems: PreferenceItem[] = [
+      {
+        id: "pedido",
+        title: (orderSummary || "Pedido DYCASHOP").slice(0, 250),
+        description: productLines.join(" · ").slice(0, 250),
+        ...(firstPicture ? { picture_url: firstPicture } : {}),
+        quantity: 1,
+        unit_price: Number(merchandiseTotal.toFixed(2)),
         currency_id: "BRL",
         category_id: "fashion",
-      };
-    });
+      },
+    ];
     if (freight > 0) {
       preferenceItems.push({
         id: "frete",
         title: shippingLabel.slice(0, 250),
-        description: orderSummary
-          ? `Pedido: ${orderSummary}`.slice(0, 250)
-          : "Frete",
+        description: "Frete",
         quantity: 1,
         unit_price: freight,
         currency_id: "BRL",
@@ -382,7 +386,6 @@ export async function POST(request: NextRequest) {
     const preferenceBody: Record<string, unknown> = {
       items: preferenceItems,
       external_reference: order.id,
-      // Resumo tipo WhatsApp (visível em alguns ecrãs / atividades do MP)
       ...(orderSummary
         ? { additional_info: orderSummary.slice(0, 600) }
         : {}),
