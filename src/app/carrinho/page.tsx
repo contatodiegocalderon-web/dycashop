@@ -195,7 +195,6 @@ export default function CarrinhoPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
-  const [reconciling, setReconciling] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("cart");
   const [sellerModalOpen, setSellerModalOpen] = useState(false);
   const [selectedSellerPhone, setSelectedSellerPhone] = useState<string | null>(
@@ -245,28 +244,20 @@ export default function CarrinhoPage() {
   }, []);
   useEffect(() => {
     if (!hydrated) return;
-    if (!lines.length) {
-      setReconciling(false);
-      return;
-    }
+    if (!lines.length) return;
     if (initialReconcileDoneRef.current) return;
     initialReconcileDoneRef.current = true;
 
     let cancelled = false;
-    setReconciling(true);
     void reconcileWithCatalog()
       .then((notice) => {
         if (!cancelled) setCartNotice(notice);
       })
       .catch(() => {
         /* rede — o envio volta a reconciliar */
-      })
-      .finally(() => {
-        if (!cancelled) setReconciling(false);
       });
     return () => {
       cancelled = true;
-      setReconciling(false);
     };
   }, [hydrated, lines.length, reconcileWithCatalog]);
 
