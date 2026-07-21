@@ -509,6 +509,13 @@ export default function CarrinhoPage() {
       setCustomerName("");
       setCustomerWhatsApp("+55 ");
       setCep("");
+      setShipCpf("");
+      setShipStreet("");
+      setShipNumber("");
+      setShipComplement("");
+      setShipDistrict("");
+      setShipCity("");
+      setShipState("");
       setShippingQuote(null);
       setSelectedShipping(null);
       setSellerModalOpen(false);
