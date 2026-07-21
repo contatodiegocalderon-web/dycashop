@@ -10,6 +10,10 @@ import {
   formatMercadoPagoError,
   isMercadoPagoPublicHttpsUrl,
 } from "@/lib/mercadopago";
+import {
+  formatShippingAddressNote,
+  normalizeShippingAddress,
+} from "@/lib/shipping-address";
 import { getClientIp, rateLimitAllow } from "@/lib/rate-limit-ip";
 import type { Product } from "@/types";
 
@@ -59,6 +63,15 @@ export async function POST(request: NextRequest) {
       customerWhatsApp?: string;
       cep?: string;
       shipping?: ShippingBody | null;
+      address?: {
+        cpf?: string;
+        street?: string;
+        number?: string;
+        complement?: string;
+        district?: string;
+        city?: string;
+        state?: string;
+      } | null;
     };
 
     const customerName = String(body.customerName ?? "").trim();
@@ -94,6 +107,17 @@ export async function POST(request: NextRequest) {
     if (!Number.isFinite(shippingPrice) || shippingPrice < 0) {
       return NextResponse.json(
         { error: "Selecione uma opção de frete (PAC ou SEDEX)" },
+        { status: 400 }
+      );
+    }
+
+    const address = normalizeShippingAddress(body.address);
+    if (!address) {
+      return NextResponse.json(
+        {
+          error:
+            "Preencha CPF e endereço completo (rua, número, bairro, cidade e UF) para a etiqueta de envio.",
+        },
         { status: 400 }
       );
     }
@@ -248,6 +272,7 @@ export async function POST(request: NextRequest) {
       body.shipping?.deadlineDays != null
         ? `Prazo: ${body.shipping.deadlineDays} dia(s)`
         : null,
+      formatShippingAddressNote(address, customerName),
     ]
       .filter(Boolean)
       .join(" | ");
@@ -279,6 +304,31 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Coluna opcional (migration_order_shipping_address.sql) — ignora se ainda não existir.
+    void admin
+      .from("orders")
+      .update({
+        shipping_address: {
+          cpf: address.cpf,
+          street: address.street,
+          number: address.number,
+          complement: address.complement ?? null,
+          district: address.district,
+          city: address.city,
+          state: address.state,
+          postal_code: cepDigits,
+        },
+      })
+      .eq("id", order.id)
+      .then(({ error }) => {
+        if (error) {
+          console.warn(
+            "[mp create-preference] shipping_address update skipped:",
+            error.message
+          );
+        }
+      });
 
     const orderItems = Array.from(qtyByProduct.entries()).map(
       ([productId, quantity]) => {

@@ -15,6 +15,11 @@ import { CartShippingQuote } from "@/components/cart-shipping-quote";
 import type { ShippingQuotePayload, ShippingQuoteOption } from "@/lib/shipping-quote-types";
 import { totalsByCategoryFromCartLines } from "@/lib/order-category-totals";
 import {
+  formatCpfMask,
+  isValidCpf,
+  normalizeShippingAddress,
+} from "@/lib/shipping-address";
+import {
   isRetailPieceCount,
   RETAIL_MAX_PIECES,
   WHOLESALE_MIN_PIECES,
@@ -187,6 +192,14 @@ export default function CarrinhoPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerWhatsApp, setCustomerWhatsApp] = useState("+55 ");
   const [cep, setCep] = useState("");
+  const [shipCpf, setShipCpf] = useState("");
+  const [shipStreet, setShipStreet] = useState("");
+  const [shipNumber, setShipNumber] = useState("");
+  const [shipComplement, setShipComplement] = useState("");
+  const [shipDistrict, setShipDistrict] = useState("");
+  const [shipCity, setShipCity] = useState("");
+  const [shipState, setShipState] = useState("");
+  const [cepLookupBusy, setCepLookupBusy] = useState(false);
   const [shippingQuote, setShippingQuote] = useState<ShippingQuotePayload | null>(
     null
   );
@@ -219,8 +232,33 @@ export default function CarrinhoPage() {
     const nameOk = customerName.trim().length > 0;
     const cepOk = cep.replace(/\D/g, "").length === 8;
     const shipOk = Boolean(selectedShipping && Number(selectedShipping.price) >= 0);
-    return waOk && nameOk && cepOk && shipOk;
-  }, [customerWhatsApp, customerName, cep, selectedShipping]);
+    if (!waOk || !nameOk || !cepOk || !shipOk) return false;
+    if (!isRetailCheckout) return true;
+    return Boolean(
+      normalizeShippingAddress({
+        cpf: shipCpf,
+        street: shipStreet,
+        number: shipNumber,
+        complement: shipComplement,
+        district: shipDistrict,
+        city: shipCity,
+        state: shipState,
+      })
+    );
+  }, [
+    customerWhatsApp,
+    customerName,
+    cep,
+    selectedShipping,
+    isRetailCheckout,
+    shipCpf,
+    shipStreet,
+    shipNumber,
+    shipComplement,
+    shipDistrict,
+    shipCity,
+    shipState,
+  ]);
 
   const goBackToCatalog = useCallback(() => {
     markCatalogBrowseRestore();
@@ -288,6 +326,42 @@ export default function CarrinhoPage() {
       window.clearTimeout(timer);
     };
   }, [customerWhatsApp]);
+
+  useEffect(() => {
+    const cepDigits = cep.replace(/\D/g, "");
+    if (cepDigits.length !== 8) return;
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      setCepLookupBusy(true);
+      void (async () => {
+        try {
+          const r = await fetch(`/api/cep?cep=${encodeURIComponent(cepDigits)}`, {
+            signal: ac.signal,
+          });
+          if (!r.ok) return;
+          const j = (await r.json()) as {
+            street?: string;
+            district?: string;
+            city?: string;
+            state?: string;
+          };
+          if (j.street) setShipStreet((prev) => prev.trim() || String(j.street));
+          if (j.district)
+            setShipDistrict((prev) => prev.trim() || String(j.district));
+          if (j.city) setShipCity(String(j.city));
+          if (j.state) setShipState(String(j.state).toUpperCase().slice(0, 2));
+        } catch {
+          /* abort / rede */
+        } finally {
+          if (!ac.signal.aborted) setCepLookupBusy(false);
+        }
+      })();
+    }, 400);
+    return () => {
+      ac.abort();
+      window.clearTimeout(timer);
+    };
+  }, [cep]);
 
   const openSellerModal = useCallback(() => {
     setErr(null);
@@ -478,6 +552,25 @@ export default function CarrinhoPage() {
       setErr("Calcule o frete e selecione PAC ou SEDEX.");
       return;
     }
+    const address = normalizeShippingAddress({
+      cpf: shipCpf,
+      street: shipStreet,
+      number: shipNumber,
+      complement: shipComplement,
+      district: shipDistrict,
+      city: shipCity,
+      state: shipState,
+    });
+    if (!address) {
+      if (!isValidCpf(shipCpf)) {
+        setErr("Informe um CPF válido para a etiqueta de envio.");
+      } else {
+        setErr(
+          "Preencha o endereço completo (rua, número, bairro, cidade e UF) para a etiqueta."
+        );
+      }
+      return;
+    }
 
     setBusy(true);
     try {
@@ -506,6 +599,7 @@ export default function CarrinhoPage() {
             price: selectedShipping.price,
             deadlineDays: selectedShipping.deliveryDays ?? null,
           },
+          address,
         }),
       });
 
@@ -967,11 +1061,159 @@ export default function CarrinhoPage() {
                 <CartShippingQuote
                   lines={lines}
                   cep={cep}
+                  collectAddressOnSite={isRetailCheckout}
                   onQuoteChange={setShippingQuote}
                   onSelectionChange={setSelectedShipping}
                 />
               </div>
             </div>
+
+            {isRetailCheckout && selectedShipping ? (
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+                  Endereço para etiqueta
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  Dados necessários para gerar a etiqueta no SuperFrete
+                  {cepLookupBusy ? " · a preencher pelo CEP…" : ""}.
+                </p>
+                <div className="mt-3 max-w-md space-y-3">
+                  <div>
+                    <label
+                      htmlFor="checkout-cpf"
+                      className="text-sm font-medium text-stone-300"
+                    >
+                      CPF <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      id="checkout-cpf"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={shipCpf}
+                      onChange={(e) => setShipCpf(formatCpfMask(e.target.value))}
+                      maxLength={14}
+                      className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm tabular-nums text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                      placeholder="000.000.000-00"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="checkout-street"
+                      className="text-sm font-medium text-stone-300"
+                    >
+                      Rua / logradouro <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      id="checkout-street"
+                      type="text"
+                      autoComplete="address-line1"
+                      value={shipStreet}
+                      onChange={(e) => setShipStreet(e.target.value)}
+                      maxLength={180}
+                      className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                      placeholder="Rua, avenida…"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-1">
+                      <label
+                        htmlFor="checkout-number"
+                        className="text-sm font-medium text-stone-300"
+                      >
+                        Nº <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        id="checkout-number"
+                        type="text"
+                        autoComplete="address-line2"
+                        value={shipNumber}
+                        onChange={(e) => setShipNumber(e.target.value)}
+                        maxLength={20}
+                        className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                        placeholder="123"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label
+                        htmlFor="checkout-complement"
+                        className="text-sm font-medium text-stone-300"
+                      >
+                        Complemento
+                      </label>
+                      <input
+                        id="checkout-complement"
+                        type="text"
+                        value={shipComplement}
+                        onChange={(e) => setShipComplement(e.target.value)}
+                        maxLength={80}
+                        className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                        placeholder="Apto, bloco…"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="checkout-district"
+                      className="text-sm font-medium text-stone-300"
+                    >
+                      Bairro <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      id="checkout-district"
+                      type="text"
+                      value={shipDistrict}
+                      onChange={(e) => setShipDistrict(e.target.value)}
+                      maxLength={80}
+                      className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                      placeholder="Bairro"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <label
+                        htmlFor="checkout-city"
+                        className="text-sm font-medium text-stone-300"
+                      >
+                        Cidade <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        id="checkout-city"
+                        type="text"
+                        autoComplete="address-level2"
+                        value={shipCity}
+                        onChange={(e) => setShipCity(e.target.value)}
+                        maxLength={80}
+                        className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                        placeholder="Cidade"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="checkout-state"
+                        className="text-sm font-medium text-stone-300"
+                      >
+                        UF <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        id="checkout-state"
+                        type="text"
+                        autoComplete="address-level1"
+                        value={shipState}
+                        onChange={(e) =>
+                          setShipState(
+                            e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2)
+                          )
+                        }
+                        maxLength={2}
+                        className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm uppercase text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                        placeholder="SP"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <div className="flex flex-col gap-3 pt-2">

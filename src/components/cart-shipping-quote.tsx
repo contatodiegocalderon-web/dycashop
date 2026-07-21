@@ -17,6 +17,8 @@ import { formatCepCityState } from "@/lib/cep-lookup";
 type Props = {
   lines: CartLine[];
   cep: string;
+  /** Quando true, omite o aviso de que o vendedor pedirá o endereço no WhatsApp. */
+  collectAddressOnSite?: boolean;
   onQuoteChange?: (quote: ShippingQuotePayload | null) => void;
   onSelectionChange?: (option: ShippingQuoteOption | null) => void;
 };
@@ -89,6 +91,7 @@ function ShippingOptionCard({
 export function CartShippingQuote({
   lines,
   cep,
+  collectAddressOnSite = false,
   onQuoteChange,
   onSelectionChange,
 }: Props) {
@@ -270,9 +273,11 @@ export function CartShippingQuote({
         {destinationLabel ? (
           <p className="text-xs font-semibold text-stone-400">{destinationLabel}</p>
         ) : null}
-        <p className="text-[10px] leading-snug text-stone-600">
-          Os demais dados para entrega serão solicitados pelo vendedor no WhatsApp.
-        </p>
+        {!collectAddressOnSite ? (
+          <p className="text-[10px] leading-snug text-stone-600">
+            Os demais dados para entrega serão solicitados pelo vendedor no WhatsApp.
+          </p>
+        ) : null}
       </div>
     </div>
   );
