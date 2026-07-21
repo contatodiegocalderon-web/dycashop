@@ -75,6 +75,8 @@ export async function processCampaignTick(
   if (dueErr) throw new Error(dueErr.message);
 
   let sentThisTick = 0;
+  let failedThisTick = 0;
+  let lastError: string | null = null;
 
   for (const row of dueRows ?? []) {
     const r = row as {
@@ -104,18 +106,12 @@ export async function processCampaignTick(
       sentThisTick += 1;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao enviar";
+      lastError = msg;
+      failedThisTick += 1;
       await admin
         .from("crm_bot_recipients")
         .update({ status: "failed", error_message: msg })
         .eq("id", r.id);
-      await admin
-        .from("crm_bot_campaigns")
-        .update({
-          failed_count: (campaign.failed_count ?? 0) + 1,
-          last_error: msg,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", campaign.id);
     }
   }
 
@@ -131,8 +127,15 @@ export async function processCampaignTick(
     .eq("campaign_id", campaign.id)
     .eq("status", "sent");
 
+  const { count: failedTotal } = await admin
+    .from("crm_bot_recipients")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaign.id)
+    .eq("status", "failed");
+
   const left = pendingLeft ?? 0;
   const sent = sentTotal ?? 0;
+  const failed = failedTotal ?? 0;
 
   if (left === 0) {
     await admin
@@ -140,6 +143,8 @@ export async function processCampaignTick(
       .update({
         status: "completed",
         sent_count: sent,
+        failed_count: failed,
+        ...(lastError ? { last_error: lastError } : {}),
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -151,6 +156,8 @@ export async function processCampaignTick(
     .from("crm_bot_campaigns")
     .update({
       sent_count: sent,
+      failed_count: failed,
+      ...(lastError ? { last_error: lastError } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", campaign.id);

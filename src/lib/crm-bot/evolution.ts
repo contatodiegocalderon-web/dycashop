@@ -98,10 +98,14 @@ export async function sendEvolutionText(
   text: string
 ) {
   const number = whatsappDigits.replace(/\D/g, "");
-  await evoFetch(`/message/sendText/${encodeURIComponent(instanceName)}`, {
-    method: "POST",
-    body: JSON.stringify({ number, text }),
-  });
+  try {
+    await evoFetch(`/message/sendText/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({ number, text }),
+    });
+  } catch (e) {
+    throw new Error(formatEvolutionSendError(e, number));
+  }
 }
 
 export async function sendEvolutionMedia(
@@ -110,16 +114,45 @@ export async function sendEvolutionMedia(
   opts: { base64: string; mimetype: string; caption?: string }
 ) {
   const number = whatsappDigits.replace(/\D/g, "");
-  await evoFetch(`/message/sendMedia/${encodeURIComponent(instanceName)}`, {
-    method: "POST",
-    body: JSON.stringify({
-      number,
-      mediatype: "image",
-      mimetype: opts.mimetype,
-      media: opts.base64,
-      caption: opts.caption ?? "",
-    }),
-  });
+  try {
+    await evoFetch(`/message/sendMedia/${encodeURIComponent(instanceName)}`, {
+      method: "POST",
+      body: JSON.stringify({
+        number,
+        mediatype: "image",
+        mimetype: opts.mimetype,
+        media: opts.base64,
+        caption: opts.caption ?? "",
+      }),
+    });
+  } catch (e) {
+    throw new Error(formatEvolutionSendError(e, number));
+  }
+}
+
+/** Mensagens legíveis para erros comuns da Evolution (número inexistente, etc.). */
+export function formatEvolutionSendError(err: unknown, number: string): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  try {
+    const parsed = JSON.parse(raw) as {
+      response?: { message?: Array<{ exists?: boolean; number?: string }> };
+      message?: unknown;
+    };
+    const entries = parsed?.response?.message;
+    if (Array.isArray(entries)) {
+      const missing = entries.find((m) => m && m.exists === false);
+      if (missing) {
+        const n = missing.number || number;
+        return `Número sem WhatsApp (ou inválido): ${n}`;
+      }
+    }
+  } catch {
+    /* raw não é JSON */
+  }
+  if (/exists["']?\s*:\s*false/i.test(raw)) {
+    return `Número sem WhatsApp (ou inválido): ${number}`;
+  }
+  return raw.slice(0, 400);
 }
 
 export function evolutionConnectPageUrl(instanceName: string): string | null {
