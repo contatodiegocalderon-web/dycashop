@@ -342,7 +342,7 @@ export default function AdminCategoriasPage() {
             Categorias
           </h1>
           <p className="mt-1 text-sm text-stone-600">
-            Custos, preço varejo (1–9), vídeo, atacado, ordem na home e capa da vitrine.
+            Custos, preço varejo (1–4), vídeo, atacado, ordem na home e capa da vitrine.
           </p>
         </div>
         <button
@@ -448,7 +448,7 @@ export default function AdminCategoriasPage() {
                   <label className="text-sm text-stone-700">
                     Preço varejo (R$)
                     <span className="mt-0.5 block text-[11px] font-normal text-stone-500">
-                      1 a 9 peças · checkout online
+                      1 a 4 peças · checkout online
                     </span>
                     <input
                       type="text"

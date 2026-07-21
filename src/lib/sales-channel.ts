@@ -1,7 +1,7 @@
 /** Regras de canal de venda no catálogo. */
 
 /** Máximo de peças no checkout de varejo (Mercado Pago). */
-export const RETAIL_MAX_PIECES = 9;
+export const RETAIL_MAX_PIECES = 4;
 
 /** A partir desta quantidade o fluxo é atacado (WhatsApp). */
 export const WHOLESALE_MIN_PIECES = RETAIL_MAX_PIECES + 1;

@@ -26,7 +26,7 @@ type ShippingBody = {
 
 /**
  * POST /api/payments/mercadopago/create-preference
- * Cria pedido VAREJO (1–9 peças) + preferência Checkout Pro.
+ * Cria pedido VAREJO (1–4 peças) + preferência Checkout Pro.
  */
 export async function POST(request: NextRequest) {
   try {

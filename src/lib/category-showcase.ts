@@ -11,7 +11,7 @@ export type CategoryShowcaseConfig = {
   videoUrl: string | null;
   videoPoster?: string;
   wholesaleTiers: WholesaleTier[];
-  /** Preço unitário varejo (1–9 peças). Null = ainda não definido. */
+  /** Preço unitário varejo (1–4 peças). Null = ainda não definido. */
   retailPrice: number | null;
   /** Banner largo no topo da página da categoria (`catalog_cover_image_url`). */
   catalogCoverImageUrl?: string | null;

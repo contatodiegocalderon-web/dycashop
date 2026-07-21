@@ -117,8 +117,8 @@ export default function AdminClientesPage() {
           CRM — Clientes
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-stone-600">
-          Funil de vendas: carrinhos abandonados e pedidos em aberto (atacado 10+ peças /
-          varejo 1–9), depois clientes confirmados por recência (&lt;30d, 30–59d, 60+d) com
+          Funil de vendas: carrinhos abandonados e pedidos em aberto (atacado 5+ peças /
+          varejo 1–4), depois clientes confirmados por recência (&lt;30d, 30–59d, 60+d) com
           perfil lojista, revendedor ou uso próprio.
         </p>
         <Link
