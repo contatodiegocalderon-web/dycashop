@@ -370,62 +370,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const orderSummary = Object.entries(saleAmountByCategory)
-      .map(([cat, info]) => `${info.qty}x ${cat.toUpperCase()}`)
-      .join(" ");
-
-    const toAbsoluteImageUrl = (raw: string): string | undefined => {
-      const u = raw.trim();
-      if (!u) return undefined;
-      if (/^https?:\/\//i.test(u)) return u;
-      if (u.startsWith("/")) return `${base}${u}`;
-      return undefined;
-    };
-
-    // Checkout Pro (ecrã PIX) costuma colapsar vários itens em «Produtos».
-    // Um item de mercadoria com o resumo no título + 1.ª imagem aparece melhor.
-    const firstProduct = Array.from(qtyByProduct.keys())
-      .map((id) => byId.get(id)!)
-      .find(Boolean);
-    const firstPicture = firstProduct
-      ? toAbsoluteImageUrl(productPublicImageUrl(firstProduct, 320))
-      : undefined;
-
-    const productLines = Array.from(qtyByProduct.entries()).map(
-      ([productId, quantity]) => {
-        const p = byId.get(productId)!;
-        return `${quantity}x ${p.brand} ${p.color} (${p.size})`;
-      }
-    );
-
-    type PreferenceItem = {
+    // Checkout Pro não mostra itens/imagens — envia só o valor (title/description/picture_url omitidos).
+    const preferenceItems: Array<{
       id: string;
-      title: string;
-      description?: string;
-      picture_url?: string;
       quantity: number;
       unit_price: number;
       currency_id: string;
-      category_id?: string;
-    };
-
-    const preferenceItems: PreferenceItem[] = [
+    }> = [
       {
         id: "pedido",
-        title: (orderSummary || "Pedido DYCASHOP").slice(0, 250),
-        description: productLines.join(" · ").slice(0, 250),
-        ...(firstPicture ? { picture_url: firstPicture } : {}),
         quantity: 1,
         unit_price: Number(merchandiseTotal.toFixed(2)),
         currency_id: "BRL",
-        category_id: "fashion",
       },
     ];
     if (freight > 0) {
       preferenceItems.push({
         id: "frete",
-        title: shippingLabel.slice(0, 250),
-        description: "Frete",
         quantity: 1,
         unit_price: freight,
         currency_id: "BRL",
@@ -436,9 +397,6 @@ export async function POST(request: NextRequest) {
     const preferenceBody: Record<string, unknown> = {
       items: preferenceItems,
       external_reference: order.id,
-      ...(orderSummary
-        ? { additional_info: orderSummary.slice(0, 600) }
-        : {}),
       back_urls: {
         success: `${base}/recibo/${publicToken}?pago=1`,
         pending: `${base}/recibo/${publicToken}?pago=pendente`,
@@ -446,14 +404,12 @@ export async function POST(request: NextRequest) {
       },
       statement_descriptor: "DYCASHOP",
       // Sem default_payment_method_id → abre na tela «Como você prefere pagar?»
-      // (conta MP / cartão / PIX / boleto). Com "pix" saltava direto para o PIX.
       payment_methods: {
         installments: 12,
       },
       metadata: {
         order_id: order.id,
         sales_channel: "VAREJO",
-        order_summary: orderSummary.slice(0, 200),
       },
       payer: {
         name: customerName,
