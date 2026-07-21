@@ -486,6 +486,11 @@ export function CrmBotPanel({
           <p className="mt-1 text-sm text-emerald-800">
             Enviados: {stats.sent} · Falhas: {stats.failed}
           </p>
+          {campaign?.last_error ? (
+            <p className="mt-2 text-left text-xs text-amber-900/90">
+              Último erro: {campaign.last_error}
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={() => {
