@@ -320,23 +320,58 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const preferenceItems: Array<{
+    const orderSummary = Object.entries(saleAmountByCategory)
+      .map(([cat, info]) => `${info.qty}x ${cat.toUpperCase()}`)
+      .join(" ");
+
+    const toAbsoluteImageUrl = (raw: string): string | undefined => {
+      const u = raw.trim();
+      if (!u) return undefined;
+      if (/^https?:\/\//i.test(u)) return u;
+      if (u.startsWith("/")) return `${base}${u}`;
+      return undefined;
+    };
+
+    type PreferenceItem = {
       id: string;
       title: string;
+      description?: string;
+      picture_url?: string;
       quantity: number;
       unit_price: number;
       currency_id: string;
-    }> = Object.entries(saleAmountByCategory).map(([cat, info]) => ({
-      id: `cat:${cat}`,
-      title: `${cat} (varejo)`,
-      quantity: info.qty,
-      unit_price: info.unit_price,
-      currency_id: "BRL",
-    }));
+      category_id?: string;
+    };
+
+    const preferenceItems: PreferenceItem[] = Array.from(
+      qtyByProduct.entries()
+    ).map(([productId, quantity]) => {
+      const p = byId.get(productId)!;
+      const cat =
+        p.category != null && String(p.category).trim() !== ""
+          ? String(p.category).trim()
+          : "Sem categoria";
+      const unit = retailByCat.get(cat)!;
+      const title = `${p.brand} — ${p.color} (${p.size})`.slice(0, 250);
+      const picture = toAbsoluteImageUrl(productPublicImageUrl(p, 320));
+      return {
+        id: productId.slice(0, 60),
+        title,
+        description: `${quantity}x ${cat.toUpperCase()} · varejo`.slice(0, 250),
+        ...(picture ? { picture_url: picture } : {}),
+        quantity,
+        unit_price: unit,
+        currency_id: "BRL",
+        category_id: "fashion",
+      };
+    });
     if (freight > 0) {
       preferenceItems.push({
         id: "frete",
-        title: shippingLabel,
+        title: shippingLabel.slice(0, 250),
+        description: orderSummary
+          ? `Pedido: ${orderSummary}`.slice(0, 250)
+          : "Frete",
         quantity: 1,
         unit_price: freight,
         currency_id: "BRL",
@@ -347,6 +382,10 @@ export async function POST(request: NextRequest) {
     const preferenceBody: Record<string, unknown> = {
       items: preferenceItems,
       external_reference: order.id,
+      // Resumo tipo WhatsApp (visível em alguns ecrãs / atividades do MP)
+      ...(orderSummary
+        ? { additional_info: orderSummary.slice(0, 600) }
+        : {}),
       back_urls: {
         success: `${base}/recibo/${publicToken}?pago=1`,
         pending: `${base}/recibo/${publicToken}?pago=pendente`,
@@ -362,6 +401,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         order_id: order.id,
         sales_channel: "VAREJO",
+        order_summary: orderSummary.slice(0, 200),
       },
       payer: {
         name: customerName,
