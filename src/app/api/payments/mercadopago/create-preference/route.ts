@@ -7,6 +7,8 @@ import { isRetailPieceCount, RETAIL_MAX_PIECES } from "@/lib/sales-channel";
 import {
   appPublicBaseUrl,
   createPreferenceClient,
+  formatMercadoPagoError,
+  isMercadoPagoPublicHttpsUrl,
 } from "@/lib/mercadopago";
 import { getClientIp, rateLimitAllow } from "@/lib/rate-limit-ip";
 import type { Product } from "@/types";
@@ -341,28 +343,47 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const preference = createPreferenceClient();
-    const pref = await preference.create({
-      body: {
-        items: preferenceItems,
-        external_reference: order.id,
-        notification_url: `${base}/api/payments/mercadopago/webhook`,
-        back_urls: {
-          success: `${base}/recibo/${publicToken}?pago=1`,
-          pending: `${base}/recibo/${publicToken}?pago=pendente`,
-          failure: `${base}/carrinho?mp=falhou`,
-        },
-        auto_return: "approved",
-        statement_descriptor: "DYCASHOP",
-        metadata: {
-          order_id: order.id,
-          sales_channel: "VAREJO",
-        },
-        payer: {
-          name: customerName,
-        },
+    const canUseMpCallbacks = isMercadoPagoPublicHttpsUrl(base);
+    const preferenceBody: Record<string, unknown> = {
+      items: preferenceItems,
+      external_reference: order.id,
+      back_urls: {
+        success: `${base}/recibo/${publicToken}?pago=1`,
+        pending: `${base}/recibo/${publicToken}?pago=pendente`,
+        failure: `${base}/carrinho?mp=falhou`,
       },
-    });
+      statement_descriptor: "DYCASHOP",
+      metadata: {
+        order_id: order.id,
+        sales_channel: "VAREJO",
+      },
+      payer: {
+        name: customerName,
+      },
+    };
+    // MP rejeita auto_return / notification_url com http://localhost
+    if (canUseMpCallbacks) {
+      preferenceBody.auto_return = "approved";
+      preferenceBody.notification_url = `${base}/api/payments/mercadopago/webhook`;
+    }
+
+    let pref: {
+      id?: string;
+      init_point?: string;
+      sandbox_init_point?: string;
+    };
+    try {
+      const preference = createPreferenceClient();
+      pref = await preference.create({ body: preferenceBody as never });
+    } catch (mpErr) {
+      console.error("[mp create-preference] preference.create", mpErr);
+      await admin.from("order_items").delete().eq("order_id", order.id);
+      await admin.from("orders").delete().eq("id", order.id);
+      return NextResponse.json(
+        { error: formatMercadoPagoError(mpErr) },
+        { status: 502 }
+      );
+    }
 
     const preferenceId = String(pref.id ?? "");
     const initPoint =
@@ -371,6 +392,7 @@ export async function POST(request: NextRequest) {
       "";
 
     if (!preferenceId || !initPoint) {
+      await admin.from("order_items").delete().eq("order_id", order.id);
       await admin.from("orders").delete().eq("id", order.id);
       return NextResponse.json(
         { error: "Mercado Pago não devolveu link de pagamento" },
@@ -394,8 +416,10 @@ export async function POST(request: NextRequest) {
       freight,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Erro";
     console.error("[mp create-preference]", e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json(
+      { error: formatMercadoPagoError(e) },
+      { status: 500 }
+    );
   }
 }
