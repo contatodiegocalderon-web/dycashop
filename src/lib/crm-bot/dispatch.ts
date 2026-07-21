@@ -75,7 +75,6 @@ export async function processCampaignTick(
   if (dueErr) throw new Error(dueErr.message);
 
   let sentThisTick = 0;
-  let failedThisTick = 0;
   let lastError: string | null = null;
 
   for (const row of dueRows ?? []) {
@@ -107,7 +106,6 @@ export async function processCampaignTick(
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao enviar";
       lastError = msg;
-      failedThisTick += 1;
       await admin
         .from("crm_bot_recipients")
         .update({ status: "failed", error_message: msg })
