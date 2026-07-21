@@ -244,20 +244,29 @@ export default function CarrinhoPage() {
     }
   }, []);
   useEffect(() => {
-    if (!hydrated || initialReconcileDoneRef.current) return;
+    if (!hydrated) return;
+    if (!lines.length) {
+      setReconciling(false);
+      return;
+    }
+    if (initialReconcileDoneRef.current) return;
     initialReconcileDoneRef.current = true;
-    if (!lines.length) return;
 
     let cancelled = false;
     setReconciling(true);
-    void reconcileWithCatalog().then((notice) => {
-      if (!cancelled) {
-        setCartNotice(notice);
-        setReconciling(false);
-      }
-    });
+    void reconcileWithCatalog()
+      .then((notice) => {
+        if (!cancelled) setCartNotice(notice);
+      })
+      .catch(() => {
+        /* rede — o envio volta a reconciliar */
+      })
+      .finally(() => {
+        if (!cancelled) setReconciling(false);
+      });
     return () => {
       cancelled = true;
+      setReconciling(false);
     };
   }, [hydrated, lines.length, reconcileWithCatalog]);
 
@@ -833,12 +842,12 @@ export default function CarrinhoPage() {
                 </p>
                 <button
                   type="button"
-                  disabled={busy || reconciling}
+                  disabled={busy}
                   onClick={() => {
                     setErr(null);
                     setCheckoutStep("entrega");
                   }}
-                  className="rounded-xl bg-sky-600 px-5 py-3.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+                  className="rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
                 >
                   Iniciar Compra - VAREJO
                 </button>
@@ -846,7 +855,7 @@ export default function CarrinhoPage() {
             ) : (
               <button
                 type="button"
-                disabled={busy || reconciling}
+                disabled={busy}
                 onClick={() => {
                   setErr(null);
                   setCheckoutStep("entrega");
@@ -978,18 +987,18 @@ export default function CarrinhoPage() {
             {isRetailCheckout ? (
               <button
                 type="button"
-                disabled={busy || reconciling || !deliveryFormReady}
+                disabled={busy || !deliveryFormReady}
                 onClick={() => void submitRetailMercadoPago()}
-                className="w-full rounded-md bg-[#e85d4c] px-5 py-3.5 text-sm font-semibold text-white hover:bg-[#d54e3e] disabled:opacity-40"
+                className="w-full rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-40"
               >
                 {busy ? "A abrir pagamento…" : "Continuar"}
               </button>
             ) : (
               <button
                 type="button"
-                disabled={busy || reconciling || !deliveryFormReady}
+                disabled={busy || !deliveryFormReady}
                 onClick={openSellerModal}
-                className="w-full rounded-md bg-[#e85d4c] px-5 py-3.5 text-sm font-semibold text-white hover:bg-[#d54e3e] disabled:opacity-40"
+                className="w-full rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-40"
               >
                 Enviar Pedido
               </button>
@@ -1001,7 +1010,7 @@ export default function CarrinhoPage() {
                 setErr(null);
                 setCheckoutStep("cart");
               }}
-              className="w-full rounded-md border border-white/20 px-5 py-3 text-sm font-medium text-stone-300 hover:bg-white/[0.04] disabled:opacity-50"
+              className="w-full rounded-xl border border-white/20 px-5 py-3 text-sm font-medium text-stone-300 hover:bg-white/[0.04] disabled:opacity-50"
             >
               Voltar ao carrinho
             </button>
