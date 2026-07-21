@@ -445,10 +445,9 @@ export async function POST(request: NextRequest) {
         failure: `${base}/carrinho?mp=falhou`,
       },
       statement_descriptor: "DYCASHOP",
-      // Prioriza PIX (sem login/conta MP). Só aparece se a conta tiver chave PIX
-      // cadastrada e o Access Token for de produção (não test_user).
+      // Sem default_payment_method_id → abre na tela «Como você prefere pagar?»
+      // (conta MP / cartão / PIX / boleto). Com "pix" saltava direto para o PIX.
       payment_methods: {
-        default_payment_method_id: "pix",
         installments: 12,
       },
       metadata: {
