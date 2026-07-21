@@ -28,6 +28,7 @@ type CardDef = {
 
 const cards: CardDef[] = [
   { href: "/admin/pedidos", title: "Pedidos", ownerOnly: false, preview: "pedidos" },
+  { href: "/admin/varejo", title: "Varejo", ownerOnly: false, preview: null },
   { href: "/admin/historico", title: "Histórico", ownerOnly: false, preview: "historico" },
   { href: "/admin/metricas", title: "Métricas", ownerOnly: false, preview: "metricas" },
   { href: "/admin/categorias", title: "Categorias", ownerOnly: false, preview: null },

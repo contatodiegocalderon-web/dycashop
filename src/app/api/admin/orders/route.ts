@@ -18,11 +18,18 @@ import {
 } from "@/lib/admin-period";
 import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
 import { applyRealAppConfirmedOrdersFilter } from "@/lib/real-app-orders";
+import { isMissingSchemaColumnError } from "@/lib/schema-errors";
+import type { SalesChannel } from "@/types";
 
 export const runtime = "nodejs";
 
 const STAFF_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseSalesChannel(raw: string | null): SalesChannel | null {
+  if (raw === "ATACADO" || raw === "VAREJO") return raw;
+  return null;
+}
 
 function applyDateFilterToOrdersQuery<
   Q extends {
@@ -98,6 +105,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const statusFilter = searchParams.get("status") ?? "PENDENTE_PAGAMENTO";
+  const channelFilter = parseSalesChannel(searchParams.get("channel"));
   const period = parseAdminPeriodKey(searchParams.get("period"));
   const tzOffsetMinutes = parseTzOffsetMinutes(
     searchParams.get("tzOffsetMinutes")
@@ -123,6 +131,12 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient();
     let q = admin.from("orders").select("*");
 
+    // Só filtra canal quando a aba Varejo (ou outro cliente) pede explicitamente.
+    // Pedidos/Histórico não enviam `channel` → comportamento inalterado.
+    if (channelFilter) {
+      q = q.eq("sales_channel", channelFilter);
+    }
+
     if (statusFilter === "PENDENTE_PAGAMENTO" || statusFilter === "all") {
       q = excludeCrmRemarketingFromOrdersQuery(q);
     }
@@ -135,30 +149,33 @@ export async function GET(request: NextRequest) {
 
     if (statusFilter !== "all") {
       if (statusFilter === "PAGO") {
-        if (sellerId) {
-          q = q.eq("confirmed_by_staff_id", sellerId);
-        } else if (isOwnerPrincipal && rawSellerScope && rawSellerScope !== "all") {
-          if (rawSellerScope === "me") {
-            let ownerStaffId: string | null =
-              principal?.kind === "staff" && principal.staff.role === "owner"
-                ? principal.staff.staffId
-                : null;
-            if (!ownerStaffId && principal?.kind === "api_key") {
-              const { data: ownerRow } = await admin
-                .from("staff_users")
-                .select("id")
-                .eq("role", "owner")
-                .limit(1)
-                .maybeSingle();
-              ownerStaffId = (ownerRow?.id as string | undefined) ?? null;
+        // Varejo pago via gateway não tem confirmed_by_staff; não restringe por vendedor.
+        if (channelFilter !== "VAREJO") {
+          if (sellerId) {
+            q = q.eq("confirmed_by_staff_id", sellerId);
+          } else if (isOwnerPrincipal && rawSellerScope && rawSellerScope !== "all") {
+            if (rawSellerScope === "me") {
+              let ownerStaffId: string | null =
+                principal?.kind === "staff" && principal.staff.role === "owner"
+                  ? principal.staff.staffId
+                  : null;
+              if (!ownerStaffId && principal?.kind === "api_key") {
+                const { data: ownerRow } = await admin
+                  .from("staff_users")
+                  .select("id")
+                  .eq("role", "owner")
+                  .limit(1)
+                  .maybeSingle();
+                ownerStaffId = (ownerRow?.id as string | undefined) ?? null;
+              }
+              if (ownerStaffId) {
+                q = q.or(
+                  `confirmed_by_staff_id.eq.${ownerStaffId},confirmed_by_staff_id.is.null`
+                );
+              }
+            } else if (STAFF_UUID_RE.test(rawSellerScope)) {
+              q = q.eq("confirmed_by_staff_id", rawSellerScope);
             }
-            if (ownerStaffId) {
-              q = q.or(
-                `confirmed_by_staff_id.eq.${ownerStaffId},confirmed_by_staff_id.is.null`
-              );
-            }
-          } else if (STAFF_UUID_RE.test(rawSellerScope)) {
-            q = q.eq("confirmed_by_staff_id", rawSellerScope);
           }
         }
       } else if (statusFilter === "PENDENTE_PAGAMENTO") {
@@ -213,15 +230,32 @@ export async function GET(request: NextRequest) {
       q = q.order("created_at", { ascending: false }).order("id", { ascending: false });
     }
 
-    const rows = (await fetchOrdersWithItemsPaginated(
-      admin,
-      () => q as unknown as OrdersListBuildQuery
-    )) as Array<{
+    let rows: Array<{
       id: string;
       confirmed_by_staff_id?: string | null;
       requested_seller_name?: string | null;
       [k: string]: unknown;
     }>;
+    try {
+      rows = (await fetchOrdersWithItemsPaginated(
+        admin,
+        () => q as unknown as OrdersListBuildQuery
+      )) as typeof rows;
+    } catch (fetchErr) {
+      const msg =
+        fetchErr instanceof Error ? fetchErr.message : String(fetchErr ?? "");
+      if (
+        channelFilter === "VAREJO" &&
+        isMissingSchemaColumnError({ message: msg }) &&
+        /sales_channel/i.test(msg)
+      ) {
+        return NextResponse.json({
+          orders: [],
+          hint: "Execute o SQL em supabase/migration_order_sales_channel.sql no painel do Supabase.",
+        });
+      }
+      throw fetchErr;
+    }
     const staffIds = Array.from(
       new Set(rows.map((r) => r.confirmed_by_staff_id).filter(Boolean))
     ) as string[];
@@ -254,7 +288,9 @@ export async function GET(request: NextRequest) {
       ...r,
       confirmed_by_staff_name: r.confirmed_by_staff_id
         ? (staffMap.get(r.confirmed_by_staff_id) ?? ownerName)
-        : ownerName,
+        : channelFilter === "VAREJO"
+          ? "Mercado Pago"
+          : ownerName,
     }));
     const needsLegacyRank = withStaffName.some((r) => {
       const dn = (r as { display_number?: number | null }).display_number;

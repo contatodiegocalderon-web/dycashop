@@ -44,6 +44,9 @@ create table if not exists public.orders (
   display_number integer not null default nextval('public.orders_display_number_seq') unique,
   status text not null default 'PENDENTE_PAGAMENTO'
     check (status in ('PENDENTE_PAGAMENTO', 'PAGO', 'CANCELADO')),
+  /** ATACADO = WhatsApp; VAREJO = checkout (ex.: Mercado Pago). */
+  sales_channel text not null default 'ATACADO'
+    check (sales_channel in ('ATACADO', 'VAREJO')),
   customer_note text,
   public_token text unique,
   sale_amount numeric(12,2),
@@ -51,6 +54,8 @@ create table if not exists public.orders (
   customer_name text,
   customer_whatsapp text,
   customer_segment text,
+  payment_provider text,
+  payment_external_id text,
   confirmed_at timestamptz,
   confirmed_by_staff_id uuid references public.staff_users (id),
   /** Aviso quando outro pedido confirmado esgota peças deste pendente. */
@@ -63,6 +68,13 @@ alter sequence public.orders_display_number_seq owned by public.orders.display_n
 
 create index if not exists orders_confirmed_by_staff_id_idx
   on public.orders (confirmed_by_staff_id);
+
+create index if not exists orders_sales_channel_status_idx
+  on public.orders (sales_channel, status, created_at desc);
+
+create index if not exists orders_payment_external_id_idx
+  on public.orders (payment_external_id)
+  where payment_external_id is not null;
 
 create unique index if not exists orders_public_token_idx on public.orders (public_token)
   where public_token is not null;
