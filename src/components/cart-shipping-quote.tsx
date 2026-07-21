@@ -176,7 +176,7 @@ export function CartShippingQuote({
       ac.abort();
       window.clearTimeout(timer);
     };
-  }, [cepDigits, itemsKey, weightItems]);
+  }, [cepDigits, itemsKey, weightItems, onSelectionChange]);
 
   const pac = quote && isShippingOption(quote.pac) ? quote.pac : null;
   const sedex = quote && isShippingOption(quote.sedex) ? quote.sedex : null;

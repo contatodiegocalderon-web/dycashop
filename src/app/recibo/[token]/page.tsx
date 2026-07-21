@@ -13,8 +13,6 @@ import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
 import { orderItemImageUrl } from "@/lib/order-item-image-url";
 import type { OrderItemRow, OrderStatus, ProductSize } from "@/types";
 
-type Props = { params: { token: string } };
-
 export const dynamic = "force-dynamic";
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
