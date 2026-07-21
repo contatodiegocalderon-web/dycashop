@@ -342,7 +342,7 @@ export default function AdminCategoriasPage() {
             Categorias
           </h1>
           <p className="mt-1 text-sm text-stone-600">
-            Custos, vídeo, atacado, ordem na home e capa da vitrine.
+            Custos, preço varejo (1–9), vídeo, atacado, ordem na home e capa da vitrine.
           </p>
         </div>
         <button
