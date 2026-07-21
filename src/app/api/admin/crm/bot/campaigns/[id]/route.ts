@@ -31,6 +31,16 @@ export async function GET(request: NextRequest, ctx: Ctx) {
       return NextResponse.json({ error: "Campanha não encontrada." }, { status: 404 });
     }
 
+    const { data: recipients, error: recErr } = await admin
+      .from("crm_bot_recipients")
+      .select(
+        "id, customer_whatsapp, customer_name, status, error_message, scheduled_at, sent_at"
+      )
+      .eq("campaign_id", id)
+      .order("scheduled_at", { ascending: true });
+
+    if (recErr) throw new Error(recErr.message);
+
     const { count: pending } = await admin
       .from("crm_bot_recipients")
       .select("id", { count: "exact", head: true })
@@ -49,12 +59,20 @@ export async function GET(request: NextRequest, ctx: Ctx) {
       .eq("campaign_id", id)
       .eq("status", "failed");
 
+    const { count: skipped } = await admin
+      .from("crm_bot_recipients")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", id)
+      .eq("status", "skipped");
+
     return NextResponse.json({
       campaign,
+      recipients: recipients ?? [],
       stats: {
         pending: pending ?? 0,
         sent: sent ?? 0,
         failed: failed ?? 0,
+        skipped: skipped ?? 0,
       },
     });
   } catch (e) {

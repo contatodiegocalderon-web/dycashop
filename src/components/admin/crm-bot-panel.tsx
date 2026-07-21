@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAdminAuth } from "@/contexts/admin-auth";
-import type { CrmBotCampaignRow } from "@/lib/crm-bot/types";
+import type {
+  CrmBotCampaignRow,
+  CrmBotRecipientStatus,
+} from "@/lib/crm-bot/types";
 import type { BotSelectedLead } from "@/lib/crm-bot/selection";
 
 type Props = {
@@ -15,6 +18,95 @@ type Props = {
 };
 
 type Phase = "config" | "connecting" | "running" | "done";
+
+type RecipientRow = {
+  id: string;
+  customer_whatsapp: string;
+  customer_name: string | null;
+  status: CrmBotRecipientStatus;
+  error_message: string | null;
+  scheduled_at: string | null;
+  sent_at: string | null;
+};
+
+function formatWaDisplay(digits: string): string {
+  const d = digits.replace(/\D/g, "");
+  if (d.length >= 12 && d.startsWith("55")) {
+    const nat = d.slice(2);
+    const ddd = nat.slice(0, 2);
+    const rest = nat.slice(2);
+    if (rest.length === 9) {
+      return `+55 ${ddd} ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    }
+    if (rest.length === 8) {
+      return `+55 ${ddd} ${rest.slice(0, 4)}-${rest.slice(4)}`;
+    }
+  }
+  return digits;
+}
+
+function statusLabel(status: CrmBotRecipientStatus): string {
+  switch (status) {
+    case "sent":
+      return "Enviado";
+    case "failed":
+      return "Falha";
+    case "skipped":
+      return "Ignorado";
+    default:
+      return "Pendente";
+  }
+}
+
+function statusClass(status: CrmBotRecipientStatus): string {
+  switch (status) {
+    case "sent":
+      return "bg-emerald-100 text-emerald-800 ring-emerald-200";
+    case "failed":
+      return "bg-red-100 text-red-800 ring-red-200";
+    case "skipped":
+      return "bg-stone-100 text-stone-600 ring-stone-200";
+    default:
+      return "bg-amber-100 text-amber-900 ring-amber-200";
+  }
+}
+
+function RecipientStatusList({ recipients }: { recipients: RecipientRow[] }) {
+  if (!recipients.length) return null;
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white">
+      <div className="border-b border-stone-100 px-3 py-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+          Contatos da campanha
+        </p>
+      </div>
+      <ul className="max-h-72 divide-y divide-stone-100 overflow-y-auto">
+        {recipients.map((r) => (
+          <li key={r.id} className="flex items-start gap-3 px-3 py-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-stone-900">
+                {r.customer_name?.trim() || "Sem nome"}
+              </p>
+              <p className="text-xs tabular-nums text-stone-500">
+                {formatWaDisplay(r.customer_whatsapp)}
+              </p>
+              {r.status === "failed" && r.error_message ? (
+                <p className="mt-1 text-[11px] leading-snug text-red-700">
+                  {r.error_message}
+                </p>
+              ) : null}
+            </div>
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${statusClass(r.status)}`}
+            >
+              {statusLabel(r.status)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function CrmBotPanel({
   sellerScope,
@@ -45,11 +137,17 @@ export function CrmBotPanel({
 
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [campaign, setCampaign] = useState<CrmBotCampaignRow | null>(null);
+  const [recipients, setRecipients] = useState<RecipientRow[]>([]);
   const [connectUrl, setConnectUrl] = useState<string | null>(null);
   const [qrBase64, setQrBase64] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<string | null>(null);
-  const [stats, setStats] = useState({ pending: 0, sent: 0, failed: 0 });
+  const [stats, setStats] = useState({
+    pending: 0,
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+  });
 
   const stopTick = useCallback(() => {
     if (tickRef.current) {
@@ -64,7 +162,15 @@ export function CrmBotPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao carregar campanha");
       setCampaign(data.campaign as CrmBotCampaignRow);
-      setStats(data.stats);
+      setStats({
+        pending: data.stats?.pending ?? 0,
+        sent: data.stats?.sent ?? 0,
+        failed: data.stats?.failed ?? 0,
+        skipped: data.stats?.skipped ?? 0,
+      });
+      setRecipients(
+        Array.isArray(data.recipients) ? (data.recipients as RecipientRow[]) : []
+      );
       const st = (data.campaign as CrmBotCampaignRow).status;
       if (st === "completed") setPhase("done");
       else if (st === "running") setPhase("running");
@@ -107,11 +213,18 @@ export function CrmBotPanel({
         if (c.status === "connecting") setPhase("connecting");
         else if (c.status === "running") setPhase("running");
         else if (c.status === "completed") setPhase("done");
+        if (
+          c.status === "connecting" ||
+          c.status === "running" ||
+          c.status === "completed"
+        ) {
+          void refreshCampaign(c.id).catch(() => {});
+        }
       } catch {
         /* ignore */
       }
     })();
-  }, [adminFetch]);
+  }, [adminFetch, refreshCampaign]);
 
   useEffect(() => {
     if ((phase === "running" || phase === "connecting") && campaignId) {
@@ -196,6 +309,7 @@ export function CrmBotPanel({
       setQrBase64(startData.qrBase64 ?? null);
       setPairingCode(startData.pairingCode ?? null);
       setPhase("connecting");
+      await refreshCampaign(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
     } finally {
@@ -214,6 +328,8 @@ export function CrmBotPanel({
       setPhase("config");
       setCampaignId(null);
       setCampaign(null);
+      setRecipients([]);
+      setStats({ pending: 0, sent: 0, failed: 0, skipped: 0 });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
     } finally {
@@ -469,6 +585,8 @@ export function CrmBotPanel({
             </div>
           </div>
 
+          <RecipientStatusList recipients={recipients} />
+
           <button
             type="button"
             disabled={loading}
@@ -481,26 +599,32 @@ export function CrmBotPanel({
       )}
 
       {phase === "done" && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
-          <p className="text-lg font-bold text-emerald-900">Campanha concluída</p>
-          <p className="mt-1 text-sm text-emerald-800">
-            Enviados: {stats.sent} · Falhas: {stats.failed}
-          </p>
-          {campaign?.last_error ? (
-            <p className="mt-2 text-left text-xs text-amber-900/90">
-              Último erro: {campaign.last_error}
+        <div className="space-y-4">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+            <p className="text-lg font-bold text-emerald-900">Campanha concluída</p>
+            <p className="mt-1 text-sm text-emerald-800">
+              Enviados: {stats.sent} · Falhas: {stats.failed}
             </p>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              setPhase("config");
-              setCampaignId(null);
-            }}
-            className="mt-4 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"
-          >
-            Nova campanha
-          </button>
+            {campaign?.last_error ? (
+              <p className="mt-2 text-left text-xs text-amber-900/90">
+                Último erro: {campaign.last_error}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setPhase("config");
+                setCampaignId(null);
+                setCampaign(null);
+                setRecipients([]);
+                setStats({ pending: 0, sent: 0, failed: 0, skipped: 0 });
+              }}
+              className="mt-4 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Nova campanha
+            </button>
+          </div>
+          <RecipientStatusList recipients={recipients} />
         </div>
       )}
     </div>
