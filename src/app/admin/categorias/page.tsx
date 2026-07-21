@@ -19,6 +19,7 @@ type ShowcaseRow = {
   video_url: string | null;
   video_poster_url: string | null;
   wholesale_tiers: WholesaleTier[];
+  retail_price: number | null;
   home_grid_cover_image_url: string | null;
   catalog_cover_image_url: string | null;
   display_order: number | null;
@@ -78,6 +79,7 @@ export default function AdminCategoriasPage() {
   const [videoEdits, setVideoEdits] = useState<Record<string, string>>({});
   const [posterEdits, setPosterEdits] = useState<Record<string, string>>({});
   const [tiersEdits, setTiersEdits] = useState<Record<string, string>>({});
+  const [retailEdits, setRetailEdits] = useState<Record<string, string>>({});
   const [gridCoverEdits, setGridCoverEdits] = useState<Record<string, string>>({});
   const [categoryCoverEdits, setCategoryCoverEdits] = useState<
     Record<string, string>
@@ -131,6 +133,7 @@ export default function AdminCategoriasPage() {
       const videoMap: Record<string, string> = {};
       const posterMap: Record<string, string> = {};
       const tiersMap: Record<string, string> = {};
+      const retailMap: Record<string, string> = {};
       const gridMap: Record<string, string> = {};
       const catCoverMap: Record<string, string> = {};
       for (const label of sortedLabels) {
@@ -144,6 +147,10 @@ export default function AdminCategoriasPage() {
         videoMap[label] = showcase?.video_url ?? "";
         posterMap[label] = showcase?.video_poster_url ?? "";
         tiersMap[label] = tiersToText(showcase?.wholesale_tiers ?? []);
+        retailMap[label] =
+          showcase?.retail_price != null && Number.isFinite(showcase.retail_price)
+            ? String(showcase.retail_price)
+            : "";
         gridMap[label] = showcase?.home_grid_cover_image_url ?? "";
         catCoverMap[label] = showcase?.catalog_cover_image_url ?? "";
       }
@@ -154,6 +161,7 @@ export default function AdminCategoriasPage() {
       setVideoEdits(videoMap);
       setPosterEdits(posterMap);
       setTiersEdits(tiersMap);
+      setRetailEdits(retailMap);
       setGridCoverEdits(gridMap);
       setCategoryCoverEdits(catCoverMap);
     } catch (e) {
@@ -185,6 +193,15 @@ export default function AdminCategoriasPage() {
         video_url: (videoEdits[category_label] ?? "").trim() || null,
         video_poster_url: (posterEdits[category_label] ?? "").trim() || null,
         wholesale_tiers: parseTierText(tiersEdits[category_label] ?? ""),
+        retail_price: (() => {
+          const raw = String(retailEdits[category_label] ?? "").trim();
+          if (!raw) return null;
+          const n = Number(raw.replace(",", "."));
+          if (!Number.isFinite(n) || n < 0) {
+            throw new Error(`Preço de varejo inválido em "${category_label}"`);
+          }
+          return Number(n.toFixed(2));
+        })(),
         home_grid_cover_image_url:
           (gridCoverEdits[category_label] ?? "").trim() || null,
         catalog_cover_image_url:
@@ -414,7 +431,7 @@ export default function AdminCategoriasPage() {
                   )}
                 </div>
 
-                <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                   <label className="text-sm text-stone-700">
                     Custo por peça (R$)
                     <input
@@ -426,6 +443,23 @@ export default function AdminCategoriasPage() {
                         setCostEdits((prev) => ({ ...prev, [label]: e.target.value }))
                       }
                       className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 disabled:bg-stone-100"
+                    />
+                  </label>
+                  <label className="text-sm text-stone-700">
+                    Preço varejo (R$)
+                    <span className="mt-0.5 block text-[11px] font-normal text-stone-500">
+                      1 a 9 peças · checkout online
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      disabled={!isOwner}
+                      value={retailEdits[label] ?? ""}
+                      onChange={(e) =>
+                        setRetailEdits((prev) => ({ ...prev, [label]: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-cyan-300/80 px-3 py-2 text-stone-900 disabled:bg-stone-100"
+                      placeholder="Ex.: 49.90"
                     />
                   </label>
                   <label className="text-sm text-stone-700">
@@ -471,7 +505,7 @@ export default function AdminCategoriasPage() {
                 </div>
 
                 <label className="mt-3 block text-sm text-stone-700">
-                  Tabela atacado (uma linha por faixa no formato `min-max=preço` e `min-+=preço`)
+                  Tabela atacado — 10+ peças (uma linha por faixa: `min-max=preço` ou `min-+=preço`)
                   <textarea
                     rows={4}
                     disabled={!isOwner}

@@ -11,12 +11,15 @@ export type CategoryShowcaseConfig = {
   videoUrl: string | null;
   videoPoster?: string;
   wholesaleTiers: WholesaleTier[];
+  /** Preço unitário varejo (1–9 peças). Null = ainda não definido. */
+  retailPrice: number | null;
   /** Banner largo no topo da página da categoria (`catalog_cover_image_url`). */
   catalogCoverImageUrl?: string | null;
 };
 
 export const DEFAULT_SHOWCASE: CategoryShowcaseConfig = {
   videoUrl: null,
+  retailPrice: null,
   wholesaleTiers: [
     { minQty: 3, maxQty: 5, price: 39.9 },
     { minQty: 6, maxQty: 11, price: 36.9 },
@@ -38,6 +41,13 @@ export function sanitizeWholesaleTiers(raw: unknown): WholesaleTier[] {
   return tiers.length > 0 ? tiers : DEFAULT_SHOWCASE.wholesaleTiers;
 }
 
+export function sanitizeRetailPrice(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Number(n.toFixed(2));
+}
+
 function normalizeTier(raw: unknown): WholesaleTier | null {
   const t = raw as { minQty?: unknown; maxQty?: unknown; price?: unknown };
   const minQty = Number(t.minQty);
@@ -53,6 +63,7 @@ function normalizeShowcaseRow(row: {
   video_url?: string | null;
   video_poster_url?: string | null;
   wholesale_tiers?: unknown;
+  retail_price?: unknown;
   catalog_cover_image_url?: string | null;
 }): CategoryShowcaseConfig {
   const tiersRaw = Array.isArray(row.wholesale_tiers) ? row.wholesale_tiers : [];
@@ -63,6 +74,7 @@ function normalizeShowcaseRow(row: {
     videoUrl: row.video_url?.trim() || null,
     videoPoster: row.video_poster_url?.trim() || undefined,
     wholesaleTiers: tiers.length > 0 ? tiers : DEFAULT_SHOWCASE.wholesaleTiers,
+    retailPrice: sanitizeRetailPrice(row.retail_price),
     catalogCoverImageUrl: row.catalog_cover_image_url?.trim() || null,
   };
 }
@@ -95,11 +107,18 @@ export async function getCategoryShowcaseConfig(
   }
 
   let q = await pickRow(
-    "video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url"
+    "video_url, video_poster_url, wholesale_tiers, retail_price, catalog_cover_image_url"
   );
 
   if (q.error && isMissingSchemaColumnError(q.error)) {
-    q = await pickRow("video_url, video_poster_url, wholesale_tiers");
+    if (/retail_price/i.test(q.error.message ?? "")) {
+      q = await pickRow(
+        "video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url"
+      );
+    }
+    if (q.error && isMissingSchemaColumnError(q.error)) {
+      q = await pickRow("video_url, video_poster_url, wholesale_tiers");
+    }
   }
 
   const row = q.data;
@@ -111,6 +130,7 @@ export async function getCategoryShowcaseConfig(
       video_url?: string | null;
       video_poster_url?: string | null;
       wholesale_tiers?: unknown;
+      retail_price?: unknown;
       catalog_cover_image_url?: string | null;
     }
   );

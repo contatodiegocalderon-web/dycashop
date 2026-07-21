@@ -119,7 +119,7 @@ export default function AdminVarejoPage() {
         <div>
           <h1 className="text-2xl font-bold text-stone-900">Varejo</h1>
           <p className="text-sm text-stone-600">
-            Pedidos pagos online (&lt; 5 peças). A aba Pedidos (WhatsApp) não
+            Pedidos pagos online (1 a 9 peças). A aba Pedidos (WhatsApp) não
             muda — aqui só entram vendas do canal Varejo.
           </p>
         </div>

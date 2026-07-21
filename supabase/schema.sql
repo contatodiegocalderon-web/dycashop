@@ -107,6 +107,8 @@ create table if not exists public.category_showcase_settings (
   video_url text,
   video_poster_url text,
   wholesale_tiers jsonb not null default '[]'::jsonb,
+  /** Preço unitário varejo (1–9 peças). */
+  retail_price numeric(12,2),
   updated_at timestamptz not null default now()
 );
 

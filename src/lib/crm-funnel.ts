@@ -1,10 +1,18 @@
-/** Peças mínimas para considerar pedido/carrinho como atacado. */
-export const CRM_ATACADO_MIN_PIECES = 5;
+import {
+  RETAIL_MAX_PIECES,
+  WHOLESALE_MIN_PIECES,
+  salesChannelFromPieces,
+  salesChannelLabel,
+  type SalesVolumeChannel,
+} from "@/lib/sales-channel";
+
+/** @deprecated use WHOLESALE_MIN_PIECES — mantido para imports antigos. */
+export const CRM_ATACADO_MIN_PIECES = WHOLESALE_MIN_PIECES;
 
 /** Cards visíveis antes do botão «Ver mais» em cada coluna do pipeline. */
 export const CRM_COLUMN_PREVIEW = 8;
 
-export type CrmVolumeTier = "atacado" | "varejo";
+export type CrmVolumeTier = SalesVolumeChannel;
 
 export type CrmFunnelTab =
   | "abandonados"
@@ -31,12 +39,14 @@ export function totalPiecesFromItems(items: { quantity: number }[]): number {
 }
 
 export function volumeTierFromPieces(pieces: number): CrmVolumeTier {
-  return pieces >= CRM_ATACADO_MIN_PIECES ? "atacado" : "varejo";
+  return salesChannelFromPieces(pieces);
 }
 
 export function volumeTierLabel(tier: CrmVolumeTier): string {
-  return tier === "atacado" ? "Atacado (5+ peças)" : "Varejo (< 5 peças)";
+  return salesChannelLabel(tier);
 }
+
+export { RETAIL_MAX_PIECES, WHOLESALE_MIN_PIECES };
 
 export function nextFollowUpLabel(count: number): string | null {
   if (count >= CRM_ABANDONED_FOLLOW_UP_MAX) return null;

@@ -1,4 +1,5 @@
 import type { CategoryShowcaseConfig } from "@/lib/category-showcase";
+import { RETAIL_MAX_PIECES } from "@/lib/sales-channel";
 import {
   parseYouTubeVideoId,
   youtubeEmbedUrl,
@@ -44,6 +45,17 @@ export function CategoryShowcaseBanner({ categoryLabel, config }: Props) {
               </tr>
             </thead>
             <tbody>
+              {config.retailPrice != null && config.retailPrice > 0 ? (
+                <tr className="border-t border-white/[0.08] bg-cyan-500/5">
+                  <td className="px-3 py-2 text-stone-200">
+                    1–{RETAIL_MAX_PIECES} peças{" "}
+                    <span className="text-[11px] text-cyan-300/80">(varejo)</span>
+                  </td>
+                  <td className="px-3 py-2 font-semibold text-cyan-300">
+                    {formatCurrency(config.retailPrice)}
+                  </td>
+                </tr>
+              ) : null}
               {config.wholesaleTiers.map((tier) => (
                 <tr
                   key={`${tier.minQty}-${tier.maxQty ?? "plus"}`}
