@@ -4,6 +4,17 @@ export type ProductStatus = "ATIVO" | "ESGOTADO";
 
 export type OrderStatus = "PENDENTE_PAGAMENTO" | "PAGO" | "CANCELADO";
 
+/** ATACADO = WhatsApp / confirmação manual; VAREJO = checkout online (ex.: Mercado Pago). */
+export type SalesChannel = "ATACADO" | "VAREJO";
+
+import type {
+  OrderStockConflict,
+  OrderStockConflictItem,
+  OrderStockConflictReason,
+} from "@/lib/order-stock-conflict";
+
+export type { OrderStockConflict, OrderStockConflictItem, OrderStockConflictReason };
+
 export type ProductSyncStatus = "pending" | "done" | "error";
 
 export interface Product {
@@ -67,9 +78,11 @@ export type CustomerSegment = "NOVO" | "ANTIGO";
 
 export interface OrderRow {
   id: string;
-  /** Número de vitrine (único, conta todos os pedidos por ordem de criação). */
+  /** Número de vitrine gravado na BD na criação; não muda ao cancelar nem ao filtrar listas. */
   display_number?: number;
   status: OrderStatus;
+  /** Presente após migration_order_sales_channel.sql. */
+  sales_channel?: SalesChannel | null;
   customer_note: string | null;
   /** Token para o cliente abrir /recibo/[token]. */
   public_token?: string | null;
@@ -90,6 +103,10 @@ export interface OrderRow {
   customer_segment?: CustomerSegment | null;
   requested_seller_name?: string | null;
   requested_seller_phone?: string | null;
+  /** mercadopago | etc. */
+  payment_provider?: string | null;
+  /** Id externo do pagamento / preferência. */
+  payment_external_id?: string | null;
   confirmed_at?: string | null;
   /** Quem confirmou o pagamento (vendedor/dono) quando sessão staff. */
   confirmed_by_staff_id?: string | null;
@@ -97,6 +114,8 @@ export interface OrderRow {
   confirmed_by_staff_name?: string | null;
   created_at: string;
   updated_at: string;
+  /** Aviso de peças esgotadas por confirmação de outro pedido (ver `order-stock-conflict`). */
+  stock_conflict?: OrderStockConflict | null;
   order_items?: OrderItemRow[];
 }
 

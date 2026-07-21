@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
+import { recordCancelledReceiptToken } from "@/lib/order-receipt";
 
 export const runtime = "nodejs";
 
 /**
  * POST /api/admin/orders/cancel/[orderId]
- * Só cancela pedidos ainda pendentes (não repõe stock: confirmação é que baixa).
+ * Marca pedido como CANCELADO (mantém na BD para remarketing em Clientes → Carrinhos abandonados).
+ * Não repõe stock: confirmação é que baixa. O recibo mostra mensagem de cancelado.
  */
 export async function POST(
   request: NextRequest,
@@ -29,7 +31,7 @@ export async function POST(
 
     const { data: order, error: oErr } = await admin
       .from("orders")
-      .select("id, status")
+      .select("id, status, public_token")
       .eq("id", orderId)
       .single();
 
@@ -43,10 +45,27 @@ export async function POST(
       );
     }
 
+    const tokenSaved = await recordCancelledReceiptToken(
+      (order as { public_token?: string | null }).public_token
+    );
+    if (!tokenSaved.ok) {
+      return NextResponse.json(
+        {
+          error: tokenSaved.error,
+          hint: "Execute supabase/migration_cancelled_receipt_tokens.sql no Supabase.",
+        },
+        { status: 500 }
+      );
+    }
+
     const { error: uErr } = await admin
       .from("orders")
-      .update({ status: "CANCELADO" })
-      .eq("id", orderId);
+      .update({
+        status: "CANCELADO",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
+      .eq("status", "PENDENTE_PAGAMENTO");
 
     if (uErr) {
       return NextResponse.json({ error: uErr.message }, { status: 500 });

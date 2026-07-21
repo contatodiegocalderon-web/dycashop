@@ -1,15 +1,110 @@
 "use client";
 
-import Link from "next/link";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCatalogReturnUrl, markCatalogBrowseRestore } from "@/lib/catalog-return-url";
 import { CART_STORAGE_KEY, useCart } from "@/providers/cart-provider";
 import type { CartLine, ProductSize } from "@/types";
 import type { WhatsAppSeller } from "@/lib/sellers";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
+import { normalizeCheckoutWaDigits } from "@/lib/abandoned-checkout";
 import { buildOrderWhatsAppText, waMeUrl } from "@/lib/whatsapp";
+import { CartShippingQuote } from "@/components/cart-shipping-quote";
+import type { ShippingQuotePayload, ShippingQuoteOption } from "@/lib/shipping-quote-types";
+import { totalsByCategoryFromCartLines } from "@/lib/order-category-totals";
+import {
+  formatCpfMask,
+  isValidCpf,
+  normalizeShippingAddress,
+} from "@/lib/shipping-address";
+import {
+  isRetailPieceCount,
+  RETAIL_MAX_PIECES,
+  WHOLESALE_MIN_PIECES,
+} from "@/lib/sales-channel";
+
+type CheckoutStep = "cart" | "entrega";
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
+
+function orderSummaryText(lines: CartLine[]): string {
+  return totalsByCategoryFromCartLines(lines)
+    .map(({ label, qty }) => `${qty}x ${label.toUpperCase()}`)
+    .join(" ");
+}
+
+function CheckoutStepper({
+  active,
+  isRetail,
+}: {
+  active: "carrinho" | "entrega" | "pagamento";
+  isRetail: boolean;
+}) {
+  const steps: Array<{
+    id: "carrinho" | "entrega" | "pagamento";
+    label: string;
+  }> = [
+    { id: "carrinho", label: "Carrinho" },
+    { id: "entrega", label: "Entrega" },
+    { id: "pagamento", label: isRetail ? "Pagamento" : "WhatsApp" },
+  ];
+  const order = ["carrinho", "entrega", "pagamento"] as const;
+  const activeIdx = order.indexOf(active);
+
+  return (
+    <nav aria-label="Etapas do checkout" className="mb-8">
+      <ol className="flex items-center justify-between gap-2">
+        {steps.map((step, i) => {
+          const done = i < activeIdx;
+          const current = i === activeIdx;
+          return (
+            <li key={step.id} className="flex flex-1 flex-col items-center gap-2">
+              <div className="flex w-full items-center">
+                {i > 0 ? (
+                  <span
+                    className={`h-px flex-1 ${done || current ? "bg-white/40" : "bg-white/10"}`}
+                    aria-hidden
+                  />
+                ) : (
+                  <span className="flex-1" aria-hidden />
+                )}
+                <span
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                    done
+                      ? "bg-white text-zinc-950"
+                      : current
+                        ? "bg-white text-zinc-950 ring-2 ring-white/30"
+                        : "bg-zinc-800 text-stone-500"
+                  }`}
+                  aria-current={current ? "step" : undefined}
+                >
+                  {done ? "✓" : i + 1}
+                </span>
+                {i < steps.length - 1 ? (
+                  <span
+                    className={`h-px flex-1 ${done ? "bg-white/40" : "bg-white/10"}`}
+                    aria-hidden
+                  />
+                ) : (
+                  <span className="flex-1" aria-hidden />
+                )}
+              </div>
+              <span
+                className={`text-[11px] font-medium uppercase tracking-wide ${
+                  current || done ? "text-stone-200" : "text-stone-600"
+                }`}
+              >
+                {step.label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
 
 function groupBySize(lines: CartLine[]) {
   const m = new Map<ProductSize, CartLine[]>();
@@ -91,28 +186,205 @@ function SellerChoiceAvatar({ seller }: { seller: WhatsAppSeller }) {
 }
 
 export default function CarrinhoPage() {
-  const { lines, setLineQuantity, removeLine, clear } = useCart();
+  const router = useRouter();
+  const { lines, hydrated, setLineQuantity, removeLine, clear, reconcileWithCatalog } =
+    useCart();
   const [customerName, setCustomerName] = useState("");
   const [customerWhatsApp, setCustomerWhatsApp] = useState("+55 ");
   const [cep, setCep] = useState("");
+  const [shipCpf, setShipCpf] = useState("");
+  const [shipStreet, setShipStreet] = useState("");
+  const [shipNumber, setShipNumber] = useState("");
+  const [shipComplement, setShipComplement] = useState("");
+  const [shipDistrict, setShipDistrict] = useState("");
+  const [shipCity, setShipCity] = useState("");
+  const [shipState, setShipState] = useState("");
+  const [cepLookupBusy, setCepLookupBusy] = useState(false);
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuotePayload | null>(
+    null
+  );
+  const [selectedShipping, setSelectedShipping] =
+    useState<ShippingQuoteOption | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [cartNotice, setCartNotice] = useState<string | null>(null);
+  const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("cart");
   const [sellerModalOpen, setSellerModalOpen] = useState(false);
   const [selectedSellerPhone, setSelectedSellerPhone] = useState<string | null>(
     WHATSAPP_SELLERS[0]?.phone ?? null
   );
   const [portalReady, setPortalReady] = useState(false);
   const lastTouchRef = useRef(0);
+  const initialReconcileDoneRef = useRef(false);
+  /** Evita sobrescrever o nome depois de o cliente editar manualmente (ref lida no fim do debounce). */
+  const nameManuallyEditedRef = useRef(false);
 
   const groups = useMemo(() => groupBySize(lines), [lines]);
+  const totalPieces = useMemo(
+    () => lines.reduce((s, l) => s + Math.max(0, Number(l.quantity) || 0), 0),
+    [lines]
+  );
+  const isRetailCheckout = isRetailPieceCount(totalPieces);
+  const categorySummary = useMemo(() => orderSummaryText(lines), [lines]);
+
+  const deliveryFormReady = useMemo(() => {
+    const waOk = normalizeCheckoutWaDigits(customerWhatsApp).length >= 10;
+    const nameOk = customerName.trim().length > 0;
+    const cepOk = cep.replace(/\D/g, "").length === 8;
+    const shipOk = Boolean(selectedShipping && Number(selectedShipping.price) >= 0);
+    if (!waOk || !nameOk || !cepOk || !shipOk) return false;
+    if (!isRetailCheckout) return true;
+    return Boolean(
+      normalizeShippingAddress({
+        cpf: shipCpf,
+        street: shipStreet,
+        number: shipNumber,
+        complement: shipComplement,
+        district: shipDistrict,
+        city: shipCity,
+        state: shipState,
+      })
+    );
+  }, [
+    customerWhatsApp,
+    customerName,
+    cep,
+    selectedShipping,
+    isRetailCheckout,
+    shipCpf,
+    shipStreet,
+    shipNumber,
+    shipComplement,
+    shipDistrict,
+    shipCity,
+    shipState,
+  ]);
+
+  const goBackToCatalog = useCallback(() => {
+    markCatalogBrowseRestore();
+    router.push(getCatalogReturnUrl());
+  }, [router]);
+
+  useEffect(() => {
+    if (!lines.length) setCheckoutStep("cart");
+  }, [lines.length]);
 
   useEffect(() => {
     setPortalReady(true);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("mp") === "falhou") {
+      setErr("Pagamento não concluído. Pode tentar de novo ou escolher outra forma.");
+    }
+  }, []);
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!lines.length) return;
+    if (initialReconcileDoneRef.current) return;
+    initialReconcileDoneRef.current = true;
+
+    let cancelled = false;
+    void reconcileWithCatalog()
+      .then((notice) => {
+        if (!cancelled) setCartNotice(notice);
+      })
+      .catch(() => {
+        /* rede — o envio volta a reconciliar */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, lines.length, reconcileWithCatalog]);
+
+  useEffect(() => {
+    const digits = normalizeCheckoutWaDigits(customerWhatsApp);
+    if (digits.length < 10) return;
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const r = await fetch(
+            `/api/orders/lookup-customer-name?whatsapp=${encodeURIComponent(digits)}`,
+            { signal: ac.signal }
+          );
+          if (!r.ok) return;
+          const j = (await r.json()) as { customerName?: string | null };
+          const n = j.customerName?.trim();
+          if (n && !nameManuallyEditedRef.current) {
+            setCustomerName(n);
+          }
+        } catch {
+          /* abort / rede */
+        }
+      })();
+    }, 450);
+    return () => {
+      ac.abort();
+      window.clearTimeout(timer);
+    };
+  }, [customerWhatsApp]);
+
+  useEffect(() => {
+    const cepDigits = cep.replace(/\D/g, "");
+    if (cepDigits.length !== 8) return;
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      setCepLookupBusy(true);
+      void (async () => {
+        try {
+          const r = await fetch(`/api/cep?cep=${encodeURIComponent(cepDigits)}`, {
+            signal: ac.signal,
+          });
+          if (!r.ok) return;
+          const j = (await r.json()) as {
+            street?: string;
+            district?: string;
+            city?: string;
+            state?: string;
+          };
+          if (j.street) setShipStreet((prev) => prev.trim() || String(j.street));
+          if (j.district)
+            setShipDistrict((prev) => prev.trim() || String(j.district));
+          if (j.city) setShipCity(String(j.city));
+          if (j.state) setShipState(String(j.state).toUpperCase().slice(0, 2));
+        } catch {
+          /* abort / rede */
+        } finally {
+          if (!ac.signal.aborted) setCepLookupBusy(false);
+        }
+      })();
+    }, 400);
+    return () => {
+      ac.abort();
+      window.clearTimeout(timer);
+    };
+  }, [cep]);
+
   const openSellerModal = useCallback(() => {
     setErr(null);
     if (!lines.length) return;
+    const pieces = lines.reduce(
+      (s, l) => s + Math.max(0, Number(l.quantity) || 0),
+      0
+    );
+    if (isRetailPieceCount(pieces)) {
+      setErr(
+        `Com até ${RETAIL_MAX_PIECES} peças use «Iniciar Compra - VAREJO». WhatsApp é para ${WHOLESALE_MIN_PIECES}+.`
+      );
+      return;
+    }
+    const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
+    if (waDigits.length < 10) {
+      setErr("Informe um WhatsApp válido (com DDD, mínimo 10 dígitos).");
+      return;
+    }
+    if (!customerName.trim()) {
+      setErr("Informe o seu nome para enviar o pedido.");
+      return;
+    }
     if (!WHATSAPP_SELLERS.length) {
       setErr("Nenhum vendedor configurado.");
       return;
@@ -122,7 +394,7 @@ export default function CarrinhoPage() {
       return WHATSAPP_SELLERS[0]!.phone;
     });
     setSellerModalOpen(true);
-  }, [lines.length]);
+  }, [lines, customerWhatsApp, customerName]);
 
   const closeSellerModal = useCallback(() => {
     if (!busy) setSellerModalOpen(false);
@@ -144,10 +416,35 @@ export default function CarrinhoPage() {
       return;
     }
     if (!lines.length) return;
+    if (isRetailPieceCount(totalPieces)) {
+      setErr(
+        `Com ${totalPieces} peça(s) use «Iniciar Compra - VAREJO» (Mercado Pago). Atacado é a partir de ${WHOLESALE_MIN_PIECES} peças.`
+      );
+      return;
+    }
+    const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
+    if (waDigits.length < 10) {
+      setErr("Informe um WhatsApp válido (com DDD).");
+      return;
+    }
+    const trimmedName = customerName.trim();
+    if (!trimmedName) {
+      setErr("Informe o seu nome para enviar o pedido.");
+      return;
+    }
 
     setBusy(true);
     setErr(null);
+    setCartNotice(null);
     try {
+      const staleNotice = await reconcileWithCatalog();
+      if (staleNotice) {
+        setCartNotice(staleNotice);
+        throw new Error(
+          "O carrinho mudou: algumas peças já não estão disponíveis. Revise e tente outra vez."
+        );
+      }
+
       const seller = WHATSAPP_SELLERS.find((s) => s.phone === sellerPhone) ?? null;
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -158,8 +455,8 @@ export default function CarrinhoPage() {
             quantity: l.quantity,
           })),
           customerNote: cep.trim() || undefined,
-          customerName: customerName.trim() || undefined,
-          customerWhatsApp: customerWhatsApp.trim() || undefined,
+          customerName: trimmedName,
+          customerWhatsApp: customerWhatsApp.trim(),
           sellerName: seller?.name ?? undefined,
           sellerPhone: seller?.phone ?? undefined,
         }),
@@ -193,7 +490,9 @@ export default function CarrinhoPage() {
       const text = buildOrderWhatsAppText(lines, {
         receiptUrl: receiptUrl || undefined,
         customerCep: cep,
-        customerName: customerName.trim() || undefined,
+        customerName: trimmedName,
+        shippingQuote,
+        selectedShipping,
         orderDisplayNumber:
           typeof data.orderDisplayNumber === "number"
             ? data.orderDisplayNumber
@@ -206,11 +505,139 @@ export default function CarrinhoPage() {
       } catch {
         /* ignore */
       }
+      nameManuallyEditedRef.current = false;
       setCustomerName("");
       setCustomerWhatsApp("+55 ");
       setCep("");
+      setShipCpf("");
+      setShipStreet("");
+      setShipNumber("");
+      setShipComplement("");
+      setShipDistrict("");
+      setShipCity("");
+      setShipState("");
+      setShippingQuote(null);
+      setSelectedShipping(null);
       setSellerModalOpen(false);
       window.location.assign(url);
+    } catch (e) {
+      setErr(
+        e instanceof Error ? e.message : "Falha de rede ou do servidor."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitRetailMercadoPago() {
+    if (!lines.length) return;
+    setErr(null);
+    setCartNotice(null);
+
+    if (!isRetailPieceCount(totalPieces)) {
+      setErr(
+        `Pagamento online é para 1–${RETAIL_MAX_PIECES} peças. Com ${totalPieces} use WhatsApp.`
+      );
+      return;
+    }
+    const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
+    if (waDigits.length < 10) {
+      setErr("Informe um WhatsApp válido (com DDD).");
+      return;
+    }
+    const trimmedName = customerName.trim();
+    if (!trimmedName) {
+      setErr("Informe o seu nome.");
+      return;
+    }
+    const cepDigits = cep.replace(/\D/g, "");
+    if (cepDigits.length !== 8) {
+      setErr("Informe um CEP válido.");
+      return;
+    }
+    if (!selectedShipping || !(Number(selectedShipping.price) >= 0)) {
+      setErr("Calcule o frete e selecione PAC ou SEDEX.");
+      return;
+    }
+    const address = normalizeShippingAddress({
+      cpf: shipCpf,
+      street: shipStreet,
+      number: shipNumber,
+      complement: shipComplement,
+      district: shipDistrict,
+      city: shipCity,
+      state: shipState,
+    });
+    if (!address) {
+      if (!isValidCpf(shipCpf)) {
+        setErr("Informe um CPF válido para a etiqueta de envio.");
+      } else {
+        setErr(
+          "Preencha o endereço completo (rua, número, bairro, cidade e UF) para a etiqueta."
+        );
+      }
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const staleNotice = await reconcileWithCatalog();
+      if (staleNotice) {
+        setCartNotice(staleNotice);
+        throw new Error(
+          "O carrinho mudou: algumas peças já não estão disponíveis. Revise e tente outra vez."
+        );
+      }
+
+      const res = await fetch("/api/payments/mercadopago/create-preference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: lines.map((l) => ({
+            productId: l.productId,
+            quantity: l.quantity,
+          })),
+          customerName: trimmedName,
+          customerWhatsApp: customerWhatsApp.trim(),
+          cep: cepDigits,
+          shipping: {
+            service: selectedShipping.code,
+            label: selectedShipping.label,
+            price: selectedShipping.price,
+            deadlineDays: selectedShipping.deliveryDays ?? null,
+          },
+          address,
+        }),
+      });
+
+      const rawText = await res.text();
+      let data: {
+        error?: string;
+        hint?: string;
+        initPoint?: string;
+      } = {};
+      try {
+        data = rawText ? (JSON.parse(rawText) as typeof data) : {};
+      } catch {
+        throw new Error("Resposta inválida do servidor.");
+      }
+      if (!res.ok) {
+        throw new Error(
+          [data.error, data.hint].filter(Boolean).join(" — ") ||
+            "Falha ao iniciar pagamento"
+        );
+      }
+      if (!data.initPoint) {
+        throw new Error("Link de pagamento não recebido.");
+      }
+
+      clear();
+      try {
+        localStorage.removeItem(CART_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      window.location.assign(data.initPoint);
     } catch (e) {
       setErr(
         e instanceof Error ? e.message : "Falha de rede ou do servidor."
@@ -233,10 +660,25 @@ export default function CarrinhoPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <h1 className="text-xl font-bold text-stone-100">Carrinho</h1>
-      <p className="mt-1 text-sm text-stone-400">
-        Confira por tamanho, informe o CEP e envie o pedido no WhatsApp.
-      </p>
+      {checkoutStep === "entrega" && lines.length > 0 ? (
+        <CheckoutStepper
+          active="entrega"
+          isRetail={isRetailCheckout}
+        />
+      ) : (
+        <>
+          <h1 className="text-xl font-bold text-stone-100">Carrinho</h1>
+          <p className="mt-1 text-sm text-stone-400">
+            Confira as peças e inicie a compra quando estiver pronto.
+          </p>
+        </>
+      )}
+
+      {cartNotice && (
+        <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
+          {cartNotice}
+        </div>
+      )}
 
       {err && (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -347,14 +789,15 @@ export default function CarrinhoPage() {
       {lines.length === 0 ? (
         <p className="mt-8 text-stone-400">
           Carrinho vazio.{" "}
-          <Link
-            href="/"
+          <button
+            type="button"
+            onClick={goBackToCatalog}
             className="font-medium text-stone-400 transition-colors hover:text-stone-200"
           >
-            Voltar ao catálogo
-          </Link>
+            Voltar
+          </button>
         </p>
-      ) : (
+      ) : checkoutStep === "cart" ? (
         <div className="mt-8 space-y-8">
           {SIZE_ORDER.map((size) => {
             const g = groups.get(size) ?? [];
@@ -374,12 +817,13 @@ export default function CarrinhoPage() {
                       className="flex gap-3 border-b border-white/[0.06] pb-4 last:border-0 last:pb-0"
                     >
                       <div className="relative h-[4.5rem] w-[3.25rem] shrink-0 overflow-hidden rounded-md bg-zinc-950">
-                        <img
+                        <Image
                           src={line.product.drive_image_url}
                           alt=""
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                          decoding="async"
+                          fill
+                          unoptimized
+                          className="object-cover"
+                          sizes="52px"
                         />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -468,110 +912,349 @@ export default function CarrinhoPage() {
             );
           })}
 
-          <div className="max-w-xs">
-            <label
-              htmlFor="checkout-customer-name"
-              className="text-sm font-medium text-stone-300"
-            >
-              Seu nome
-            </label>
-            <p className="mt-0.5 text-xs text-stone-500">
-              Usado para identificar o pedido no painel administrativo.
-            </p>
-            <input
-              id="checkout-customer-name"
-              type="text"
-              autoComplete="name"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              maxLength={120}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
-              placeholder="Nome para identificar o pedido"
-            />
-          </div>
+          {categorySummary ? (
+            <div className="border-t border-white/10 pt-5">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-stone-500">
+                Resumo do pedido
+              </p>
+              <p className="mt-2 text-sm font-semibold leading-relaxed tracking-wide text-stone-100">
+                {categorySummary}
+              </p>
+              <p className="mt-1 text-xs text-stone-500">
+                {totalPieces} peça{totalPieces === 1 ? "" : "s"} no total
+              </p>
+            </div>
+          ) : null}
 
-          <div className="max-w-xs">
-            <label
-              htmlFor="checkout-customer-whatsapp"
-              className="text-sm font-medium text-stone-300"
-            >
-              WhatsApp
-            </label>
-            <p className="mt-0.5 text-xs text-stone-500">
-              IMPORTANTE, confira antes de enviar o pedido
-            </p>
-            <input
-              id="checkout-customer-whatsapp"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              value={customerWhatsApp}
-              onChange={(e) => {
-                const digits = e.target.value.replace(/\D/g, "");
-                const brDigits = digits.startsWith("55")
-                  ? digits
-                  : `55${digits}`;
-                const national = brDigits.slice(2, 13);
-                const ddd = national.slice(0, 2);
-                const first = national.slice(2, 7);
-                const second = national.slice(7, 11);
-                const formatted = `+55 ${ddd}${first ? ` ${first}` : ""}${second ? `-${second}` : ""}`;
-                setCustomerWhatsApp(formatted.trimEnd());
-              }}
-              maxLength={20}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
-              placeholder="+55 11 99999-9999"
-            />
-          </div>
-
-          <div className="max-w-xs">
-            <label
-              htmlFor="checkout-cep"
-              className="text-sm font-medium text-stone-300"
-            >
-              CEP para frete
-            </label>
-            <p className="mt-0.5 text-xs text-stone-500">
-              O vendedor usa o CEP para calcular o envio e responder no WhatsApp.
-            </p>
-            <input
-              id="checkout-cep"
-              type="text"
-              inputMode="numeric"
-              autoComplete="postal-code"
-              value={cep}
-              onChange={(e) => setCep(e.target.value)}
-              maxLength={9}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm tabular-nums text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
-              placeholder="00000-000"
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-3">
+            {isRetailCheckout ? (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[11px] uppercase tracking-wide text-stone-500">
+                  ATACADO a partir de {WHOLESALE_MIN_PIECES} peças
+                </p>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setErr(null);
+                    setCheckoutStep("entrega");
+                  }}
+                  className="rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                >
+                  Iniciar Compra - VAREJO
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setErr(null);
+                  setCheckoutStep("entrega");
+                }}
+                className="rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                Iniciar Compra - ATACADO
+              </button>
+            )}
             <button
               type="button"
-              disabled={busy}
-              onClick={openSellerModal}
-              className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
-            >
-              Enviar pedido no WhatsApp
-            </button>
-            <Link
-              href="/"
+              onClick={goBackToCatalog}
               className="rounded-xl border border-white/15 px-5 py-3 text-sm font-medium text-stone-300 transition-colors hover:border-white/25 hover:bg-white/[0.04]"
             >
               Continuar comprando
-            </Link>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2 space-y-8">
+          <div>
+            <h1 className="text-xl font-bold text-stone-100">Entrega</h1>
+            <p className="mt-1 text-sm text-stone-400">
+              {isRetailCheckout
+                ? "Preencha os dados e continue para o pagamento online."
+                : "Preencha os dados e envie o pedido no WhatsApp."}
+            </p>
+            {categorySummary ? (
+              <p className="mt-3 text-xs font-medium leading-relaxed text-stone-400">
+                {categorySummary}
+              </p>
+            ) : null}
           </div>
 
-          <p className="mt-10 text-center text-xs text-stone-600">
-            <Link
-              href="/"
-              className="font-medium text-stone-400 transition-colors hover:text-stone-200"
+          <section className="space-y-5">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+                Dados de contato
+              </p>
+              <div className="mt-3 max-w-md space-y-4">
+                <div>
+                  <label
+                    htmlFor="checkout-customer-whatsapp"
+                    className="text-sm font-medium text-stone-300"
+                  >
+                    WhatsApp <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    id="checkout-customer-whatsapp"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    value={customerWhatsApp}
+                    onChange={(e) => {
+                      nameManuallyEditedRef.current = false;
+                      const digits = e.target.value.replace(/\D/g, "");
+                      const brDigits = digits.startsWith("55")
+                        ? digits
+                        : `55${digits}`;
+                      const national = brDigits.slice(2, 13);
+                      const ddd = national.slice(0, 2);
+                      const first = national.slice(2, 7);
+                      const second = national.slice(7, 11);
+                      const formatted = `+55 ${ddd}${first ? ` ${first}` : ""}${second ? `-${second}` : ""}`;
+                      setCustomerWhatsApp(formatted.trimEnd());
+                    }}
+                    maxLength={20}
+                    className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                    placeholder="+55 11 99999-9999"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="checkout-customer-name"
+                    className="text-sm font-medium text-stone-300"
+                  >
+                    Nome <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    id="checkout-customer-name"
+                    type="text"
+                    autoComplete="name"
+                    value={customerName}
+                    onChange={(e) => {
+                      nameManuallyEditedRef.current = true;
+                      setCustomerName(e.target.value);
+                    }}
+                    maxLength={120}
+                    className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                    placeholder="Seu nome"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+                Entrega
+              </p>
+              <div className="mt-3 max-w-md">
+                <label
+                  htmlFor="checkout-cep"
+                  className="text-sm font-medium text-stone-300"
+                >
+                  CEP <span className="text-red-400">*</span>
+                </label>
+                <input
+                  id="checkout-cep"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                  value={cep}
+                  onChange={(e) => setCep(e.target.value)}
+                  maxLength={9}
+                  className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm tabular-nums text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                  placeholder="00000-000"
+                />
+                <CartShippingQuote
+                  lines={lines}
+                  cep={cep}
+                  collectAddressOnSite={isRetailCheckout}
+                  onQuoteChange={setShippingQuote}
+                  onSelectionChange={setSelectedShipping}
+                />
+              </div>
+            </div>
+
+            {isRetailCheckout && selectedShipping ? (
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+                  Endereço para etiqueta
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  Dados necessários para gerar a etiqueta no SuperFrete
+                  {cepLookupBusy ? " · a preencher pelo CEP…" : ""}.
+                </p>
+                <div className="mt-3 max-w-md space-y-3">
+                  <div>
+                    <label
+                      htmlFor="checkout-cpf"
+                      className="text-sm font-medium text-stone-300"
+                    >
+                      CPF <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      id="checkout-cpf"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={shipCpf}
+                      onChange={(e) => setShipCpf(formatCpfMask(e.target.value))}
+                      maxLength={14}
+                      className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm tabular-nums text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                      placeholder="000.000.000-00"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="checkout-street"
+                      className="text-sm font-medium text-stone-300"
+                    >
+                      Rua / logradouro <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      id="checkout-street"
+                      type="text"
+                      autoComplete="address-line1"
+                      value={shipStreet}
+                      onChange={(e) => setShipStreet(e.target.value)}
+                      maxLength={180}
+                      className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                      placeholder="Rua, avenida…"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-1">
+                      <label
+                        htmlFor="checkout-number"
+                        className="text-sm font-medium text-stone-300"
+                      >
+                        Nº <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        id="checkout-number"
+                        type="text"
+                        autoComplete="address-line2"
+                        value={shipNumber}
+                        onChange={(e) => setShipNumber(e.target.value)}
+                        maxLength={20}
+                        className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                        placeholder="123"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label
+                        htmlFor="checkout-complement"
+                        className="text-sm font-medium text-stone-300"
+                      >
+                        Complemento
+                      </label>
+                      <input
+                        id="checkout-complement"
+                        type="text"
+                        value={shipComplement}
+                        onChange={(e) => setShipComplement(e.target.value)}
+                        maxLength={80}
+                        className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                        placeholder="Apto, bloco…"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="checkout-district"
+                      className="text-sm font-medium text-stone-300"
+                    >
+                      Bairro <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      id="checkout-district"
+                      type="text"
+                      value={shipDistrict}
+                      onChange={(e) => setShipDistrict(e.target.value)}
+                      maxLength={80}
+                      className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                      placeholder="Bairro"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <label
+                        htmlFor="checkout-city"
+                        className="text-sm font-medium text-stone-300"
+                      >
+                        Cidade <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        id="checkout-city"
+                        type="text"
+                        autoComplete="address-level2"
+                        value={shipCity}
+                        onChange={(e) => setShipCity(e.target.value)}
+                        maxLength={80}
+                        className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                        placeholder="Cidade"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="checkout-state"
+                        className="text-sm font-medium text-stone-300"
+                      >
+                        UF <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        id="checkout-state"
+                        type="text"
+                        autoComplete="address-level1"
+                        value={shipState}
+                        onChange={(e) =>
+                          setShipState(
+                            e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2)
+                          )
+                        }
+                        maxLength={2}
+                        className="mt-2 w-full rounded-none border border-white/25 bg-transparent px-3 py-3 text-sm uppercase text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/50"
+                        placeholder="SP"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+          <div className="flex flex-col gap-3 pt-2">
+            {isRetailCheckout ? (
+              <button
+                type="button"
+                disabled={busy || !deliveryFormReady}
+                onClick={() => void submitRetailMercadoPago()}
+                className="w-full rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-40"
+              >
+                {busy ? "A abrir pagamento…" : "Continuar"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={busy || !deliveryFormReady}
+                onClick={openSellerModal}
+                className="w-full rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-40"
+              >
+                Enviar Pedido
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setErr(null);
+                setCheckoutStep("cart");
+              }}
+              className="w-full rounded-xl border border-white/20 px-5 py-3 text-sm font-medium text-stone-300 hover:bg-white/[0.04] disabled:opacity-50"
             >
-              Voltar às categorias
-            </Link>
-          </p>
+              Voltar ao carrinho
+            </button>
+          </div>
         </div>
       )}
     </div>

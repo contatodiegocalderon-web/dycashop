@@ -96,15 +96,42 @@ export function aggregateSalesMetrics(
 
   let totalRevenue = 0;
   let totalProfit = 0;
-  const piecesByCategory: Record<string, number> = {};
-  const revenueByCategory: Record<string, number> = {};
-  const profitByCategory: Record<string, number> = {};
+  type CategoryBucket = {
+    label: string;
+    pieces: number;
+    revenue: number;
+    profit: number;
+  };
+  const categoryBuckets = new Map<string, CategoryBucket>();
   let novoCount = 0;
   let antigoCount = 0;
 
   const normalizedCosts: Record<string, number> = {};
   for (const [label, c] of Object.entries(costs)) {
     normalizedCosts[normalizeKey(label)] = Number(c || 0);
+  }
+
+  function addCategoryMetric(
+    cat: string,
+    piecesDelta: number,
+    revenueDelta: number,
+    profitDelta: number
+  ) {
+    const key = normalizeKey(cat);
+    const cur = categoryBuckets.get(key);
+    if (!cur) {
+      categoryBuckets.set(key, {
+        label: cat,
+        pieces: piecesDelta,
+        revenue: revenueDelta,
+        profit: profitDelta,
+      });
+      return;
+    }
+    if (cat.length > cur.label.length) cur.label = cat;
+    cur.pieces += piecesDelta;
+    cur.revenue += revenueDelta;
+    cur.profit += profitDelta;
   }
 
   for (const o of paidWithSale) {
@@ -114,7 +141,7 @@ export function aggregateSalesMetrics(
     if (o.customer_segment === "NOVO") novoCount += 1;
     else if (o.customer_segment === "ANTIGO") antigoCount += 1;
 
-    const totalPieces = items.reduce((s, it) => s + it.quantity, 0) || 1;
+    const orderPieces = items.reduce((s, it) => s + it.quantity, 0) || 1;
     const qtyByCategory: Record<string, number> = {};
     for (const it of items) {
       const cat = resolveCategory(it);
@@ -159,13 +186,12 @@ export function aggregateSalesMetrics(
       const cat = resolveCategory(it);
       const catKey = normalizeKey(cat);
       const qty = it.quantity;
-      piecesByCategory[cat] = (piecesByCategory[cat] ?? 0) + qty;
 
       const categoryRevenue = explicitRevenueByCategory[catKey] ?? 0;
       const allocatedRev =
         categoryRevenue > 0
           ? categoryRevenue * (qtyByCategory[catKey] > 0 ? qty / qtyByCategory[catKey]! : 0)
-          : orderRevenue * (qty / totalPieces);
+          : orderRevenue * (qty / orderPieces);
       const unitCost =
         normalizedCosts[catKey] ??
         normalizedCosts[normalizeKey("Sem categoria")] ??
@@ -174,21 +200,27 @@ export function aggregateSalesMetrics(
       const allocatedProfit = allocatedRev - lineCost;
       orderProfit += allocatedProfit;
 
-      revenueByCategory[cat] = (revenueByCategory[cat] ?? 0) + allocatedRev;
-      profitByCategory[cat] = (profitByCategory[cat] ?? 0) + allocatedProfit;
+      addCategoryMetric(cat, qty, allocatedRev, allocatedProfit);
     }
     totalProfit += orderProfit;
   }
 
-  const orderCount = paidWithSale.length;
+  const piecesByCategory: Record<string, number> = {};
+  const revenueByCategory: Record<string, number> = {};
+  const profitByCategory: Record<string, number> = {};
   let topCategoryByPieces: string | null = null;
   let maxPieces = 0;
-  for (const [cat, n] of Object.entries(piecesByCategory)) {
-    if (n > maxPieces) {
-      maxPieces = n;
-      topCategoryByPieces = cat;
+  for (const bucket of Array.from(categoryBuckets.values())) {
+    piecesByCategory[bucket.label] = bucket.pieces;
+    revenueByCategory[bucket.label] = bucket.revenue;
+    profitByCategory[bucket.label] = bucket.profit;
+    if (bucket.pieces > maxPieces) {
+      maxPieces = bucket.pieces;
+      topCategoryByPieces = bucket.label;
     }
   }
+
+  const orderCount = paidWithSale.length;
 
   return {
     orderCount,

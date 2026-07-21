@@ -46,6 +46,7 @@ type RowLite = {
   video_url: string | null;
   video_poster_url: string | null;
   wholesale_tiers: WholesaleTier[];
+  retail_price: number | null;
   home_grid_cover_image_url: string | null;
   catalog_cover_image_url: string | null;
   display_order: number | null;
@@ -85,20 +86,44 @@ export async function POST(request: NextRequest) {
           video_url?: string | null;
           video_poster_url?: string | null;
           wholesale_tiers?: unknown;
+          retail_price?: unknown;
           catalog_cover_image_url?: string | null;
           home_grid_cover_image_url?: string | null;
           display_order?: number | null;
         }[]
       | null = null;
     let schemaHasHomeGrid = true;
+    let schemaHasRetailPrice = true;
 
-    const fullSel = await admin.from("category_showcase_settings").select(
-      "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, home_grid_cover_image_url, display_order"
+    const withRetail = await admin.from("category_showcase_settings").select(
+      "category_label, video_url, video_poster_url, wholesale_tiers, retail_price, catalog_cover_image_url, home_grid_cover_image_url, display_order"
     );
 
-    if (!fullSel.error) {
-      rows = fullSel.data ?? [];
-    } else if (isMissingSchemaColumnError(fullSel.error)) {
+    if (!withRetail.error) {
+      rows = withRetail.data ?? [];
+    } else if (
+      isMissingSchemaColumnError(withRetail.error) &&
+      /retail_price/i.test(withRetail.error.message ?? "")
+    ) {
+      schemaHasRetailPrice = false;
+      const fullSel = await admin.from("category_showcase_settings").select(
+        "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, home_grid_cover_image_url, display_order"
+      );
+      if (!fullSel.error) {
+        rows = fullSel.data ?? [];
+      } else if (isMissingSchemaColumnError(fullSel.error)) {
+        const legacy = await admin.from("category_showcase_settings").select(
+          "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, display_order"
+        );
+        if (legacy.error) {
+          return NextResponse.json({ error: legacy.error.message }, { status: 500 });
+        }
+        rows = legacy.data ?? [];
+        schemaHasHomeGrid = false;
+      } else {
+        return NextResponse.json({ error: fullSel.error.message }, { status: 500 });
+      }
+    } else if (isMissingSchemaColumnError(withRetail.error)) {
       const legacy = await admin.from("category_showcase_settings").select(
         "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, display_order"
       );
@@ -107,18 +132,9 @@ export async function POST(request: NextRequest) {
       }
       rows = legacy.data ?? [];
       schemaHasHomeGrid = false;
-    } else if (
-      /display_order|catalog_cover_image_url/i.test(fullSel.error.message ?? "")
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Execute o SQL em supabase/migration_category_catalog_cover.sql no Supabase.",
-        },
-        { status: 400 }
-      );
+      schemaHasRetailPrice = false;
     } else {
-      return NextResponse.json({ error: fullSel.error.message }, { status: 500 });
+      return NextResponse.json({ error: withRetail.error.message }, { status: 500 });
     }
 
     const mapExact = new Map<string, RowLite>();
@@ -126,11 +142,18 @@ export async function POST(request: NextRequest) {
     for (const raw of rows ?? []) {
       const label = String(raw.category_label ?? "").trim();
       if (!label) continue;
+      const retailRaw = (raw as { retail_price?: unknown }).retail_price;
+      const retailNum =
+        retailRaw == null || retailRaw === ""
+          ? null
+          : Number(retailRaw);
       const row: RowLite = {
         category_label: label,
         video_url: raw.video_url?.trim() || null,
         video_poster_url: raw.video_poster_url?.trim() || null,
         wholesale_tiers: sanitizeWholesaleTiers(raw.wholesale_tiers),
+        retail_price:
+          retailNum != null && Number.isFinite(retailNum) ? retailNum : null,
         home_grid_cover_image_url: schemaHasHomeGrid
           ? (raw as { home_grid_cover_image_url?: string | null })
               .home_grid_cover_image_url?.trim() || null
@@ -209,6 +232,9 @@ export async function POST(request: NextRequest) {
         catalog_cover_image_url: cur?.catalog_cover_image_url ?? null,
         display_order,
       };
+      if (schemaHasRetailPrice) {
+        payload.retail_price = cur?.retail_price ?? null;
+      }
       if (schemaHasHomeGrid) {
         payload.home_grid_cover_image_url = cur?.home_grid_cover_image_url ?? null;
       }

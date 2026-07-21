@@ -1,20 +1,42 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { OrderDaySectionHeader } from "@/components/admin/order-day-section-header";
 import { useAdminAuth } from "@/contexts/admin-auth";
-import { displayNumberFromOrderedIds } from "@/lib/order-display-number";
+import { groupOrdersByLocalDay } from "@/lib/order-day-groups";
 import type { OrderItemRow, OrderRow } from "@/types";
 
-type PeriodKey = "daily" | "weekly" | "monthly" | "yearly" | "last30";
+type PeriodKey =
+  | "today"
+  | "yesterday"
+  | "weekly"
+  | "monthly"
+  | "yearly"
+  | "last7"
+  | "last30"
+  | "all"
+  | "dateRange";
 
 const PERIOD_OPTIONS: Array<{ value: PeriodKey; label: string }> = [
-  { value: "daily", label: "Diário" },
+  { value: "all", label: "Todo período" },
+  { value: "today", label: "Hoje" },
+  { value: "yesterday", label: "Ontem" },
   { value: "weekly", label: "Semanal" },
   { value: "monthly", label: "Mensal" },
   { value: "yearly", label: "Anual" },
+  { value: "last7", label: "Últimos 7 dias" },
   { value: "last30", label: "Últimos 30 dias" },
+  { value: "dateRange", label: "Período personalizado" },
 ];
+
+function todayYmd(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function aggregateByCategory(items: OrderItemRow[]): Array<{ label: string; qty: number }> {
   const m = new Map<string, number>();
@@ -172,13 +194,23 @@ function waLink(raw: string | null | undefined): string | null {
   return `https://wa.me/${digits}`;
 }
 
+type SellerFilterOption = { value: string; label: string };
+
 export default function AdminHistoricoPage() {
-  const { adminFetch } = useAdminAuth();
+  const { adminFetch, session } = useAdminAuth();
+  /** Dono com login staff (não sessão derivada só da chave API no browser). */
+  const isDiegoOwnerUi = session?.role === "owner" && session?.fromApiKey !== true;
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [costs, setCosts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<PeriodKey>("last30");
+  const [dateFrom, setDateFrom] = useState<string>(todayYmd());
+  const [dateTo, setDateTo] = useState<string>(todayYmd());
+  const [sellerScope, setSellerScope] = useState<string>("all");
+  const [sellerFilterOptions, setSellerFilterOptions] = useState<SellerFilterOption[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -187,7 +219,16 @@ export default function AdminHistoricoPage() {
       const q = new URLSearchParams({
         status: "PAGO",
         period,
+        tzOffsetMinutes: String(new Date().getTimezoneOffset()),
+        _: String(Date.now()),
       });
+      if (period === "dateRange") {
+        if (dateFrom) q.set("dateFrom", dateFrom);
+        if (dateTo) q.set("dateTo", dateTo);
+      }
+      if (isDiegoOwnerUi && sellerScope && sellerScope !== "all") {
+        q.set("sellerScope", sellerScope);
+      }
       const res = await adminFetch(`/api/admin/orders?${q.toString()}`);
       const text = await res.text();
       let data: { error?: string; orders?: OrderRow[] } = {};
@@ -222,22 +263,116 @@ export default function AdminHistoricoPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch, period]);
+  }, [adminFetch, period, dateFrom, dateTo, isDiegoOwnerUi, sellerScope]);
+
+  useEffect(() => {
+    if (!isDiegoOwnerUi) {
+      setSellerScope("all");
+      setSellerFilterOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await adminFetch("/api/admin/staff-seller-filters");
+        if (!r.ok || cancelled) return;
+        const j = (await r.json()) as {
+          ownerStaffId?: string | null;
+          ownerDisplayName?: string;
+          sellers?: Array<{ id: string; displayName: string }>;
+        };
+        const opts: SellerFilterOption[] = [{ value: "all", label: "Todos" }];
+        if (j.ownerStaffId) {
+          opts.push({
+            value: "me",
+            label: String(j.ownerDisplayName ?? "Dono").trim() || "Dono",
+          });
+        }
+        for (const s of j.sellers ?? []) {
+          opts.push({
+            value: s.id,
+            label: String(s.displayName ?? "").trim() || "Vendedor",
+          });
+        }
+        if (!cancelled) setSellerFilterOptions(opts);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [adminFetch, isDiegoOwnerUi]);
 
   useEffect(() => {
     void fetchOrders();
   }, [fetchOrders]);
 
+  const orderDayGroups = useMemo(
+    () =>
+      groupOrdersByLocalDay(
+        orders,
+        (o) => o.confirmed_at ?? o.updated_at ?? o.created_at
+      ),
+    [orders]
+  );
+
+  async function deleteOrder(orderId: string) {
+    if (!isDiegoOwnerUi) return;
+    const firstConfirm = window.confirm(
+      "Excluir este pedido do histórico? Deixa de contar nas métricas. O stock na loja e os nomes no Drive mantêm-se como ficaram na confirmação (nada é revertido)."
+    );
+    if (!firstConfirm) return;
+    const secondConfirm = window.confirm(
+      `Confirma novamente a exclusão permanente do pedido ${orderId}?`
+    );
+    if (!secondConfirm) return;
+    setDeletingId(orderId);
+    setError(null);
+    try {
+      const res = await adminFetch(`/api/admin/orders/${orderId}`, { method: "DELETE" });
+      const text = await res.text();
+      let data: { error?: string } = {};
+      try {
+        data = text ? (JSON.parse(text) as typeof data) : {};
+      } catch {
+        throw new Error("Resposta inválida do servidor.");
+      }
+      if (!res.ok) throw new Error(data.error ?? "Falha ao excluir pedido");
+      await fetchOrders();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao excluir");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">Histórico</h1>
+          <h1 className="text-2xl font-bold text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
+            Histórico
+          </h1>
           <p className="text-sm text-stone-600">
             Pedidos confirmados e registados como pagos.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {isDiegoOwnerUi && sellerFilterOptions.length > 0 && (
+            <select
+              value={sellerScope}
+              onChange={(e) => setSellerScope(e.target.value)}
+              className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+              aria-label="Filtrar por vendedor"
+            >
+              {sellerFilterOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          )}
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value as PeriodKey)}
@@ -249,6 +384,30 @@ export default function AdminHistoricoPage() {
               </option>
             ))}
           </select>
+          {period === "dateRange" && (
+            <>
+              <label className="flex flex-col gap-0.5 text-xs text-stone-600">
+                De
+                <input
+                  type="date"
+                  value={dateFrom}
+                  max={dateTo || undefined}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+                />
+              </label>
+              <label className="flex flex-col gap-0.5 text-xs text-stone-600">
+                Até
+                <input
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800"
+                />
+              </label>
+            </>
+          )}
           <Link
             href="/admin/pedidos"
             className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50"
@@ -276,8 +435,12 @@ export default function AdminHistoricoPage() {
         <p className="text-stone-600">Nenhum pedido confirmado ainda.</p>
       )}
 
-      <ul className="space-y-4">
-        {orders.map((order) => {
+      <div className="space-y-8">
+        {orderDayGroups.map((group) => (
+          <section key={group.dayKey}>
+            <OrderDaySectionHeader label={group.label} />
+            <ul className="mt-4 space-y-4">
+              {group.orders.map((order) => {
           const lines = aggregateByCategory(order.order_items ?? []);
           const waHref = waLink(order.customer_whatsapp);
           const revenueByCategory = resolveOrderRevenueByCategory(order);
@@ -290,6 +453,7 @@ export default function AdminHistoricoPage() {
               ? Number(totalValueFromCategories.toFixed(2))
               : displayOrderAmount(order);
           const profit = calculateOrderProfit(order, costs);
+          const expanded = expandedOrders[order.id] === true;
           return (
             <li
               key={order.id}
@@ -297,11 +461,9 @@ export default function AdminHistoricoPage() {
             >
             <p className="text-lg font-bold uppercase tracking-wide text-stone-800">
               {`PEDIDO #${
-                order.display_number ??
-                displayNumberFromOrderedIds(
-                  orders.map((o) => o.id),
-                  order.id
-                )
+                order.display_number != null && order.display_number > 0
+                  ? order.display_number
+                  : "—"
               }`}
             </p>
             <p className="font-mono text-xs text-stone-500">{order.id}</p>
@@ -320,41 +482,86 @@ export default function AdminHistoricoPage() {
                 ))}
               </ul>
             )}
-            {order.sale_amount != null || order.sale_amount_by_category ? (
-              <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                <p className="text-base font-semibold text-emerald-900">
-                  <span className="text-emerald-700">Valor total: </span>
-                  {totalValue.toLocaleString("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  })}
-                </p>
-                <p className="text-base font-semibold text-blue-900">
-                  <span className="text-blue-700">Lucro: </span>
-                  {profit.toLocaleString("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  })}
-                </p>
-              </div>
-            ) : null}
-            <p className="mt-2 text-xs text-stone-400">
-              {new Date(order.updated_at).toLocaleString("pt-BR")}
-            </p>
-            {waHref && (
-              <a
-                href={waHref}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#20bd5a]"
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedOrders((prev) => ({
+                    ...prev,
+                    [order.id]: !expanded,
+                  }))
+                }
+                className="mt-3 text-sm font-medium text-violet-800 underline hover:text-violet-900"
               >
-                Chamar no WhatsApp
-              </a>
-            )}
+                {expanded ? "Ver menos" : "Ver mais"}
+              </button>
+              {expanded && (
+                <div className="mt-3 border-t border-stone-100 pt-3">
+                  {order.sale_amount != null || order.sale_amount_by_category ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <p className="text-base font-semibold text-emerald-900">
+                        <span className="text-emerald-700">Valor total: </span>
+                        {totalValue.toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        })}
+                      </p>
+                      <p className="text-base font-semibold text-blue-900">
+                        <span className="text-blue-700">Lucro: </span>
+                        {profit.toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        })}
+                      </p>
+                    </div>
+                  ) : null}
+                  <p className="mt-2 text-xs text-stone-400">
+                    {new Date(order.confirmed_at ?? order.updated_at).toLocaleString(
+                      "pt-BR"
+                    )}
+                  </p>
+                  {order.public_token ? (
+                    <p className="mt-2 text-xs">
+                      <Link
+                        href={`/recibo/${order.public_token}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-violet-800 underline hover:text-violet-900"
+                      >
+                        Abrir recibo do cliente
+                      </Link>
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {waHref && (
+                      <a
+                        href={waHref}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#20bd5a]"
+                      >
+                        Chamar no WhatsApp
+                      </a>
+                    )}
+                    {isDiegoOwnerUi && (
+                      <button
+                        type="button"
+                        onClick={() => void deleteOrder(order.id)}
+                        disabled={deletingId === order.id}
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-900 hover:bg-red-100 disabled:opacity-50"
+                      >
+                        {deletingId === order.id ? "A excluir…" : "Excluir pedido"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </li>
           );
-        })}
-      </ul>
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }

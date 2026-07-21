@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { assertOwnerAccess } from "@/lib/admin-auth";
 import { DEFAULT_SHOWCASE } from "@/lib/category-showcase";
+import { resolveDisplayOrderForUpsert } from "@/lib/catalog-categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 import { CATALOG_STORAGE_BUCKET } from "@/lib/storage-constants";
@@ -26,6 +27,7 @@ type ExistingShowcase = {
   video_url?: string | null;
   video_poster_url?: string | null;
   wholesale_tiers?: unknown;
+  retail_price?: unknown;
   display_order?: number | null;
   catalog_cover_image_url?: string | null;
   home_grid_cover_image_url?: string | null;
@@ -38,13 +40,27 @@ async function upsertCoverUrl(
   kind: CoverKind
 ) {
   let hasHomeGridColumn = true;
+  let hasRetailPrice = true;
   let sel = await admin
     .from("category_showcase_settings")
     .select(
-      "video_url, video_poster_url, wholesale_tiers, display_order, catalog_cover_image_url, home_grid_cover_image_url"
+      "video_url, video_poster_url, wholesale_tiers, retail_price, display_order, catalog_cover_image_url, home_grid_cover_image_url"
     )
     .eq("category_label", categoryLabel)
     .maybeSingle();
+
+  if (sel.error && isMissingSchemaColumnError(sel.error)) {
+    if (/retail_price/i.test(sel.error.message ?? "")) {
+      hasRetailPrice = false;
+      sel = await admin
+        .from("category_showcase_settings")
+        .select(
+          "video_url, video_poster_url, wholesale_tiers, display_order, catalog_cover_image_url, home_grid_cover_image_url"
+        )
+        .eq("category_label", categoryLabel)
+        .maybeSingle();
+    }
+  }
 
   if (sel.error && isMissingSchemaColumnError(sel.error)) {
     hasHomeGridColumn = false;
@@ -92,13 +108,15 @@ async function upsertCoverUrl(
     catalog_cover_image_url: catalog,
   };
 
-  if (
-    ex &&
-    typeof ex.display_order === "number" &&
-    Number.isFinite(ex.display_order)
-  ) {
-    payload.display_order = ex.display_order;
+  if (hasRetailPrice) {
+    payload.retail_price =
+      ex?.retail_price != null ? Number(ex.retail_price) : null;
   }
+
+  payload.display_order = resolveDisplayOrderForUpsert(
+    undefined,
+    ex?.display_order
+  );
 
   if (hasHomeGridColumn) {
     payload.home_grid_cover_image_url = grid;

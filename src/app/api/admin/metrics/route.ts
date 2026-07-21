@@ -3,43 +3,31 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
 import { resolvePrincipal } from "@/lib/access";
 import {
+  confirmedAtFilterForPeriod,
+  describeConfirmedAtFilter,
+  parseAdminPeriodKey,
+  parseTzOffsetMinutes,
+} from "@/lib/admin-period";
+import {
+  countOrderItemsByOrderIds,
+  fetchAllOrderIdsPaginated,
+  fetchOrderItemsByOrderIds,
+  fetchPaidOrdersByIds,
+  METRICS_ORDER_SELECT,
+  type OrdersIdListQuery,
+} from "@/lib/admin-orders-query";
+import { applyRealAppConfirmedOrdersWithPeriod } from "@/lib/real-app-orders";
+import {
   aggregateSalesMetrics,
   type OrderItemSaleRow,
   type OrderSaleRow,
 } from "@/lib/sales-metrics";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-type PeriodKey = "daily" | "weekly" | "monthly" | "yearly" | "last30" | "all";
-
-function periodStartIso(period: PeriodKey): string | null {
-  const now = new Date();
-  const d = new Date(now);
-  if (period === "all") return null;
-  if (period === "daily") {
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  if (period === "weekly") {
-    const day = d.getDay();
-    const diffToMonday = (day + 6) % 7;
-    d.setDate(d.getDate() - diffToMonday);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  if (period === "monthly") {
-    d.setDate(1);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  if (period === "yearly") {
-    d.setMonth(0, 1);
-    d.setHours(0, 0, 0, 0);
-    return d.toISOString();
-  }
-  d.setDate(d.getDate() - 30);
-  return d.toISOString();
-}
+const STAFF_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function nameFromEmail(email: string): string {
   const base = email.split("@")[0] ?? email;
@@ -61,8 +49,35 @@ function normalizeNameKey(name: string): string {
     .toLowerCase();
 }
 
+type MetricsFilterOpts = {
+  sellerId: string | null;
+  isOwner: boolean;
+  rawSellerScope: string;
+  ownerStaffIdForScope: string | null;
+  dateFilter: ReturnType<typeof confirmedAtFilterForPeriod>;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyMetricsOrderFilters(q: any, opts: MetricsFilterOpts): any {
+  let query = applyRealAppConfirmedOrdersWithPeriod(q, opts.dateFilter);
+
+  if (opts.sellerId) {
+    query = query.eq("confirmed_by_staff_id", opts.sellerId);
+  } else if (opts.isOwner && opts.rawSellerScope && opts.rawSellerScope !== "all") {
+    if (opts.rawSellerScope === "me" && opts.ownerStaffIdForScope) {
+      query = query.or(
+        `confirmed_by_staff_id.eq.${opts.ownerStaffIdForScope},confirmed_by_staff_id.is.null`
+      );
+    } else if (STAFF_UUID_RE.test(opts.rawSellerScope)) {
+      query = query.eq("confirmed_by_staff_id", opts.rawSellerScope);
+    }
+  }
+
+  return query;
+}
+
 /**
- * GET /api/admin/metrics — métricas de vendas (pedidos PAGO com valor registrado).
+ * GET /api/admin/metrics — vendas confirmadas no app (sem importação de planilha).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -85,16 +100,22 @@ export async function GET(request: NextRequest) {
         ? principal.staff.staffId
         : null;
     const { searchParams } = new URL(request.url);
-    const rawPeriod = searchParams.get("period");
-    const period: PeriodKey =
-      rawPeriod === "daily" ||
-      rawPeriod === "weekly" ||
-      rawPeriod === "monthly" ||
-      rawPeriod === "yearly" ||
-      rawPeriod === "last30"
-        ? rawPeriod
-        : "all";
-    const startIso = periodStartIso(period);
+    const rawSellerScope = searchParams.get("sellerScope")?.trim() || "all";
+    const period = parseAdminPeriodKey(searchParams.get("period"));
+    const tzOffsetMinutes = parseTzOffsetMinutes(
+      searchParams.get("tzOffsetMinutes")
+    );
+    const dateFilter = confirmedAtFilterForPeriod(period, {
+      selectedDate: searchParams.get("selectedDate"),
+      dateFrom: searchParams.get("dateFrom"),
+      dateTo: searchParams.get("dateTo"),
+      tzOffsetMinutes,
+    });
+    const periodDescription = describeConfirmedAtFilter(
+      period,
+      dateFilter,
+      tzOffsetMinutes
+    );
 
     const admin = createAdminClient();
 
@@ -111,64 +132,123 @@ export async function GET(request: NextRequest) {
       costs[r.category_label] = Number(r.cost_per_piece);
     }
 
-    let orderQuery = admin
-      .from("orders")
-      .select(
-        "id, sale_amount, sale_amount_by_category, customer_segment, confirmed_by_staff_id, requested_seller_name, confirmed_at"
-      )
-      .eq("status", "PAGO")
-      .not("sale_amount", "is", null);
-
-    if (sellerId) {
-      orderQuery = orderQuery.eq("confirmed_by_staff_id", sellerId);
+    let ownerStaffIdForScope: string | null = null;
+    if (
+      isOwner &&
+      rawSellerScope === "me" &&
+      !sellerId
+    ) {
+      ownerStaffIdForScope =
+        principal?.kind === "staff" && principal.staff.role === "owner"
+          ? principal.staff.staffId
+          : null;
+      if (!ownerStaffIdForScope && principal?.kind === "api_key") {
+        const { data: ownerRow } = await admin
+          .from("staff_users")
+          .select("id")
+          .eq("role", "owner")
+          .limit(1)
+          .maybeSingle();
+        ownerStaffIdForScope = (ownerRow?.id as string | undefined) ?? null;
+      }
     }
-    if (startIso) {
-      orderQuery = orderQuery.gte("confirmed_at", startIso);
+
+    const filterOpts: MetricsFilterOpts = {
+      sellerId,
+      isOwner,
+      rawSellerScope,
+      ownerStaffIdForScope,
+      dateFilter,
+    };
+
+    const buildFilteredIdQuery = () =>
+      applyMetricsOrderFilters(
+        admin.from("orders").select("id"),
+        filterOpts
+      ) as unknown as OrdersIdListQuery;
+
+    const { count: headOrderCount, error: countErr } = await applyMetricsOrderFilters(
+      admin.from("orders").select("id", { count: "exact", head: true }),
+      filterOpts
+    );
+    if (countErr) {
+      return NextResponse.json({ error: countErr.message }, { status: 500 });
+    }
+    const expectedOrderCount = headOrderCount ?? 0;
+
+    let orderIds = await fetchAllOrderIdsPaginated(buildFilteredIdQuery, {
+      expectedCount: expectedOrderCount > 0 ? expectedOrderCount : undefined,
+    });
+    let orderRows = await fetchPaidOrdersByIds(
+      admin,
+      orderIds,
+      METRICS_ORDER_SELECT
+    );
+
+    if (orderRows.length < orderIds.length) {
+      const have = new Set(orderRows.map((o) => o.id));
+      const missingIds = orderIds.filter((id) => !have.has(id));
+      if (missingIds.length > 0) {
+        const extra = await fetchPaidOrdersByIds(
+          admin,
+          missingIds,
+          METRICS_ORDER_SELECT
+        );
+        orderRows = [...orderRows, ...extra];
+      }
     }
 
-    const { data: orders, error: oErr } = await orderQuery;
-
-    if (oErr) {
-      return NextResponse.json({ error: oErr.message }, { status: 500 });
-    }
-
-    const orderRows = (orders ?? []) as (OrderSaleRow & {
-      confirmed_by_staff_id?: string | null;
-      requested_seller_name?: string | null;
-      confirmed_at?: string | null;
-    })[];
-    const orderIds = orderRows.map((o) => o.id);
-    if (orderIds.length === 0) {
+    if (orderRows.length === 0) {
       const empty = aggregateSalesMetrics([], new Map(), costs);
-      return NextResponse.json({
-        metrics: empty,
-        costs,
-        period,
-        viewerRole: isOwner ? "owner" : "seller",
-        sellerBreakdown: [],
+      return NextResponse.json(
+        {
+          metrics: empty,
+          costs,
+          period,
+          periodDescription,
+          viewerRole: isOwner ? "owner" : "seller",
+          sellerBreakdown: [],
+          meta: { ordersIncluded: 0, ordersWithSale: 0, totalPieces: 0 },
+        },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    orderIds = orderRows.map((o) => o.id);
+
+    if (
+      expectedOrderCount > 0 &&
+      (orderIds.length < expectedOrderCount || orderRows.length < expectedOrderCount)
+    ) {
+      orderIds = await fetchAllOrderIdsPaginated(buildFilteredIdQuery, {
+        expectedCount: expectedOrderCount,
       });
+      orderRows = await fetchPaidOrdersByIds(
+        admin,
+        orderIds,
+        METRICS_ORDER_SELECT
+      );
     }
 
-    const { data: items, error: iErr } = await admin
-      .from("order_items")
-      .select(
-        "order_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size, products(category)"
-      )
-      .in("order_id", orderIds);
+    const itemsByOrderId = await fetchOrderItemsByOrderIds(
+      admin,
+      orderIds,
+      undefined,
+      "per_order"
+    );
+    const orderItemsLoaded = Array.from(itemsByOrderId.values()).reduce(
+      (sum, rows) => sum + rows.length,
+      0
+    );
+    const orderItemsExpected = await countOrderItemsByOrderIds(admin, orderIds);
+    const orderItemsTruncated = orderItemsLoaded < orderItemsExpected;
 
-    if (iErr) {
-      return NextResponse.json({ error: iErr.message }, { status: 500 });
-    }
+    const metrics = aggregateSalesMetrics(
+      orderRows as OrderSaleRow[],
+      itemsByOrderId as Map<string, OrderItemSaleRow[]>,
+      costs
+    );
 
-    const itemsByOrderId = new Map<string, OrderItemSaleRow[]>();
-    for (const row of items ?? []) {
-      const it = row as unknown as OrderItemSaleRow;
-      const list = itemsByOrderId.get(it.order_id) ?? [];
-      list.push(it);
-      itemsByOrderId.set(it.order_id, list);
-    }
-
-    const metrics = aggregateSalesMetrics(orderRows, itemsByOrderId, costs);
     const sellerBreakdown: Array<{
       staffId: string;
       staffName: string;
@@ -248,9 +328,13 @@ export async function GET(request: NextRequest) {
           const sellerItemsByOrder = new Map<string, OrderItemSaleRow[]>();
           for (const o of sellerOrders) {
             const list = itemsByOrderId.get(o.id) ?? [];
-            sellerItemsByOrder.set(o.id, list);
+            sellerItemsByOrder.set(o.id, list as OrderItemSaleRow[]);
           }
-          const sellerMetrics = aggregateSalesMetrics(sellerOrders, sellerItemsByOrder, costs);
+          const sellerMetrics = aggregateSalesMetrics(
+            sellerOrders as OrderSaleRow[],
+            sellerItemsByOrder,
+            costs
+          );
           sellerBreakdown.push({
             staffId: bucketKey,
             staffName: bucket.name,
@@ -268,13 +352,90 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      metrics,
-      costs,
-      period,
-      viewerRole: isOwner ? "owner" : "seller",
-      sellerBreakdown,
+    const ordersWithSale = orderRows.filter(
+      (o) => o.sale_amount != null && Number(o.sale_amount) > 0
+    ).length;
+    const totalPieces = Object.values(metrics.piecesByCategory).reduce(
+      (s, n) => s + n,
+      0
+    );
+
+    const sortedByConfirmed = [...orderRows].sort((a, b) => {
+      const ta = a.confirmed_at ? new Date(a.confirmed_at).getTime() : 0;
+      const tb = b.confirmed_at ? new Date(b.confirmed_at).getTime() : 0;
+      return tb - ta;
     });
+    const newest = sortedByConfirmed[0];
+    const dn = Number(newest?.display_number);
+    const newestDisplayNumber =
+      Number.isFinite(dn) && dn > 0 ? dn : null;
+
+    const newestInDb = newest
+      ? {
+          id: newest.id,
+          display_number: newest.display_number ?? null,
+          confirmed_at: newest.confirmed_at ?? null,
+          sale_amount: newest.sale_amount ?? null,
+        }
+      : null;
+
+    const ordersTruncated =
+      orderRows.length < expectedOrderCount ||
+      orderIds.length < expectedOrderCount;
+
+    let newestIncluded = !ordersTruncated;
+    if (ordersTruncated && newest?.id) {
+      const { data: topRows, error: topErr } = await applyMetricsOrderFilters(
+        admin.from("orders").select("id"),
+        filterOpts
+      )
+        .order("confirmed_at", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: false })
+        .limit(1);
+      if (topErr) {
+        return NextResponse.json({ error: topErr.message }, { status: 500 });
+      }
+      const top = Array.isArray(topRows)
+        ? (topRows[0] as { id?: string } | undefined)
+        : (topRows as { id?: string } | null);
+      newestIncluded = top?.id === newest.id;
+    }
+
+    return NextResponse.json(
+      {
+        metrics,
+        costs,
+        period,
+        periodDescription,
+        viewerRole: isOwner ? "owner" : "seller",
+        sellerBreakdown,
+        meta: {
+          ordersIncluded: orderRows.length,
+          ordersExpected: expectedOrderCount ?? orderRows.length,
+          ordersTruncated,
+          newestIncluded,
+          newestInDb: newestInDb
+            ? {
+                displayNumber: newestInDb.display_number ?? null,
+                confirmedAt: newestInDb.confirmed_at ?? null,
+              }
+            : null,
+          newestDisplayNumber,
+          newestInMetrics: newest
+            ? { confirmedAt: newest.confirmed_at ?? null }
+            : null,
+          ordersWithSale,
+          totalPieces,
+          orderItemsLoaded,
+          orderItemsExpected,
+          orderItemsTruncated,
+          sellerScope: rawSellerScope || "all",
+          excludesLegacyImport: true,
+          generatedAt: new Date().toISOString(),
+        },
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";
     return NextResponse.json({ error: msg }, { status: 500 });

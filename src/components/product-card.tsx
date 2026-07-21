@@ -1,6 +1,9 @@
 "use client";
 
+import Image from "next/image";
+import { useState } from "react";
 import type { Product } from "@/types";
+import { ProductImagePreview } from "@/components/product-image-preview";
 import { useCart } from "@/providers/cart-provider";
 
 type Props = {
@@ -10,6 +13,7 @@ type Props = {
 };
 
 export function ProductCard({ product, imagePriority }: Props) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const { addProduct, lines, removeLine } = useCart();
   const line = lines.find((l) => l.productId === product.id);
   const inCart = line?.quantity ?? 0;
@@ -22,23 +26,36 @@ export function ProductCard({ product, imagePriority }: Props) {
   };
 
   const imageSrc = product.drive_image_url;
+  const previewLabel = `${product.brand} ${product.color} · ${product.size}`;
 
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-zinc-900/60 shadow-lg shadow-black/20 ring-1 ring-white/[0.04]">
-      <div className="relative aspect-[3/4] max-h-[220px] bg-zinc-950 sm:max-h-[240px]">
-        <img
+      <button
+        type="button"
+        onClick={() => setPreviewOpen(true)}
+        className="relative aspect-[3/4] max-h-[220px] w-full cursor-zoom-in bg-zinc-950 sm:max-h-[240px]"
+        aria-label={`Ver imagem maior: ${previewLabel}`}
+      >
+        <Image
           src={imageSrc}
           alt=""
           role="presentation"
-          className="absolute inset-0 h-full w-full object-cover"
-          loading={imagePriority ? "eager" : "lazy"}
-          decoding="async"
-          fetchPriority={imagePriority ? "high" : "low"}
+          fill
+          priority={imagePriority}
+          unoptimized
+          className="object-cover transition duration-300 group-hover:brightness-110"
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 240px"
         />
         <span className="absolute left-2 top-2 rounded bg-black/75 px-2 py-1 text-[11px] font-bold uppercase tabular-nums text-white">
           {product.size}
         </span>
-      </div>
+      </button>
+      <ProductImagePreview
+        driveFileId={product.drive_file_id}
+        label={previewLabel}
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+      />
 
       <div className="flex flex-1 flex-col px-3 pb-3 pt-2.5">
         <h3 className="line-clamp-2 text-lg font-bold uppercase leading-tight tracking-wide text-stone-50">

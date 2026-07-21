@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertOwnerAccess } from "@/lib/admin-auth";
 import { extractDriveFolderId } from "@/lib/drive-folder-url";
+import { getOAuthClientId, getOAuthClientIdHint } from "@/lib/drive-auth";
+import {
+  listOAuthRedirectUrisForGoogleConsole,
+  resolveOAuthRedirectUri,
+  verifyGoogleRefreshToken,
+} from "@/lib/google-drive-oauth";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
+/** Igual ao cron: sync com muitas imagens excede o limite padrão do Vercel (~60s). */
+export const maxDuration = 300;
 
 /** GET: estado da configuração (sem tokens). */
 export async function GET(request: NextRequest) {
@@ -20,7 +28,7 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("catalog_settings")
-    .select("drive_folder_id, google_refresh_token")
+    .select("drive_folder_id, google_refresh_token, google_oauth_client_id")
     .eq("id", 1)
     .maybeSingle();
 
@@ -35,12 +43,35 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const requestOrigin = request.nextUrl.origin;
+  const oauthRedirectUri = resolveOAuthRedirectUri(requestOrigin);
+  const storedToken = data?.google_refresh_token?.trim() ?? "";
+  const storedClientId = data?.google_oauth_client_id?.trim() || null;
+  const currentClientId = getOAuthClientId();
+  const oauthClientMismatch =
+    !!storedClientId &&
+    !!currentClientId &&
+    storedClientId !== currentClientId;
+
+  let googleTokenValid = false;
+  if (storedToken && currentClientId && !oauthClientMismatch) {
+    googleTokenValid = await verifyGoogleRefreshToken(storedToken);
+  }
+
   return NextResponse.json({
     driveFolderId: data?.drive_folder_id ?? null,
-    googleConnected: !!data?.google_refresh_token?.trim(),
+    googleConnected: googleTokenValid,
+    googleTokenStored: !!storedToken,
+    googleTokenValid,
+    oauthClientMismatch,
     oauthConfigured:
-      !!process.env.GOOGLE_CLIENT_ID?.trim() &&
+      !!currentClientId &&
       !!process.env.GOOGLE_CLIENT_SECRET?.trim(),
+    oauthClientIdHint: getOAuthClientIdHint(currentClientId),
+    storedOAuthClientIdHint: getOAuthClientIdHint(storedClientId),
+    oauthRedirectUri,
+    oauthRedirectUrisHint: listOAuthRedirectUrisForGoogleConsole(),
+    appPublicUrl: process.env.NEXT_PUBLIC_APP_URL?.trim() || null,
   });
 }
 

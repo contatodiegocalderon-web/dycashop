@@ -4,6 +4,7 @@ import heicConvert from "heic-convert";
 import sharp from "sharp";
 import { Readable } from "stream";
 import { ensureDriveAuthorized, getDriveAuth } from "@/lib/drive-auth";
+import { isDriveFileIdAllowedForPublicProxy } from "@/lib/drive-image-allowlist";
 import { bufferLooksLikeHeif } from "@/lib/drive-image-sniff";
 
 export const runtime = "nodejs";
@@ -73,6 +74,7 @@ async function maybeResizeToWidth(
 /**
  * GET /api/drive-image/[fileId]?w=400
  * Faz proxy da imagem com OAuth/conta de serviço.
+ * — Só serve ficheiros cujo ID existe em `products` ou em `order_items` (recibo), para não expor o Drive inteiro.
  * — Converte HEIC/HEIF para JPEG via heic-convert.
  * — `w` redimensiona no servidor (menos dados na rede).
  */
@@ -83,6 +85,11 @@ export async function GET(
   const fileId = params.fileId;
   if (!FILE_ID_RE.test(fileId)) {
     return NextResponse.json({ error: "ID inválido" }, { status: 400 });
+  }
+
+  const allowed = await isDriveFileIdAllowedForPublicProxy(fileId);
+  if (!allowed) {
+    return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
   }
 
   const wRaw = request.nextUrl.searchParams.get("w");

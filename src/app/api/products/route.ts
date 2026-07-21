@@ -30,8 +30,11 @@ export async function GET(request: NextRequest) {
       let q = supabase
         .from("products")
         .select("*")
+        .eq("status", "ATIVO")
+        .gt("stock", 0)
         .order("brand", { ascending: true })
         .order("color", { ascending: true })
+        .order("id", { ascending: true })
         .range(offset, offset + PAGE_SIZE - 1);
 
       if (size && ["M", "G", "GG"].includes(size)) {
@@ -84,7 +87,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ products });
+    return NextResponse.json(
+      { products },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertAdmin, assertOwnerAccess } from "@/lib/admin-auth";
 import {
   DEFAULT_SHOWCASE,
+  sanitizeRetailPrice,
   sanitizeWholesaleTiers,
   type WholesaleTier,
 } from "@/lib/category-showcase";
-import { categoryLookupKey } from "@/lib/catalog-categories";
+import {
+  categoryLookupKey,
+  resolveDisplayOrderForUpsert,
+} from "@/lib/catalog-categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 
@@ -17,6 +21,7 @@ type ShowcaseRow = {
   video_url: string | null;
   video_poster_url: string | null;
   wholesale_tiers: WholesaleTier[];
+  retail_price: number | null;
   /** Cartão na grelha da página inicial */
   home_grid_cover_image_url: string | null;
   /** Banner ao abrir a categoria */
@@ -48,20 +53,53 @@ async function loadCatalogCategoryLabels(admin: ReturnType<typeof createAdminCli
   return Array.from(labels).sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
+function mapShowcaseRaw(row: Record<string, unknown>): ShowcaseRow {
+  const label = String(row.category_label ?? "").trim();
+  return {
+    category_label: label,
+    video_url: String(row.video_url ?? "").trim() || null,
+    video_poster_url: String(row.video_poster_url ?? "").trim() || null,
+    wholesale_tiers: sanitizeWholesaleTiers(row.wholesale_tiers),
+    retail_price: sanitizeRetailPrice(row.retail_price),
+    home_grid_cover_image_url:
+      String(row.home_grid_cover_image_url ?? "").trim() || null,
+    catalog_cover_image_url:
+      String(row.catalog_cover_image_url ?? "").trim() || null,
+    display_order:
+      typeof row.display_order === "number" ? row.display_order : null,
+  };
+}
+
 async function fetchShowcaseRows(admin: ReturnType<typeof createAdminClient>) {
-  const full = await admin.from("category_showcase_settings").select(
-    "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, home_grid_cover_image_url, display_order"
+  const withRetail = await admin.from("category_showcase_settings").select(
+    "category_label, video_url, video_poster_url, wholesale_tiers, retail_price, catalog_cover_image_url, home_grid_cover_image_url, display_order"
   );
-  if (!full.error) return full.data ?? [];
-  if (!isMissingSchemaColumnError(full.error)) {
-    throw new Error(full.error.message);
+  if (!withRetail.error) return withRetail.data ?? [];
+
+  if (
+    isMissingSchemaColumnError(withRetail.error) &&
+    /retail_price/i.test(withRetail.error.message ?? "")
+  ) {
+    const full = await admin.from("category_showcase_settings").select(
+      "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, home_grid_cover_image_url, display_order"
+    );
+    if (!full.error) {
+      return (full.data ?? []).map((row) => ({ ...row, retail_price: null }));
+    }
+    if (!isMissingSchemaColumnError(full.error)) {
+      throw new Error(full.error.message);
+    }
+  } else if (!isMissingSchemaColumnError(withRetail.error)) {
+    throw new Error(withRetail.error.message);
   }
+
   const mid = await admin.from("category_showcase_settings").select(
     "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, display_order"
   );
   if (!mid.error) {
     return (mid.data ?? []).map((row) => ({
       ...row,
+      retail_price: null,
       home_grid_cover_image_url: null,
     }));
   }
@@ -74,6 +112,7 @@ async function fetchShowcaseRows(admin: ReturnType<typeof createAdminClient>) {
   if (base.error) throw new Error(base.error.message);
   return (base.data ?? []).map((row) => ({
     ...row,
+    retail_price: null,
     catalog_cover_image_url: null,
     home_grid_cover_image_url: null,
     display_order: null,
@@ -98,27 +137,11 @@ export async function GET(request: NextRequest) {
     const mapExact = new Map<string, ShowcaseRow>();
     const mapNormalized = new Map<string, ShowcaseRow>();
     for (const row of data ?? []) {
-      const label = String(row.category_label ?? "").trim();
+      const label = String(
+        (row as { category_label?: string }).category_label ?? ""
+      ).trim();
       if (!label) continue;
-      const r = row as {
-        category_label?: string;
-        video_url?: string | null;
-        video_poster_url?: string | null;
-        wholesale_tiers?: unknown;
-        catalog_cover_image_url?: string | null;
-        home_grid_cover_image_url?: string | null;
-        display_order?: number | null;
-      };
-      const parsed: ShowcaseRow = {
-        category_label: label,
-        video_url: r.video_url?.trim() || null,
-        video_poster_url: r.video_poster_url?.trim() || null,
-        wholesale_tiers: sanitizeWholesaleTiers(r.wholesale_tiers),
-        home_grid_cover_image_url: r.home_grid_cover_image_url?.trim() || null,
-        catalog_cover_image_url: r.catalog_cover_image_url?.trim() || null,
-        display_order:
-          typeof r.display_order === "number" ? r.display_order : null,
-      };
+      const parsed = mapShowcaseRaw(row as Record<string, unknown>);
       mapExact.set(label, parsed);
       const nk = categoryLookupKey(label);
       if (!mapNormalized.has(nk)) mapNormalized.set(nk, parsed);
@@ -133,6 +156,7 @@ export async function GET(request: NextRequest) {
           video_url: null,
           video_poster_url: null,
           wholesale_tiers: DEFAULT_SHOWCASE.wholesaleTiers,
+          retail_price: null,
           home_grid_cover_image_url: null,
           catalog_cover_image_url: null,
           display_order: null,
@@ -166,6 +190,7 @@ export async function PUT(request: NextRequest) {
         video_url?: string | null;
         video_poster_url?: string | null;
         wholesale_tiers?: unknown;
+        retail_price?: unknown;
         home_grid_cover_image_url?: string | null;
         catalog_cover_image_url?: string | null;
         display_order?: number | null;
@@ -177,28 +202,56 @@ export async function PUT(request: NextRequest) {
         { status: 400 }
       );
     }
+    const admin = createAdminClient();
+    const labels = body.entries.map((raw) => String(raw.category_label ?? "").trim());
+    const existingByLabel = new Map<string, number | null>();
+    if (labels.some(Boolean)) {
+      const existingRows = await fetchShowcaseRows(admin);
+      for (const row of existingRows) {
+        const label = String(
+          (row as { category_label?: string }).category_label ?? ""
+        ).trim();
+        if (!label) continue;
+        const ord = (row as { display_order?: number | null }).display_order;
+        existingByLabel.set(
+          label,
+          typeof ord === "number" && Number.isFinite(ord) ? ord : null
+        );
+      }
+    }
+
     const entries = body.entries.map((raw) => {
       const category_label = String(raw.category_label ?? "").trim();
       if (!category_label) throw new Error("Categoria inválida.");
+      const incomingOrder =
+        raw.display_order != null && Number.isFinite(Number(raw.display_order))
+          ? Number(raw.display_order)
+          : null;
       return {
         category_label,
         video_url: raw.video_url?.trim() || null,
         video_poster_url: raw.video_poster_url?.trim() || null,
         wholesale_tiers: sanitizeWholesaleTiers(raw.wholesale_tiers),
+        retail_price: sanitizeRetailPrice(raw.retail_price),
         home_grid_cover_image_url: raw.home_grid_cover_image_url?.trim() || null,
         catalog_cover_image_url: raw.catalog_cover_image_url?.trim() || null,
-        display_order:
-          raw.display_order != null && Number.isFinite(Number(raw.display_order))
-            ? Number(raw.display_order)
-            : null,
+        display_order: resolveDisplayOrderForUpsert(
+          incomingOrder,
+          existingByLabel.get(category_label)
+        ),
       };
     });
-    const admin = createAdminClient();
     const { error } = await admin.from("category_showcase_settings").upsert(entries, {
       onConflict: "category_label",
     });
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      const hint = /retail_price/i.test(error.message)
+        ? "Execute o SQL em supabase/migration_category_retail_price.sql no painel do Supabase."
+        : undefined;
+      return NextResponse.json(
+        { error: error.message, ...(hint ? { hint } : {}) },
+        { status: 500 }
+      );
     }
     return NextResponse.json({ ok: true });
   } catch (e) {

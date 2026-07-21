@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { CategorySummary } from "@/lib/catalog-categories";
 
@@ -46,13 +47,13 @@ export function CategoryGrid({ categories }: Props) {
 
               <div className="relative aspect-[16/11] w-full overflow-hidden sm:aspect-[5/3]">
                 {heroSrc ? (
-                  <img
+                  <Image
                     src={heroSrc}
                     alt=""
-                    className="absolute inset-0 h-full w-full object-cover object-center transition duration-700 group-hover:scale-[1.03] motion-reduce:group-hover:scale-100"
-                    loading={eager ? "eager" : "lazy"}
-                    decoding="async"
-                    fetchPriority={eager ? "high" : "low"}
+                    fill
+                    priority={eager}
+                    unoptimized
+                    className="object-cover object-center transition duration-700 group-hover:scale-[1.03] motion-reduce:group-hover:scale-100"
                     sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                   />
                 ) : null}

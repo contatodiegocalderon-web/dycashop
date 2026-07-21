@@ -20,9 +20,4 @@ export const WHATSAPP_SELLERS: WhatsAppSeller[] = [
     phone: "5511916485901",
     photoUrl: "/vendedores/paulo.jpg",
   },
-  {
-    name: "Rafael",
-    phone: "5511990041490",
-    photoUrl: "/vendedores/rafael.jpg",
-  },
 ];

@@ -1,10 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CategorySummary } from "@/lib/catalog-categories";
+import {
+  clearCatalogBrowseRestore,
+  isCatalogBrowseRestorePending,
+  readCatalogBrowseRestore,
+  saveCatalogBrowseSnapshot,
+  updateCatalogBrowseScroll,
+  type CatalogBrowseSnapshot,
+} from "@/lib/catalog-browse-session";
+import {
+  ENABLE_GUIDED_CATEGORY_WIZARD,
+  filterProductsByWizardSelection,
+  type GuidedWizardSelection,
+  type WizardGuidedFilter,
+} from "@/lib/catalog-guided-wizard";
 import type { Product, ProductSize } from "@/types";
 import { CatalogFilters } from "@/components/catalog-filters";
 import { CatalogSections } from "@/components/catalog-sections";
+import { CategoryGuidedWizard } from "@/components/category-guided-wizard";
+import { WizardCatalogHint } from "@/components/wizard-catalog-hint";
 
 function buildQuery(
   size: "" | ProductSize,
@@ -39,27 +56,74 @@ type Props = {
   activeCategorySlug?: string;
 };
 
+function readRestoreSnapshot(pathname: string): CatalogBrowseSnapshot | null {
+  if (typeof window === "undefined") return null;
+  return readCatalogBrowseRestore(pathname, window.location.search);
+}
+
 export function CatalogClient({
   categoryFixed,
   categories,
   activeCategorySlug,
 }: Props) {
+  const pathname = usePathname() ?? "";
+  const guidedMode =
+    Boolean(categoryFixed?.trim()) && ENABLE_GUIDED_CATEGORY_WIZARD;
+
+  const pendingScrollY = useRef<number | null>(null);
+  const [sessionReady, setSessionReady] = useState(
+    () => !isCatalogBrowseRestorePending()
+  );
+
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!guidedMode);
   const [error, setError] = useState<string | null>(null);
   const [size, setSize] = useState<"" | ProductSize>("");
   const [categoryFree, setCategoryFree] = useState("");
   const [brand, setBrand] = useState("");
   const [color, setColor] = useState("");
+  const [wizardDone, setWizardDone] = useState(!guidedMode);
+  const [wizardGuidedFilter, setWizardGuidedFilter] =
+    useState<WizardGuidedFilter | null>(null);
+  const [wizardImageHint, setWizardImageHint] = useState(false);
+
+  useEffect(() => {
+    const snap = readRestoreSnapshot(pathname);
+    if (snap) {
+      setSize(snap.size);
+      setCategoryFree(snap.categoryFree);
+      setBrand(snap.brand);
+      setColor(snap.color);
+      setWizardDone(snap.wizardDone);
+      setWizardGuidedFilter(snap.wizardGuidedFilter);
+      pendingScrollY.current = snap.scrollY;
+      if (snap.wizardDone) setLoading(true);
+    }
+    clearCatalogBrowseRestore();
+    setSessionReady(true);
+  }, [pathname]);
 
   const effectiveCategory = (categoryFixed ?? categoryFree).trim();
   const categoryExact = Boolean(categoryFixed);
+  const showCatalog = sessionReady && (!guidedMode || wizardDone);
 
-  const query = useMemo(
-    () =>
-      buildQuery(size, effectiveCategory, brand, color, categoryExact),
-    [size, effectiveCategory, brand, color, categoryExact]
-  );
+  const query = useMemo(() => {
+    const useApiBrandColor = !wizardGuidedFilter;
+    return buildQuery(
+      size,
+      effectiveCategory,
+      useApiBrandColor ? brand : "",
+      useApiBrandColor ? color : "",
+      categoryExact
+    );
+  }, [
+    size,
+    effectiveCategory,
+    brand,
+    color,
+    categoryExact,
+    wizardGuidedFilter,
+  ]);
 
   const brandOptions = useMemo(() => {
     const s = new Set<string>();
@@ -83,11 +147,17 @@ export function CatalogClient({
     );
   }, [products]);
 
+  const displayedProducts = useMemo(() => {
+    if (!wizardGuidedFilter) return products;
+    return filterProductsByWizardSelection(products, wizardGuidedFilter);
+  }, [products, wizardGuidedFilter]);
+
   const load = useCallback(async () => {
+    if (!showCatalog) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/products${query}`);
+      const res = await fetch(`/api/products${query}`, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao carregar");
       setProducts(data.products ?? []);
@@ -97,11 +167,98 @@ export function CatalogClient({
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, [query, showCatalog]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!sessionReady || !pathname || pathname.startsWith("/admin")) return;
+
+    saveCatalogBrowseSnapshot({
+      pathname,
+      search: window.location.search,
+      scrollY: window.scrollY,
+      size,
+      brand,
+      color,
+      categoryFree,
+      wizardDone,
+      wizardGuidedFilter,
+    });
+  }, [
+    sessionReady,
+    pathname,
+    size,
+    brand,
+    color,
+    categoryFree,
+    wizardDone,
+    wizardGuidedFilter,
+  ]);
+
+  useEffect(() => {
+    if (!pathname || pathname.startsWith("/admin")) return;
+    let timer = 0;
+    const onScroll = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(
+        () => updateCatalogBrowseScroll(window.scrollY),
+        120
+      );
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.clearTimeout(timer);
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    if (loading || pendingScrollY.current == null) return;
+    if (displayedProducts.length === 0) return;
+    const y = pendingScrollY.current;
+    pendingScrollY.current = null;
+    const id = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.scrollTo(0, y);
+      });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [loading, displayedProducts.length]);
+
+  function handleWizardComplete(sel: GuidedWizardSelection) {
+    setSize(sel.size);
+    setColor("");
+    setBrand("");
+    setWizardGuidedFilter({ colors: sel.colors, brands: sel.brands });
+    setWizardDone(true);
+    setWizardImageHint(true);
+  }
+
+  function handleWizardViewAll(size: ProductSize) {
+    setSize(size);
+    setColor("");
+    setBrand("");
+    setWizardGuidedFilter(null);
+    setWizardDone(true);
+    setWizardImageHint(true);
+  }
+
+  const dismissWizardImageHint = useCallback(() => {
+    setWizardImageHint(false);
+  }, []);
+
+  function handleBrandChange(v: string) {
+    setWizardGuidedFilter(null);
+    setBrand(v);
+  }
+
+  function handleColorChange(v: string) {
+    setWizardGuidedFilter(null);
+    setColor(v);
+  }
 
   useEffect(() => {
     if (brand && brandOptions.length > 0 && !brandOptions.includes(brand)) {
@@ -117,6 +274,20 @@ export function CatalogClient({
 
   return (
     <div className="space-y-8">
+      {!sessionReady && (
+        <p className="text-center text-sm text-stone-400">A retomar a seleção…</p>
+      )}
+
+      {sessionReady && guidedMode && !wizardDone && categoryFixed && (
+        <CategoryGuidedWizard
+          categoryLabel={categoryFixed}
+          onComplete={handleWizardComplete}
+          onViewAll={handleWizardViewAll}
+        />
+      )}
+
+      {showCatalog && (
+        <>
       <CatalogFilters
         size={size}
         category={categoryFree}
@@ -130,10 +301,13 @@ export function CatalogClient({
             ? { categories, currentSlug: activeCategorySlug }
             : undefined
         }
-        onSize={setSize}
+        onSize={(v) => {
+          setWizardGuidedFilter(null);
+          setSize(v);
+        }}
         onCategory={setCategoryFree}
-        onBrand={setBrand}
-        onColor={setColor}
+        onBrand={handleBrandChange}
+        onColor={handleColorChange}
       />
 
       {loading && (
@@ -144,14 +318,21 @@ export function CatalogClient({
           {error}
         </div>
       )}
-      {!loading && !error && products.length === 0 && (
+      {!loading && !error && displayedProducts.length === 0 && (
         <p className="text-center text-stone-400">
           Nenhum produto encontrado. Rode a importação do Drive e verifique filtros.
         </p>
       )}
-      {!loading && !error && products.length > 0 && (
-        <CatalogSections products={products} />
+      {!loading && !error && displayedProducts.length > 0 && (
+        <CatalogSections products={displayedProducts} />
       )}
+        </>
+      )}
+
+      <WizardCatalogHint
+        visible={wizardImageHint && showCatalog}
+        onDismiss={dismissWizardImageHint}
+      />
     </div>
   );
 }

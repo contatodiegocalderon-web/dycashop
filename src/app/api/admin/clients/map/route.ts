@@ -1,0 +1,307 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { assertAdmin } from "@/lib/admin-auth";
+import { resolvePrincipal } from "@/lib/access";
+import {
+  ALL_BRAZIL_UFS,
+  BRAZIL_UF_LABELS,
+  type BrazilUf,
+  ufFromWhatsapp,
+} from "@/lib/brazil-ddd";
+import type { BusinessProfile } from "@/lib/client-follow-up";
+import {
+  clientRecencyStatus,
+  type ClientRecencyStatus,
+} from "@/lib/client-recency";
+import { applyCrmSellerOrderScope } from "@/lib/crm-seller-order-filter";
+import {
+  fetchAllCrmPaidOrders,
+  fetchCrmProfilesByWhatsapp,
+  type CrmPaidOrdersListQuery,
+} from "@/lib/admin-orders-query";
+import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const MS_30_DAYS = 30 * 24 * 60 * 60 * 1000;
+
+export type StateClientMapItem = {
+  customer_whatsapp: string;
+  customer_name: string | null;
+  business_profile: BusinessProfile | null;
+  order_count: number;
+  total_spent: number;
+  last_confirmed_at: string | null;
+  recency_status: ClientRecencyStatus;
+};
+
+export type StateClientBreakdown = {
+  uf: BrazilUf;
+  name: string;
+  total: number;
+  lojista: number;
+  revendedor: number;
+  uso_proprio: number;
+  sem_perfil: number;
+  desconhecido: number;
+  clients: StateClientMapItem[];
+};
+
+export type TopSalesState = {
+  uf: BrazilUf;
+  name: string;
+  revenue: number;
+  order_count: number;
+};
+
+function emptyBreakdown(uf: BrazilUf): StateClientBreakdown {
+  return {
+    uf,
+    name: BRAZIL_UF_LABELS[uf],
+    total: 0,
+    lojista: 0,
+    revendedor: 0,
+    uso_proprio: 0,
+    sem_perfil: 0,
+    desconhecido: 0,
+    clients: [],
+  };
+}
+
+function isValidProfile(v: string | null | undefined): v is BusinessProfile {
+  return v === "lojista" || v === "revendedor" || v === "uso_proprio";
+}
+
+async function resolveOwnerStaffId(
+  admin: ReturnType<typeof createAdminClient>,
+  principal: Awaited<ReturnType<typeof resolvePrincipal>>
+): Promise<string | null> {
+  if (principal?.kind === "staff" && principal.staff.role === "owner") {
+    return principal.staff.staffId;
+  }
+  if (principal?.kind === "api_key") {
+    const { data: ownerRow } = await admin
+      .from("staff_users")
+      .select("id")
+      .eq("role", "owner")
+      .limit(1)
+      .maybeSingle();
+    return (ownerRow?.id as string | undefined) ?? null;
+  }
+  return null;
+}
+
+/**
+ * GET /api/admin/clients/map — distribuição de clientes por UF (DDD) e top 3 vendas (30 dias).
+ */
+export async function GET(request: NextRequest) {
+  try {
+    await assertAdmin(request);
+  } catch (e) {
+    const status = (e as Error & { status?: number }).status ?? 500;
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Erro" },
+      { status }
+    );
+  }
+
+  try {
+    const principal = await resolvePrincipal(request);
+    const sellerId =
+      principal?.kind === "staff" && principal.staff.role === "seller"
+        ? principal.staff.staffId
+        : null;
+    const isOwnerPrincipal =
+      principal?.kind === "api_key" ||
+      (principal?.kind === "staff" && principal.staff.role === "owner");
+    const rawSellerScope =
+      request.nextUrl.searchParams.get("sellerScope")?.trim() ?? "all";
+
+    const admin = createAdminClient();
+
+    const ownerStaffId = await resolveOwnerStaffId(admin, principal);
+
+    const orders = await fetchAllCrmPaidOrders(admin, () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let q: any = admin
+        .from("orders")
+        .select(
+          "customer_whatsapp, customer_name, sale_amount, confirmed_at, confirmed_by_staff_id"
+        )
+        .eq("status", "PAGO")
+        .not("customer_whatsapp", "is", null);
+
+      q = applyCrmSellerOrderScope(q, {
+        sellerId,
+        isOwnerPrincipal,
+        rawSellerScope,
+        ownerStaffId,
+      });
+
+      return q as CrmPaidOrdersListQuery;
+    });
+
+    const { data: hiddenRows, error: hErr } = await admin
+      .from("crm_hidden_contacts")
+      .select("whatsapp_digits");
+
+    let hiddenSet = new Set<string>();
+    if (!hErr) {
+      hiddenSet = new Set(
+        (hiddenRows ?? []).map((r: { whatsapp_digits: string }) =>
+          String(r.whatsapp_digits ?? "").replace(/\D/g, "")
+        )
+      );
+    }
+
+    const waKeys = new Set<string>();
+    for (const o of orders) {
+      const wa = normalizeWhatsappDigits(o.customer_whatsapp);
+      if (wa.length >= 12 && !hiddenSet.has(wa)) waKeys.add(wa);
+    }
+
+    const profileRows = await fetchCrmProfilesByWhatsapp(
+      admin,
+      Array.from(waKeys)
+    );
+    const profileMap = new Map<string, BusinessProfile | null>();
+    for (const [wa, p] of Array.from(profileRows.entries())) {
+      profileMap.set(
+        wa,
+        isValidProfile(p.business_profile) ? p.business_profile : null
+      );
+    }
+
+    const byWa = new Map<
+      string,
+      {
+        customer_whatsapp: string;
+        customer_name: string | null;
+        profile: BusinessProfile | null;
+        order_count: number;
+        total_spent: number;
+        last_confirmed_at: string | null;
+      }
+    >();
+    for (const o of orders) {
+      const wa = normalizeWhatsappDigits(o.customer_whatsapp);
+      if (wa.length < 12 || hiddenSet.has(wa)) continue;
+      const row = o;
+      const cur = byWa.get(wa) ?? {
+        customer_whatsapp: wa,
+        customer_name: null,
+        profile: profileMap.get(wa) ?? null,
+        order_count: 0,
+        total_spent: 0,
+        last_confirmed_at: null,
+      };
+      cur.order_count += 1;
+      const spent = Number(row.sale_amount ?? 0);
+      if (!Number.isNaN(spent)) cur.total_spent += spent;
+      if (
+        row.confirmed_at &&
+        (!cur.last_confirmed_at || row.confirmed_at > cur.last_confirmed_at)
+      ) {
+        cur.last_confirmed_at = row.confirmed_at;
+        cur.customer_name = String(row.customer_name ?? "").trim() || cur.customer_name;
+      } else if (!cur.customer_name) {
+        cur.customer_name = String(row.customer_name ?? "").trim() || null;
+      }
+      byWa.set(wa, cur);
+    }
+
+    const stateMap = new Map<BrazilUf, StateClientBreakdown>();
+    for (const uf of ALL_BRAZIL_UFS) {
+      stateMap.set(uf, emptyBreakdown(uf));
+    }
+
+    let clientsWithoutUf = 0;
+    for (const [wa, meta] of Array.from(byWa.entries())) {
+      const uf = ufFromWhatsapp(wa);
+      if (!uf) {
+        clientsWithoutUf += 1;
+        continue;
+      }
+      const row = stateMap.get(uf)!;
+      row.total += 1;
+      const p = meta.profile;
+      if (p === "lojista") row.lojista += 1;
+      else if (p === "revendedor") row.revendedor += 1;
+      else if (p === "uso_proprio") row.uso_proprio += 1;
+      else if (!p) row.sem_perfil += 1;
+      else row.desconhecido += 1;
+      row.clients.push({
+        customer_whatsapp: meta.customer_whatsapp,
+        customer_name: meta.customer_name,
+        business_profile: meta.profile,
+        order_count: meta.order_count,
+        total_spent: Number(meta.total_spent.toFixed(2)),
+        last_confirmed_at: meta.last_confirmed_at,
+        recency_status: clientRecencyStatus(meta.last_confirmed_at),
+      });
+    }
+
+    for (const row of Array.from(stateMap.values())) {
+      row.clients.sort((a, b) => {
+        const bySpent = b.total_spent - a.total_spent;
+        if (bySpent !== 0) return bySpent;
+        return String(b.last_confirmed_at ?? "").localeCompare(
+          String(a.last_confirmed_at ?? "")
+        );
+      });
+    }
+
+    const sinceIso = new Date(Date.now() - MS_30_DAYS).toISOString();
+    const salesByUf = new Map<
+      BrazilUf,
+      { revenue: number; order_count: number }
+    >();
+
+    for (const o of orders) {
+      const confirmed = o.confirmed_at;
+      if (!confirmed || confirmed < sinceIso) continue;
+
+      const wa = normalizeWhatsappDigits(o.customer_whatsapp);
+      if (wa.length < 12 || hiddenSet.has(wa)) continue;
+      const row = o;
+
+      const uf = ufFromWhatsapp(wa);
+      if (!uf) continue;
+
+      const spent = Number(row.sale_amount ?? 0);
+      const cur = salesByUf.get(uf) ?? { revenue: 0, order_count: 0 };
+      cur.order_count += 1;
+      if (!Number.isNaN(spent)) cur.revenue += spent;
+      salesByUf.set(uf, cur);
+    }
+
+    const topSalesStates: TopSalesState[] = Array.from(salesByUf.entries())
+      .map(([uf, agg]) => ({
+        uf,
+        name: BRAZIL_UF_LABELS[uf],
+        revenue: agg.revenue,
+        order_count: agg.order_count,
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 3);
+
+    const states = Array.from(stateMap.values()).sort((a, b) => b.total - a.total);
+    const maxClients = Math.max(1, ...states.map((s) => s.total));
+
+    return NextResponse.json({
+      states,
+      topSalesStates,
+      maxClients,
+      clientsWithoutUf,
+      totalClients: byWa.size,
+      meta: {
+        ordersLoaded: orders.length,
+        clientsOnMap: byWa.size - clientsWithoutUf,
+      },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

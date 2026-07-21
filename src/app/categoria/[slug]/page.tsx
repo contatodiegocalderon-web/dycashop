@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CatalogClient } from "@/app/catalog-client";
@@ -30,10 +31,14 @@ export default async function CategoriaPage({ params }: Props) {
       {showcaseConfig.catalogCoverImageUrl ? (
         <div className="relative mb-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-950 ring-1 ring-white/[0.04]">
           <div className="relative aspect-[21/9] min-h-[140px] w-full max-h-[260px] sm:min-h-[168px]">
-            <img
+            <Image
               src={showcaseConfig.catalogCoverImageUrl}
               alt=""
-              className="absolute inset-0 h-full w-full object-cover"
+              fill
+              priority
+              unoptimized
+              className="object-cover"
+              sizes="(max-width: 1280px) 100vw, 1280px"
             />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-zinc-900/20" />
           </div>

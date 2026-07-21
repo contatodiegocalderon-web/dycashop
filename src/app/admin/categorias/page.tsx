@@ -11,6 +11,7 @@ import type { WholesaleTier } from "@/lib/category-showcase";
 type CostRow = {
   category_label: string;
   cost_per_piece: number;
+  weight_grams_per_piece: number;
 };
 
 type ShowcaseRow = {
@@ -18,6 +19,7 @@ type ShowcaseRow = {
   video_url: string | null;
   video_poster_url: string | null;
   wholesale_tiers: WholesaleTier[];
+  retail_price: number | null;
   home_grid_cover_image_url: string | null;
   catalog_cover_image_url: string | null;
   display_order: number | null;
@@ -73,9 +75,11 @@ export default function AdminCategoriasPage() {
 
   const [categories, setCategories] = useState<string[]>([]);
   const [costEdits, setCostEdits] = useState<Record<string, string>>({});
+  const [weightEdits, setWeightEdits] = useState<Record<string, string>>({});
   const [videoEdits, setVideoEdits] = useState<Record<string, string>>({});
   const [posterEdits, setPosterEdits] = useState<Record<string, string>>({});
   const [tiersEdits, setTiersEdits] = useState<Record<string, string>>({});
+  const [retailEdits, setRetailEdits] = useState<Record<string, string>>({});
   const [gridCoverEdits, setGridCoverEdits] = useState<Record<string, string>>({});
   const [categoryCoverEdits, setCategoryCoverEdits] = useState<
     Record<string, string>
@@ -125,27 +129,39 @@ export default function AdminCategoriasPage() {
       const sortedLabels = sortCategoryLabelsForCatalog(allLabels, orderVals);
 
       const costMap: Record<string, string> = {};
+      const weightMap: Record<string, string> = {};
       const videoMap: Record<string, string> = {};
       const posterMap: Record<string, string> = {};
       const tiersMap: Record<string, string> = {};
+      const retailMap: Record<string, string> = {};
       const gridMap: Record<string, string> = {};
       const catCoverMap: Record<string, string> = {};
       for (const label of sortedLabels) {
         const cost = costRows.find((r) => r.category_label === label)?.cost_per_piece ?? 0;
+        const weight =
+          costRows.find((r) => r.category_label === label)?.weight_grams_per_piece ??
+          250;
         const showcase = showcaseRowsParsed.find((r) => r.category_label === label);
         costMap[label] = String(cost);
+        weightMap[label] = String(weight);
         videoMap[label] = showcase?.video_url ?? "";
         posterMap[label] = showcase?.video_poster_url ?? "";
         tiersMap[label] = tiersToText(showcase?.wholesale_tiers ?? []);
+        retailMap[label] =
+          showcase?.retail_price != null && Number.isFinite(showcase.retail_price)
+            ? String(showcase.retail_price)
+            : "";
         gridMap[label] = showcase?.home_grid_cover_image_url ?? "";
         catCoverMap[label] = showcase?.catalog_cover_image_url ?? "";
       }
 
       setCategories(sortedLabels);
       setCostEdits(costMap);
+      setWeightEdits(weightMap);
       setVideoEdits(videoMap);
       setPosterEdits(posterMap);
       setTiersEdits(tiersMap);
+      setRetailEdits(retailMap);
       setGridCoverEdits(gridMap);
       setCategoryCoverEdits(catCoverMap);
     } catch (e) {
@@ -168,19 +184,31 @@ export default function AdminCategoriasPage() {
       const costEntries = categories.map((category_label) => ({
         category_label,
         cost_per_piece: Number(String(costEdits[category_label] ?? "0").replace(",", ".")),
+        weight_grams_per_piece: Number(
+          String(weightEdits[category_label] ?? "250").replace(",", ".")
+        ),
       }));
       const showcaseEntries = categories.map((category_label) => ({
         category_label,
         video_url: (videoEdits[category_label] ?? "").trim() || null,
         video_poster_url: (posterEdits[category_label] ?? "").trim() || null,
         wholesale_tiers: parseTierText(tiersEdits[category_label] ?? ""),
+        retail_price: (() => {
+          const raw = String(retailEdits[category_label] ?? "").trim();
+          if (!raw) return null;
+          const n = Number(raw.replace(",", "."));
+          if (!Number.isFinite(n) || n < 0) {
+            throw new Error(`Preço de varejo inválido em "${category_label}"`);
+          }
+          return Number(n.toFixed(2));
+        })(),
         home_grid_cover_image_url:
           (gridCoverEdits[category_label] ?? "").trim() || null,
         catalog_cover_image_url:
           (categoryCoverEdits[category_label] ?? "").trim() || null,
         display_order:
           showcaseRows.find((r) => r.category_label === category_label)?.display_order ??
-          null,
+          DISPLAY_ORDER_DEFAULT_SENTINEL,
       }));
 
       const [costRes, showcaseRes] = await Promise.all([
@@ -310,9 +338,11 @@ export default function AdminCategoriasPage() {
     <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-stone-900">Categorias</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
+            Categorias
+          </h1>
           <p className="mt-1 text-sm text-stone-600">
-            Custos, vídeo, atacado, ordem na home e capa da vitrine.
+            Custos, preço varejo (1–4), vídeo, atacado, ordem na home e capa da vitrine.
           </p>
         </div>
         <button
@@ -332,7 +362,7 @@ export default function AdminCategoriasPage() {
             onClick={() => setTab("operacao")}
             className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
               tab === "operacao"
-                ? "border-b-2 border-emerald-600 text-emerald-800"
+                ? "border-b-2 border-violet-600 text-violet-800"
                 : "text-stone-500 hover:text-stone-800"
             }`}
           >
@@ -343,7 +373,7 @@ export default function AdminCategoriasPage() {
             onClick={() => setTab("capas")}
             className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
               tab === "capas"
-                ? "border-b-2 border-emerald-600 text-emerald-800"
+                ? "border-b-2 border-violet-600 text-violet-800"
                 : "text-stone-500 hover:text-stone-800"
             }`}
           >
@@ -358,7 +388,7 @@ export default function AdminCategoriasPage() {
         </div>
       )}
       {ok && (
-        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
           {ok}
         </div>
       )}
@@ -401,7 +431,7 @@ export default function AdminCategoriasPage() {
                   )}
                 </div>
 
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                   <label className="text-sm text-stone-700">
                     Custo por peça (R$)
                     <input
@@ -413,6 +443,37 @@ export default function AdminCategoriasPage() {
                         setCostEdits((prev) => ({ ...prev, [label]: e.target.value }))
                       }
                       className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 disabled:bg-stone-100"
+                    />
+                  </label>
+                  <label className="text-sm text-stone-700">
+                    Preço varejo (R$)
+                    <span className="mt-0.5 block text-[11px] font-normal text-stone-500">
+                      1 a 4 peças · checkout online
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      disabled={!isOwner}
+                      value={retailEdits[label] ?? ""}
+                      onChange={(e) =>
+                        setRetailEdits((prev) => ({ ...prev, [label]: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-cyan-300/80 px-3 py-2 text-stone-900 disabled:bg-stone-100"
+                      placeholder="Ex.: 49.90"
+                    />
+                  </label>
+                  <label className="text-sm text-stone-700">
+                    Peso por peça (gramas)
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      disabled={!isOwner}
+                      value={weightEdits[label] ?? ""}
+                      onChange={(e) =>
+                        setWeightEdits((prev) => ({ ...prev, [label]: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 disabled:bg-stone-100"
+                      placeholder="Ex.: 200 camiseta, 350 bermuda"
                     />
                   </label>
                   <label className="text-sm text-stone-700">
@@ -444,7 +505,7 @@ export default function AdminCategoriasPage() {
                 </div>
 
                 <label className="mt-3 block text-sm text-stone-700">
-                  Tabela atacado (uma linha por faixa no formato `min-max=preço` e `min-+=preço`)
+                  Tabela atacado — 10+ peças (uma linha por faixa: `min-max=preço` ou `min-+=preço`)
                   <textarea
                     rows={4}
                     disabled={!isOwner}
@@ -464,7 +525,7 @@ export default function AdminCategoriasPage() {
               type="button"
               onClick={saveAll}
               disabled={saving}
-              className="mt-6 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              className="mt-6 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
             >
               {saving ? "A guardar…" : "Guardar categorias"}
             </button>

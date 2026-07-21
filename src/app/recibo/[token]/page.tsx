@@ -1,12 +1,17 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchOrderDisplayNumberPublic } from "@/lib/order-display-number";
-import { getOrderReceiptByToken, isValidReceiptToken } from "@/lib/order-receipt";
+import { ReceiptCancelledMessage } from "@/components/receipt-cancelled";
+import { StockConflictNotice } from "@/components/stock-conflict-notice";
+import {
+  getOrderReceiptByToken,
+  isCancelledReceiptToken,
+  isValidReceiptToken,
+} from "@/lib/order-receipt";
 import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
-import { publicDriveImageUrl } from "@/lib/drive-image-url";
+import { orderItemImageUrl } from "@/lib/order-item-image-url";
 import type { OrderItemRow, OrderStatus, ProductSize } from "@/types";
-
-type Props = { params: { token: string } };
 
 export const dynamic = "force-dynamic";
 
@@ -23,15 +28,15 @@ function groupItems(items: OrderItemRow[]) {
 }
 
 function itemImageSrc(it: OrderItemRow): string {
-  const u = it.snapshot_image_url?.trim() ?? "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  return publicDriveImageUrl(it.snapshot_drive_file_id, 320);
+  return orderItemImageUrl(it, 320) ?? "";
 }
 
-function statusLabel(s: OrderStatus): string {
+function statusLabel(s: OrderStatus, salesChannel?: string | null): string {
   switch (s) {
     case "PENDENTE_PAGAMENTO":
-      return "Aguardando confirmação do vendedor";
+      return salesChannel === "VAREJO"
+        ? "Aguardando pagamento (Mercado Pago)"
+        : "Aguardando confirmação do vendedor";
     case "PAGO":
       return "Pagamento confirmado";
     case "CANCELADO":
@@ -41,17 +46,37 @@ function statusLabel(s: OrderStatus): string {
   }
 }
 
-export default async function ReciboPage({ params }: Props) {
+export default async function ReciboPage({
+  params,
+  searchParams,
+}: {
+  params: { token: string };
+  searchParams?: { pago?: string };
+}) {
   const token = params.token;
   if (!isValidReceiptToken(token)) notFound();
 
   const receipt = await getOrderReceiptByToken(token);
-  if (!receipt) notFound();
+  if (!receipt) {
+    if (await isCancelledReceiptToken(token)) {
+      return <ReceiptCancelledMessage />;
+    }
+    notFound();
+  }
 
   const { order, items } = receipt;
-  const displayNumber = await fetchOrderDisplayNumberPublic(order.id);
+
+  if (order.status === "CANCELADO") {
+    return <ReceiptCancelledMessage />;
+  }
+  const displayNumber =
+    order.display_number != null && order.display_number > 0
+      ? order.display_number
+      : await fetchOrderDisplayNumberPublic(order.id);
   const bySize = groupItems(items);
   const categoryTotals = totalsByCategoryFromOrderItems(items);
+  const pagoFlag = searchParams?.pago;
+  const salesChannel = (order as { sales_channel?: string | null }).sales_channel;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -61,6 +86,23 @@ export default async function ReciboPage({ params }: Props) {
         </Link>
       </nav>
 
+      {pagoFlag === "1" && order.status === "PAGO" ? (
+        <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          Pagamento aprovado. Obrigado pela compra!
+        </div>
+      ) : null}
+      {pagoFlag === "1" && order.status === "PENDENTE_PAGAMENTO" ? (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          Recebemos o retorno do Mercado Pago. Se o PIX/cartão foi pago, a
+          confirmação chega em instantes — atualize esta página.
+        </div>
+      ) : null}
+      {pagoFlag === "pendente" ? (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          Pagamento pendente. Assim que o Mercado Pago confirmar, o pedido fica
+          como pago.
+        </div>
+      ) : null}
       <header className="mb-8 space-y-4 border-b border-white/[0.06] pb-6">
         <div>
           <p className="text-lg font-semibold uppercase tracking-wide text-stone-100">
@@ -94,13 +136,24 @@ export default async function ReciboPage({ params }: Props) {
           </div>
         ) : null}
 
-        <p className="text-sm leading-relaxed text-stone-400">
-          O vendedor vai calcular seu frete e finalizar seu pedido o quanto antes,
-          aguarde só um momento!
-        </p>
+        {order.stock_conflict ? (
+          <StockConflictNotice conflict={order.stock_conflict} variant="client" />
+        ) : salesChannel === "VAREJO" ? (
+          <p className="text-sm leading-relaxed text-stone-400">
+            Checkout varejo: após o pagamento no Mercado Pago, o pedido é
+            confirmado automaticamente.
+          </p>
+        ) : (
+          <p className="text-sm leading-relaxed text-stone-400">
+            O vendedor vai calcular seu frete e finalizar seu pedido o quanto antes,
+            aguarde só um momento!
+          </p>
+        )}
 
         <div className="border-t border-white/[0.06] pt-4">
-          <p className="text-sm text-stone-500">{statusLabel(order.status)}</p>
+          <p className="text-sm text-stone-500">
+            {statusLabel(order.status, salesChannel)}
+          </p>
           <p className="mt-1 text-xs text-stone-600">
             {new Date(order.created_at).toLocaleString("pt-BR")}
           </p>
@@ -129,12 +182,13 @@ export default async function ReciboPage({ params }: Props) {
                       className="flex gap-3 rounded-xl border border-white/[0.06] bg-zinc-900/40 p-3 ring-1 ring-white/[0.03]"
                     >
                       <div className="relative h-24 w-[4.5rem] shrink-0 overflow-hidden rounded-lg bg-zinc-950">
-                        <img
+                        <Image
                           src={itemImageSrc(it)}
                           alt=""
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                          decoding="async"
+                          fill
+                          unoptimized
+                          className="object-cover"
+                          sizes="72px"
                         />
                       </div>
                       <div className="min-w-0 flex-1 py-0.5">

@@ -87,7 +87,7 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-stone-900 via-stone-800 to-emerald-950 px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-stone-900 via-stone-800 to-violet-950 px-4">
       <div className="w-full max-w-md rounded-3xl border border-white/10 bg-white/95 p-8 shadow-2xl backdrop-blur">
         <h1 className="text-center text-2xl font-bold text-stone-900">
           Área administrativa
@@ -107,7 +107,7 @@ export default function AdminLoginPage() {
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-stone-900 shadow-inner outline-none ring-emerald-500/30 focus:ring-2"
+              className="mt-2 w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-stone-900 shadow-inner outline-none ring-violet-500/30 focus:ring-2"
               placeholder="voce@email.com"
             />
           </div>
@@ -120,7 +120,7 @@ export default function AdminLoginPage() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-stone-900 shadow-inner outline-none ring-emerald-500/30 focus:ring-2"
+              className="mt-2 w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-stone-900 shadow-inner outline-none ring-violet-500/30 focus:ring-2"
               placeholder="••••••••"
             />
           </div>
@@ -130,7 +130,7 @@ export default function AdminLoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-900/20 transition hover:bg-emerald-700 disabled:opacity-50"
+            className="w-full rounded-xl bg-violet-600 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/20 transition hover:bg-violet-700 disabled:opacity-50"
           >
             {submitting ? "A entrar…" : "Entrar"}
           </button>
@@ -165,7 +165,7 @@ export default function AdminLoginPage() {
         </div>
 
         <p className="mt-6 text-center text-sm text-stone-500">
-          <Link href="/" className="font-medium text-emerald-700 underline hover:text-emerald-800">
+          <Link href="/" className="font-medium text-violet-700 underline hover:text-violet-800">
             Voltar à loja
           </Link>
         </p>

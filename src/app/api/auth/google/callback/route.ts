@@ -1,108 +1,109 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exchangeGoogleAuthCode, verifyGoogleAuthState } from "@/lib/google-drive-oauth";
+import {
+  createOAuth2Client,
+  exchangeGoogleAuthCode,
+  resolveAppBaseUrl,
+  resolveOAuthRedirectUri,
+  verifyGoogleAuthState,
+  verifyGoogleRefreshToken,
+} from "@/lib/google-drive-oauth";
+import { getOAuthClientId } from "@/lib/drive-auth";
 import { supabaseFailureHint } from "@/lib/supabase-connect-hint";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { clearDriveAuthCache } from "@/lib/drive-auth";
+import { getAdminClient } from "@/lib/supabase/admin";
 
-function logOAuthCallback(
-  step: string,
-  data: Record<string, unknown> & { hypothesisId?: string }
+export const runtime = "nodejs";
+
+/** Redirecionamento que funciona mesmo se o browser não seguir 302 de imediato. */
+function redirectToConfig(
+  request: NextRequest,
+  query: Record<string, string>
 ) {
-  // #region agent log
-  fetch("http://127.0.0.1:7446/ingest/24af6af5-b59d-45ad-acbf-6e5e9842079c", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "c8fae6",
-    },
-    body: JSON.stringify({
-      sessionId: "c8fae6",
-      location: `google/callback:${step}`,
-      message: step,
-      data: { ...data, ts: Date.now() },
-      hypothesisId: data.hypothesisId ?? step,
-    }),
-  }).catch(() => {});
-  // #endregion
-}
+  const destBase = resolveAppBaseUrl(request.nextUrl.origin);
+  const params = new URLSearchParams(query);
+  const target = new URL(
+    `/admin/configuracao?${params.toString()}`,
+    destBase
+  ).toString();
 
-function baseUrl(request: NextRequest): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ??
-    request.nextUrl.origin
-  );
+  const safeTarget = target.replace(/"/g, "%22");
+  const html = `<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="refresh" content="0;url=${safeTarget}" />
+  <title>A ligar Google Drive…</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 32rem; margin: 3rem auto; padding: 0 1rem; color: #444; }
+    a { color: #5b21b6; }
+  </style>
+</head>
+<body>
+  <p>A redirecionar para configuração…</p>
+  <p><a href="${safeTarget}">Clique aqui se não for redirecionado</a>.</p>
+  <script>window.location.replace(${JSON.stringify(target)});</script>
+</body>
+</html>`;
+
+  return new NextResponse(html, {
+    status: 302,
+    headers: {
+      Location: target,
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 export async function GET(request: NextRequest) {
-  const destBase = baseUrl(request);
+  const redirectUri = resolveOAuthRedirectUri(request.nextUrl.origin);
+
   const fail = (reason: string) =>
-    NextResponse.redirect(
-      new URL(
-        `/admin/configuracao?google_error=${encodeURIComponent(reason)}`,
-        destBase
-      )
-    );
-
-  const err = request.nextUrl.searchParams.get("error");
-  if (err) {
-    const errDesc = request.nextUrl.searchParams.get("error_description") ?? "";
-    logOAuthCallback("google_query_error", {
-      err,
-      errDescSnippet: errDesc.slice(0, 120),
-      hypothesisId: "H-A",
-    });
-    return fail(
-      errDesc
-        ? `Google: ${err} — ${decodeURIComponent(errDesc)}`
-        : `Google: ${err}`
-    );
-  }
-
-  const state = request.nextUrl.searchParams.get("state");
-  const code = request.nextUrl.searchParams.get("code");
-  if (!state || !code) {
-    logOAuthCallback("missing_code_or_state", {
-      hasState: !!state,
-      hasCode: !!code,
-      hypothesisId: "H-B",
-    });
-    return fail("Resposta OAuth incompleta.");
-  }
-
-  if (!verifyGoogleAuthState(state)) {
-    logOAuthCallback("state_invalid", { hypothesisId: "H-C" });
-    return fail("Estado OAuth inválido ou expirado. Tente novamente.");
-  }
-
-  let tokens: Awaited<ReturnType<typeof exchangeGoogleAuthCode>>;
-  try {
-    tokens = await exchangeGoogleAuthCode(code);
-    logOAuthCallback("token_exchange_ok", {
-      hasRefreshToken: !!tokens.refresh_token,
-      hypothesisId: "H-D",
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Falha ao trocar código";
-    logOAuthCallback("token_exchange_fail", {
-      msgSnippet: msg.slice(0, 200),
-      hypothesisId: "H-D",
-    });
-    return fail(msg);
-  }
-
-  const newRt = tokens.refresh_token;
-
-  let admin;
-  try {
-    admin = createAdminClient();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Supabase";
-    return fail(supabaseFailureHint(msg));
-  }
+    redirectToConfig(request, { google_error: reason });
 
   try {
+    const err = request.nextUrl.searchParams.get("error");
+    if (err) {
+      const errDesc =
+        request.nextUrl.searchParams.get("error_description") ?? "";
+      return fail(
+        errDesc
+          ? `Google: ${err} — ${decodeURIComponent(errDesc)}`
+          : `Google: ${err}`
+      );
+    }
+
+    const state = request.nextUrl.searchParams.get("state");
+    const code = request.nextUrl.searchParams.get("code");
+    if (!state || !code) {
+      return fail("Resposta OAuth incompleta.");
+    }
+
+    if (!verifyGoogleAuthState(state)) {
+      return fail("Estado OAuth inválido ou expirado. Tente novamente.");
+    }
+
+    let tokens: Awaited<ReturnType<typeof exchangeGoogleAuthCode>>;
+    try {
+      tokens = await exchangeGoogleAuthCode(code, redirectUri);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha ao trocar código";
+      return fail(msg);
+    }
+
+    const newRt = tokens.refresh_token?.trim() || null;
+
+    let admin;
+    try {
+      admin = getAdminClient();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Supabase";
+      return fail(supabaseFailureHint(msg));
+    }
+
     const { data: row, error: selErr } = await admin
       .from("catalog_settings")
-      .select("drive_folder_id, google_refresh_token")
+      .select("drive_folder_id, google_refresh_token, google_oauth_client_id")
       .eq("id", 1)
       .maybeSingle();
 
@@ -110,21 +111,48 @@ export async function GET(request: NextRequest) {
       return fail(supabaseFailureHint(selErr.message));
     }
 
-    const refreshToStore = newRt ?? row?.google_refresh_token?.trim();
-    if (!refreshToStore) {
-      logOAuthCallback("no_refresh_token", {
-        hadExistingRow: !!row,
-        hypothesisId: "H-D",
-      });
+    let refreshToStore: string;
+    if (newRt) {
+      refreshToStore = newRt;
+    } else {
+      const oldRt = row?.google_refresh_token?.trim();
+      if (!oldRt) {
+        return fail(
+          "Google não devolveu refresh token. Em myaccount.google.com/permissions remova o acesso desta app e clique «Conectar conta Google» de novo."
+        );
+      }
+      const stillValid = await verifyGoogleRefreshToken(oldRt, redirectUri);
+      if (!stillValid) {
+        return fail(
+          "O Google não emitiu um novo refresh token e o guardado na base de dados já não funciona (invalid_grant). Em myaccount.google.com/permissions remova o acesso desta app, volte a Configuração e clique «Conectar conta Google» — não atualize esta página do callback."
+        );
+      }
+      refreshToStore = oldRt;
+    }
+
+    const oauth2 = createOAuth2Client(redirectUri);
+    oauth2.setCredentials({ refresh_token: refreshToStore });
+    try {
+      await oauth2.getAccessToken();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       return fail(
-        "Google não devolveu refresh token. Remova o acesso da app em myaccount.google.com/permissions e conecte de novo."
+        msg.toLowerCase().includes("invalid_grant")
+          ? "Refresh token rejeitado pelo Google após autorização. Confirme que GOOGLE_CLIENT_ID/SECRET no .env são os mesmos da app OAuth no Google Cloud; remova o acesso em myaccount.google.com/permissions e conecte de novo."
+          : msg
       );
+    }
+
+    const oauthClientId = getOAuthClientId();
+    if (!oauthClientId) {
+      return fail("GOOGLE_CLIENT_ID não configurado no servidor.");
     }
 
     const { error: upErr } = await admin.from("catalog_settings").upsert(
       {
         id: 1,
         google_refresh_token: refreshToStore,
+        google_oauth_client_id: oauthClientId,
         drive_folder_id: row?.drive_folder_id ?? null,
         updated_at: new Date().toISOString(),
       },
@@ -132,23 +160,14 @@ export async function GET(request: NextRequest) {
     );
 
     if (upErr) {
-      logOAuthCallback("supabase_upsert_fail", {
-        msgSnippet: upErr.message.slice(0, 120),
-        hypothesisId: "H-E",
-      });
       return fail(supabaseFailureHint(upErr.message));
     }
-    logOAuthCallback("oauth_success_redirect", { hypothesisId: "ok" });
+
+    clearDriveAuthCache();
+    return redirectToConfig(request, { google: "ok" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    logOAuthCallback("catalog_try_catch", {
-      msgSnippet: msg.slice(0, 160),
-      hypothesisId: "H-E",
-    });
-    return fail(supabaseFailureHint(msg));
+    console.error("[google/callback]", msg);
+    return fail(msg);
   }
-
-  return NextResponse.redirect(
-    new URL("/admin/configuracao?google=ok", destBase)
-  );
 }

@@ -25,7 +25,18 @@ function ConfiguracaoInner() {
   const [status, setStatus] = useState<string | null>(null);
   const [driveFolderId, setDriveFolderId] = useState<string | null>(null);
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleTokenStored, setGoogleTokenStored] = useState(false);
+  const [oauthClientIdHint, setOauthClientIdHint] = useState<string | null>(null);
+  const [storedOAuthClientIdHint, setStoredOAuthClientIdHint] = useState<
+    string | null
+  >(null);
+  const [oauthClientMismatch, setOauthClientMismatch] = useState(false);
   const [oauthConfigured, setOauthConfigured] = useState(false);
+  const [oauthRedirectUri, setOauthRedirectUri] = useState<string | null>(null);
+  const [oauthRedirectUrisHint, setOauthRedirectUrisHint] = useState<string[]>(
+    []
+  );
+  const [appPublicUrl, setAppPublicUrl] = useState<string | null>(null);
   const [syncProg, setSyncProg] = useState<{
     phase: string;
     current: number;
@@ -39,7 +50,28 @@ function ConfiguracaoInner() {
     if (!res.ok) throw new Error(data.error ?? "Falha ao carregar");
     setDriveFolderId(data.driveFolderId ?? null);
     setGoogleConnected(!!data.googleConnected);
+    setGoogleTokenStored(!!data.googleTokenStored);
+    setOauthClientIdHint(
+      typeof data.oauthClientIdHint === "string" ? data.oauthClientIdHint : null
+    );
+    setStoredOAuthClientIdHint(
+      typeof data.storedOAuthClientIdHint === "string"
+        ? data.storedOAuthClientIdHint
+        : null
+    );
+    setOauthClientMismatch(!!data.oauthClientMismatch);
     setOauthConfigured(!!data.oauthConfigured);
+    setOauthRedirectUri(
+      typeof data.oauthRedirectUri === "string" ? data.oauthRedirectUri : null
+    );
+    setOauthRedirectUrisHint(
+      Array.isArray(data.oauthRedirectUrisHint)
+        ? (data.oauthRedirectUrisHint as string[])
+        : []
+    );
+    setAppPublicUrl(
+      typeof data.appPublicUrl === "string" ? data.appPublicUrl : null
+    );
   }, [adminFetch]);
 
   useEffect(() => {
@@ -57,18 +89,70 @@ function ConfiguracaoInner() {
     if (err) setStatus(`Erro: ${decodeURIComponent(err)}`);
   }, [searchParams]);
 
-  async function connectGoogle() {
+  async function connectGoogle(forceReconnect = false) {
     setLoading(true);
     setStatus(null);
     try {
       const res = await adminFetch("/api/auth/google/start", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: forceReconnect }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Falha ao iniciar OAuth");
       window.location.href = data.url as string;
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /** Chama a API que obtém access token e lê `about` + pasta raiz — único teste fidedigno. */
+  async function testDriveConnection() {
+    setLoading(true);
+    setStatus(null);
+    try {
+      const res = await adminFetch("/api/health/drive");
+      const text = await res.text();
+      let data: {
+        ok?: boolean;
+        error?: string;
+        driveUserEmail?: string | null;
+        driveApi?: string;
+        rootFolder?: { id?: string; name?: string; mimeType?: string };
+        rootFolderError?: string;
+        rootFolderId?: string | null;
+      } = {};
+      try {
+        data = text ? (JSON.parse(text) as typeof data) : {};
+      } catch {
+        setStatus(`Resposta inválida (${res.status}): ${text.slice(0, 200)}`);
+        return;
+      }
+      if (!res.ok && !("ok" in data)) {
+        setStatus(`Erro HTTP ${res.status}: ${data.error ?? text.slice(0, 200)}`);
+        return;
+      }
+      if (!data.ok) {
+        const hint =
+          String(data.error ?? "").includes("invalid_grant") ||
+          String(data.error ?? "").includes("Invalid grant")
+            ? "\n\nO refresh token na base de dados já não é aceite pelo Google (revogado, app OAuth alterada ou credenciais .env diferentes). Clique em «Conectar conta Google» outra vez; se persistir, em myaccount.google.com/permissions remova o acesso desta app e volte a conectar."
+            : "";
+        setStatus(`Falha no teste: ${data.error ?? res.statusText}${hint}`);
+        return;
+      }
+      const folderLine = data.rootFolder?.name
+        ? `Pasta raiz (${data.rootFolderId ?? "?"}): «${data.rootFolder.name}» (${data.rootFolder.mimeType ?? "tipo ?"}).`
+        : data.rootFolderError
+          ? `Pasta raiz: erro — ${data.rootFolderError}`
+          : "Pasta raiz: não configurada (guarde o link da pasta no passo 2).";
+      setStatus(
+        `Ligação OK. Conta Drive: ${data.driveUserEmail ?? "(sem email)"}.\n${folderLine}\n\nIsto confirma token + leitura da pasta; renomear na confirmação de pedido usa as mesmas credenciais.`
+      );
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Erro ao testar");
     } finally {
       setLoading(false);
     }
@@ -83,6 +167,7 @@ function ConfiguracaoInner() {
         total: 0,
         skipped: 0,
       });
+      let streamTerminal = false;
       await consumeSyncNdjsonStream(res, (raw) => {
         const o = raw as {
           type?: string;
@@ -118,14 +203,22 @@ function ConfiguracaoInner() {
           });
         }
         if (o.type === "complete" && o.result) {
+          streamTerminal = true;
           setStatus(formatSyncResultSummary(o.result));
           setSyncProg(null);
         }
         if (o.type === "fatal") {
+          streamTerminal = true;
           setStatus(o.message ?? "Erro na sincronização");
           setSyncProg(null);
         }
       });
+      if (!streamTerminal) {
+        setSyncProg(null);
+        setStatus(
+          "A sincronização parou sem confirmação do servidor (muito comum por limite de tempo no alojamento, ex. Vercel). O que já foi enviado para o Storage fica guardado.\n\nVolte a clicar em «Importar do Drive» para continuar com as imagens em falta. Se usar Vercel Hobby, o tempo por pedido é curto — no plano Pro pode estender até 5 minutos (esta API já pede 5 min)."
+        );
+      }
       return;
     }
     const data = await res.json();
@@ -216,7 +309,7 @@ function ConfiguracaoInner() {
 
   if (!isOwner) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-12 text-center text-sm text-stone-600">
+      <div className="mx-auto max-w-xl px-4 py-8 text-center text-sm text-stone-600">
         A redirecionar…
       </div>
     );
@@ -226,7 +319,7 @@ function ConfiguracaoInner() {
     <div className="mx-auto max-w-xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">
+          <h1 className="text-2xl font-bold text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
             Configuração do catálogo
           </h1>
           <p className="text-sm text-stone-600">
@@ -243,29 +336,105 @@ function ConfiguracaoInner() {
           Precisa de{" "}
           <code className="rounded bg-white/80 px-1">GOOGLE_CLIENT_ID</code> e{" "}
           <code className="rounded bg-white/80 px-1">GOOGLE_CLIENT_SECRET</code>{" "}
-          no .env (tipo &quot;App Web&quot; na Google Cloud). Redirect:{" "}
-          <code className="break-all">
-            …/api/auth/google/callback
-          </code>
+          (Google Cloud → Credenciais → OAuth, tipo &quot;Aplicação Web&quot;).
+          Em «URIs de redirecionamento autorizados» cole{" "}
+          <strong>exatamente</strong> o URI abaixo (erro 400 redirect_uri_mismatch =
+          falta este URI ou NEXT_PUBLIC_APP_URL errado na Vercel).
         </p>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => void connectGoogle()}
-          className="mt-3 rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-40"
-        >
-          Conectar conta Google
-        </button>
+        {oauthRedirectUri ? (
+          <p className="mt-2 break-all rounded-lg border border-amber-200 bg-white px-3 py-2 font-mono text-xs text-stone-800">
+            {oauthRedirectUri}
+          </p>
+        ) : null}
+        {oauthRedirectUrisHint.length > 1 ? (
+          <p className="mt-2 text-xs text-amber-900/80">
+            Se usar dev e produção, registe também:{" "}
+            {oauthRedirectUrisHint.map((u) => (
+              <code key={u} className="mr-1 block break-all sm:inline">
+                {u}
+              </code>
+            ))}
+          </p>
+        ) : null}
+        {appPublicUrl ? (
+          <p className="mt-2 text-xs text-amber-900/80">
+            NEXT_PUBLIC_APP_URL no servidor:{" "}
+            <code className="break-all">{appPublicUrl}</code>
+          </p>
+        ) : (
+          <p className="mt-2 text-xs font-medium text-amber-950">
+            NEXT_PUBLIC_APP_URL não definido no servidor — em produção defina na
+            Vercel (ex.: https://dycashop.vercel.app).
+          </p>
+        )}
+        {oauthClientMismatch ? (
+          <p className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-900">
+            Credenciais OAuth deste servidor ({oauthClientIdHint ?? "?"}…) não
+            coincidem com o token guardado ({storedOAuthClientIdHint ?? "?"}…).
+            Corrija GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET na Vercel (cliente{" "}
+            <code className="break-all">7195cqo60j5ji…</code>), redeploy e clique
+            «Conectar conta Google».
+          </p>
+        ) : null}
+        <p className="mt-2 text-xs text-amber-900/80">
+          Em dev, abra só{" "}
+          <code className="rounded bg-white/80 px-1">http://localhost:3000</code>.
+          Em «Utilizadores de teste» do OAuth, adicione o seu Gmail. Após
+          autorizar, não atualize a página do callback.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() =>
+              void connectGoogle(!googleConnected && googleTokenStored)
+            }
+            className="rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-40"
+          >
+            Conectar conta Google
+          </button>
+          <button
+            type="button"
+            disabled={loading || !googleConnected}
+            onClick={() => void testDriveConnection()}
+            title={
+              !googleConnected
+                ? "Ligue primeiro a conta Google"
+                : "Valida o refresh token e a leitura da pasta raiz"
+            }
+            className="rounded-xl border border-amber-400 bg-white px-4 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-40"
+          >
+            Testar ligação ao Drive
+          </button>
+        </div>
         <p className="mt-2 text-xs text-amber-900/80">
           Estado:{" "}
           {googleConnected ? (
-            <span className="font-semibold text-emerald-800">ligado</span>
+            <span className="font-semibold text-emerald-800">
+              Google aceita o token (Drive OK)
+            </span>
+          ) : googleTokenStored ? (
+            <span className="font-semibold text-red-800">
+              token inválido (invalid_grant) — clique «Conectar conta Google»
+            </span>
           ) : (
-            <span className="font-semibold text-red-800">não ligado</span>
+            <span className="font-semibold text-red-800">sem token — conecte o Google</span>
           )}
+          {oauthClientIdHint ? (
+            <>
+              {" "}
+              · Cliente OAuth neste servidor:{" "}
+              <code className="rounded bg-white/80 px-1">{oauthClientIdHint}…</code>
+            </>
+          ) : null}
+          <span className="mt-1 block text-amber-800/90">
+            A ligação Google é <strong>uma só</strong> para toda a loja (guardada na
+            base). Importar ou reconectar noutro PC substitui o token — use sempre o
+            mesmo site (produção ou localhost) e alinhe as credenciais na Vercel.
+          </span>
           {!oauthConfigured && (
             <span className="block mt-1">
-              OAuth não configurado no servidor — veja o .env.local.
+              OAuth não configurado no servidor — veja o .env / Vercel.
             </span>
           )}
         </p>
@@ -320,22 +489,22 @@ function ConfiguracaoInner() {
           type="button"
           disabled={loading}
           onClick={() => void pushDriveToMatchAppStock()}
-          className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100 disabled:opacity-40"
+          className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-40"
         >
           Igualar Drive com app
         </button>
       </div>
 
       {syncProg && (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-950">
+        <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/80 px-4 py-3 text-sm text-violet-950">
           <p className="font-medium">{syncProg.phase}</p>
           {syncProg.total > 0 ? (
-            <p className="mt-1 text-xs text-emerald-900/90">
+            <p className="mt-1 text-xs text-violet-900/90">
               Imagens a processar: {syncProg.current} / {syncProg.total} · Ignoradas
               (já atualizadas): {syncProg.skipped}
             </p>
           ) : (
-            <p className="mt-1 text-xs text-emerald-900/80">A calcular…</p>
+            <p className="mt-1 text-xs text-violet-900/80">A calcular…</p>
           )}
         </div>
       )}

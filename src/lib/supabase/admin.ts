@@ -1,4 +1,14 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+let adminSingleton: SupabaseClient | null = null;
+
+/** Reutiliza uma instância — evita abrir muitas ligações ao Postgres durante sync em lote. */
+export function getAdminClient(): SupabaseClient {
+  if (!adminSingleton) {
+    adminSingleton = createAdminClient();
+  }
+  return adminSingleton;
+}
 
 /** Cliente com service role — apenas em Route Handlers / Server Actions (nunca no browser). */
 export function createAdminClient() {

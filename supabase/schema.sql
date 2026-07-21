@@ -36,10 +36,17 @@ create table if not exists public.staff_users (
   created_at timestamptz not null default now()
 );
 
+-- Número de vitrine: atribuído na criação (estável após cancelar ou excluir outros pedidos).
+create sequence if not exists public.orders_display_number_seq;
+
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
+  display_number integer not null default nextval('public.orders_display_number_seq') unique,
   status text not null default 'PENDENTE_PAGAMENTO'
     check (status in ('PENDENTE_PAGAMENTO', 'PAGO', 'CANCELADO')),
+  /** ATACADO = WhatsApp; VAREJO = checkout (ex.: Mercado Pago). */
+  sales_channel text not null default 'ATACADO'
+    check (sales_channel in ('ATACADO', 'VAREJO')),
   customer_note text,
   public_token text unique,
   sale_amount numeric(12,2),
@@ -47,14 +54,27 @@ create table if not exists public.orders (
   customer_name text,
   customer_whatsapp text,
   customer_segment text,
+  payment_provider text,
+  payment_external_id text,
   confirmed_at timestamptz,
   confirmed_by_staff_id uuid references public.staff_users (id),
+  /** Aviso quando outro pedido confirmado esgota peças deste pendente. */
+  stock_conflict jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+alter sequence public.orders_display_number_seq owned by public.orders.display_number;
+
 create index if not exists orders_confirmed_by_staff_id_idx
   on public.orders (confirmed_by_staff_id);
+
+create index if not exists orders_sales_channel_status_idx
+  on public.orders (sales_channel, status, created_at desc);
+
+create index if not exists orders_payment_external_id_idx
+  on public.orders (payment_external_id)
+  where payment_external_id is not null;
 
 create unique index if not exists orders_public_token_idx on public.orders (public_token)
   where public_token is not null;
@@ -78,6 +98,7 @@ create table if not exists public.order_items (
 create table if not exists public.category_cost_defaults (
   category_label text primary key,
   cost_per_piece numeric(12,2) not null default 0,
+  weight_grams_per_piece integer not null default 250,
   updated_at timestamptz not null default now()
 );
 
@@ -86,6 +107,8 @@ create table if not exists public.category_showcase_settings (
   video_url text,
   video_poster_url text,
   wholesale_tiers jsonb not null default '[]'::jsonb,
+  /** Preço unitário varejo (1–9 peças). */
+  retail_price numeric(12,2),
   updated_at timestamptz not null default now()
 );
 
@@ -170,4 +193,41 @@ insert into public.catalog_settings (id) values (1)
   on conflict (id) do nothing;
 
 alter table public.catalog_settings enable row level security;
+
+-- Lista admin Clientes: ocultar número sem eliminar pedidos
+create table if not exists public.crm_hidden_contacts (
+  whatsapp_digits text primary key
+    check (length(whatsapp_digits) >= 10),
+  hidden_at timestamptz not null default now()
+);
+
+alter table public.crm_hidden_contacts enable row level security;
+
+create policy "crm_hidden_contacts_deny_all_anon"
+  on public.crm_hidden_contacts for all
+  using (false)
+  with check (false);
+
+-- Carrinhos abandonados (WhatsApp + itens sem pedido criado)
+create table if not exists public.crm_abandoned_checkouts (
+  whatsapp_digits text primary key,
+  customer_name text,
+  cart_items jsonb not null default '[]'::jsonb,
+  distinct_products integer not null default 0,
+  total_quantity integer not null default 0,
+  last_seen_at timestamptz not null default now(),
+  converted_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists crm_abandoned_checkouts_active_last_seen_idx
+  on public.crm_abandoned_checkouts (last_seen_at desc)
+  where converted_at is null;
+
+alter table public.crm_abandoned_checkouts enable row level security;
+
+create policy "crm_abandoned_checkouts_deny_all_anon"
+  on public.crm_abandoned_checkouts for all
+  to anon
+  using (false);
 

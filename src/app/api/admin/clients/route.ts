@@ -2,8 +2,62 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
 import { resolvePrincipal } from "@/lib/access";
+import { applyCrmSellerOrderScope } from "@/lib/crm-seller-order-filter";
+import type { BusinessProfile } from "@/lib/client-follow-up";
+import {
+  clientRecencyStatus,
+  type ClientRecencyStatus,
+} from "@/lib/client-recency";
+import {
+  fetchAllCrmPaidOrders,
+  fetchCrmProfilesByWhatsapp,
+  type CrmPaidOrdersListQuery,
+} from "@/lib/admin-orders-query";
+import { classifyBusinessProfileFromPaidOrders } from "@/lib/crm-auto-profile";
+import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 
 export const runtime = "nodejs";
+
+function nameFromEmail(email: string): string {
+  const base = email.split("@")[0] ?? email;
+  const clean = base.replace(/[._-]+/g, " ").trim();
+  if (!clean) return email;
+  return clean
+    .split(" ")
+    .filter(Boolean)
+    .map((p) => p[0]!.toUpperCase() + p.slice(1))
+    .join(" ");
+}
+
+type OrderRowForClient = {
+  customer_whatsapp: string;
+  customer_name: string | null;
+  customer_segment: string | null;
+  sale_amount: number | null;
+  confirmed_at: string | null;
+  confirmed_by_staff_id?: string | null;
+  requested_seller_name?: string | null;
+  legacy_import?: boolean;
+};
+
+function sellerLabelForOrder(
+  o: OrderRowForClient,
+  staffMap: Map<string, string>,
+  ownerName: string
+): string {
+  const sid = o.confirmed_by_staff_id;
+  if (sid) return staffMap.get(sid) ?? "Vendedor";
+  const req = o.requested_seller_name?.trim();
+  if (req === "?" || o.legacy_import) return "?";
+  return ownerName;
+}
+
+function formatSellersLabel(labels: Set<string>): string {
+  const arr = Array.from(labels);
+  const real = arr.filter((l) => l !== "?");
+  const use = real.length > 0 ? real : arr;
+  return use.sort((a, b) => a.localeCompare(b, "pt-BR")).join(", ") || "—";
+}
 
 export type AdminClientRow = {
   customer_whatsapp: string;
@@ -12,11 +66,34 @@ export type AdminClientRow = {
   is_new: boolean;
   order_count: number;
   total_spent: number;
+  first_confirmed_at: string | null;
   last_confirmed_at: string | null;
+  sellers_label: string;
+  business_profile: BusinessProfile | null;
+  recency_status: ClientRecencyStatus;
 };
 
+async function resolveOwnerStaffId(
+  admin: ReturnType<typeof createAdminClient>,
+  principal: Awaited<ReturnType<typeof resolvePrincipal>>
+): Promise<string | null> {
+  if (principal?.kind === "staff" && principal.staff.role === "owner") {
+    return principal.staff.staffId;
+  }
+  if (principal?.kind === "api_key") {
+    const { data: ownerRow } = await admin
+      .from("staff_users")
+      .select("id")
+      .eq("role", "owner")
+      .limit(1)
+      .maybeSingle();
+    return (ownerRow?.id as string | undefined) ?? null;
+  }
+  return null;
+}
+
 /**
- * GET /api/admin/clients — clientes com pedido pago e dados de venda registados.
+ * GET /api/admin/clients — clientes com pedido pago e semáforo de recompra.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -35,77 +112,167 @@ export async function GET(request: NextRequest) {
       principal?.kind === "staff" && principal.staff.role === "seller"
         ? principal.staff.staffId
         : null;
+    const isOwnerPrincipal =
+      principal?.kind === "api_key" ||
+      (principal?.kind === "staff" && principal.staff.role === "owner");
+    const rawSellerScope =
+      request.nextUrl.searchParams.get("sellerScope")?.trim() ?? "all";
 
     const admin = createAdminClient();
-    let orderQuery = admin
-      .from("orders")
-      .select(
-        "customer_whatsapp, customer_name, customer_segment, sale_amount, confirmed_at"
-      )
-      .eq("status", "PAGO")
-      .not("customer_whatsapp", "is", null);
+    const ownerStaffId = await resolveOwnerStaffId(admin, principal);
 
-    if (sellerId) {
-      orderQuery = orderQuery.eq("confirmed_by_staff_id", sellerId);
+    const orderRows = await fetchAllCrmPaidOrders(admin, () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let q: any = admin
+        .from("orders")
+        .select(
+          "customer_whatsapp, customer_name, customer_segment, sale_amount, confirmed_at, confirmed_by_staff_id, requested_seller_name, legacy_import"
+        )
+        .eq("status", "PAGO")
+        .not("customer_whatsapp", "is", null);
+
+      q = applyCrmSellerOrderScope(q, {
+        sellerId,
+        isOwnerPrincipal,
+        rawSellerScope,
+        ownerStaffId,
+      });
+
+      return q as CrmPaidOrdersListQuery;
+    });
+
+    const { data: hiddenRows, error: hErr } = await admin
+      .from("crm_hidden_contacts")
+      .select("whatsapp_digits");
+
+    let hiddenSet = new Set<string>();
+    if (hErr) {
+      const msg = String(hErr.message ?? "");
+      const missingTable =
+        /does not exist|schema cache|relation/i.test(msg) ||
+        (hErr as { code?: string }).code === "PGRST205";
+      if (!missingTable) {
+        return NextResponse.json({ error: hErr.message }, { status: 500 });
+      }
+    } else {
+      hiddenSet = new Set(
+        (hiddenRows ?? []).map((r: { whatsapp_digits: string }) =>
+          String(r.whatsapp_digits ?? "").replace(/\D/g, "")
+        )
+      );
     }
 
-    const { data: orders, error } = await orderQuery;
+    const staffIds = Array.from(
+      new Set(orderRows.map((r) => r.confirmed_by_staff_id).filter(Boolean))
+    ) as string[];
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    let ownerName = "Dono";
+    const { data: ownerRow } = await admin
+      .from("staff_users")
+      .select("email, full_name")
+      .eq("role", "owner")
+      .limit(1)
+      .maybeSingle();
+    if (ownerRow) {
+      ownerName =
+        String(ownerRow.full_name ?? "").trim() ||
+        nameFromEmail(String(ownerRow.email ?? "")) ||
+        ownerName;
     }
 
-    type Row = {
-      customer_whatsapp: string;
-      customer_name: string | null;
-      customer_segment: string | null;
-      sale_amount: number | null;
-      confirmed_at: string | null;
-    };
+    const staffMap = new Map<string, string>();
+    if (staffIds.length) {
+      const { data: staffRows } = await admin
+        .from("staff_users")
+        .select("id, email, full_name")
+        .in("id", staffIds);
+      for (const raw of staffRows ?? []) {
+        const row = raw as { id: string; email: string; full_name?: string | null };
+        staffMap.set(
+          row.id,
+          String(row.full_name ?? "").trim() || nameFromEmail(String(row.email ?? ""))
+        );
+      }
+    }
+
+    const waKeys = new Set<string>();
+    for (const o of orderRows) {
+      const wa = normalizeWhatsappDigits(o.customer_whatsapp);
+      if (wa.length >= 12) waKeys.add(wa);
+    }
+
+    const profileRaw = await fetchCrmProfilesByWhatsapp(
+      admin,
+      Array.from(waKeys)
+    );
+    const profileMap = profileRaw;
 
     const byWa = new Map<
       string,
       {
         names: string[];
-        segments: string[];
         order_count: number;
         total_spent: number;
+        first_at: string | null;
         last_at: string | null;
+        seller_labels: Set<string>;
+        has_legacy_import: boolean;
       }
     >();
 
-    for (const o of (orders ?? []) as Row[]) {
-      const wa = String(o.customer_whatsapp ?? "").replace(/\D/g, "");
-      if (wa.length < 10) continue;
+    for (const o of orderRows as OrderRowForClient[]) {
+      const wa = normalizeWhatsappDigits(o.customer_whatsapp);
+      if (wa.length < 12) continue;
 
       const spent = Number(o.sale_amount ?? 0);
       const t = o.confirmed_at;
 
       const cur = byWa.get(wa) ?? {
         names: [],
-        segments: [],
         order_count: 0,
         total_spent: 0,
+        first_at: null as string | null,
         last_at: null as string | null,
+        seller_labels: new Set<string>(),
+        has_legacy_import: false,
       };
 
       cur.order_count += 1;
+      if (o.legacy_import) cur.has_legacy_import = true;
       if (!Number.isNaN(spent)) cur.total_spent += spent;
       if (o.customer_name?.trim()) cur.names.push(o.customer_name.trim());
-      if (o.customer_segment) cur.segments.push(o.customer_segment);
+      cur.seller_labels.add(sellerLabelForOrder(o, staffMap, ownerName));
       if (t) {
+        if (!cur.first_at || t < cur.first_at) cur.first_at = t;
         if (!cur.last_at || t > cur.last_at) cur.last_at = t;
       }
 
       byWa.set(wa, cur);
     }
 
-    const clients: AdminClientRow[] = Array.from(byWa.entries()).map(
-      ([wa, agg]) => {
+    const recencyFilter = request.nextUrl.searchParams.get("recency")?.trim() as
+      | ClientRecencyStatus
+      | "all"
+      | "";
+    const profileFilter = request.nextUrl.searchParams.get("profile")?.trim();
+    const segmentFilter = request.nextUrl.searchParams.get("segment")?.trim();
+
+    let clients: AdminClientRow[] = Array.from(byWa.entries())
+      .filter(([wa]) => !hiddenSet.has(wa))
+      .map(([wa, agg]) => {
         const name =
           agg.names.length > 0 ? agg.names[agg.names.length - 1] : null;
-        const isNew = agg.order_count <= 1;
+        const isNew = agg.order_count <= 1 && !agg.has_legacy_import;
         const segment = isNew ? "NOVO" : "ANTIGO";
+        const sellers_label = formatSellersLabel(agg.seller_labels);
+        const profile = profileMap.get(wa);
+        const bp = profile?.business_profile;
+        const businessProfile =
+          bp === "lojista" || bp === "revendedor" || bp === "uso_proprio"
+            ? bp
+            : null;
+        const lastAt = agg.last_at;
+
         return {
           customer_whatsapp: wa,
           customer_name: name,
@@ -113,18 +280,105 @@ export async function GET(request: NextRequest) {
           is_new: isNew,
           order_count: agg.order_count,
           total_spent: agg.total_spent,
-          last_confirmed_at: agg.last_at,
+          first_confirmed_at: agg.first_at,
+          last_confirmed_at: lastAt,
+          sellers_label: sellers_label || "—",
+          business_profile: businessProfile,
+          recency_status: clientRecencyStatus(lastAt),
         };
+      });
+
+    if (recencyFilter && recencyFilter !== "all") {
+      const paidRowsForProfile = orderRows.map((o) => ({
+        customer_whatsapp: o.customer_whatsapp,
+        sale_amount: o.sale_amount,
+      }));
+      for (const client of clients) {
+        if (client.business_profile) continue;
+        const profile = await classifyBusinessProfileFromPaidOrders(
+          admin,
+          client.customer_whatsapp,
+          { paidRows: paidRowsForProfile }
+        );
+        if (profile) client.business_profile = profile;
       }
-    );
+    }
+
+    if (recencyFilter && recencyFilter !== "all") {
+      clients = clients.filter((c) => c.recency_status === recencyFilter);
+    }
+    if (
+      profileFilter === "lojista" ||
+      profileFilter === "revendedor" ||
+      profileFilter === "uso_proprio"
+    ) {
+      clients = clients.filter((c) => c.business_profile === profileFilter);
+    } else if (profileFilter === "sem_perfil") {
+      clients = clients.filter((c) => !c.business_profile);
+    }
+    if (segmentFilter === "novo") {
+      clients = clients.filter((c) => c.is_new);
+    } else if (segmentFilter === "antigo") {
+      clients = clients.filter((c) => !c.is_new);
+    }
 
     clients.sort((a, b) => {
       const ta = a.last_confirmed_at ?? "";
       const tb = b.last_confirmed_at ?? "";
-      return tb.localeCompare(ta);
+      if (ta !== tb) return tb.localeCompare(ta);
+      return (a.customer_name ?? "").localeCompare(b.customer_name ?? "", "pt-BR");
     });
 
     return NextResponse.json({ clients });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Erro";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/admin/clients — oculta o contacto na lista de Clientes (não apaga pedidos nem métricas).
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    await assertAdmin(request);
+  } catch (e) {
+    const status = (e as Error & { status?: number }).status ?? 500;
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Erro" },
+      { status }
+    );
+  }
+
+  try {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
+    }
+    const raw = (body as Record<string, unknown>)?.customer_whatsapp;
+    const wa = String(raw ?? "")
+      .replace(/\D/g, "")
+      .trim();
+    if (wa.length < 10) {
+      return NextResponse.json(
+        { error: "Informe um WhatsApp válido (mínimo 10 dígitos)" },
+        { status: 400 }
+      );
+    }
+
+    const admin = createAdminClient();
+    const { error } = await admin.from("crm_hidden_contacts").upsert(
+      { whatsapp_digits: wa },
+      { onConflict: "whatsapp_digits" }
+    );
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";
     return NextResponse.json({ error: msg }, { status: 500 });

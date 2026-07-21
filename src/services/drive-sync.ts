@@ -1,10 +1,13 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { ensureDriveAuthorized, getDriveAuth } from "@/lib/drive-auth";
+import { isTransientSyncError, withRetry } from "@/lib/retry";
+import { getAdminClient } from "@/lib/supabase/admin";
 import {
   fetchDriveProductRows,
   type DriveImportRow,
   type DriveImportUpsert,
 } from "@/services/drive-import";
 import {
+  deleteStorageForDriveFileIds,
   markProductImageSyncError,
   syncOneProductImageToStorage,
   type ImageSyncItem,
@@ -13,17 +16,19 @@ import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
 
 const IN_CHUNK = 120;
 const UPSERT_CHUNK = 80;
-const IMAGE_BATCH = 5;
-const BETWEEN_BATCH_MS = 200;
+const PAGE_SIZE = 1000;
+/** Uma imagem de cada vez — evita «Too many connections» no Supabase. */
+const BETWEEN_IMAGES_MS = 400;
 
 export type SyncResult = {
   imported: number;
   totalParsed: number;
   removedMissingFromDrive: number;
+  storageRemoved: number;
   message?: string;
   storageUploaded: number;
   storageSkipped: number;
-  storageErrors: { id: string; message: string }[];
+  storageErrors: { id: string; drive_file_id?: string; message: string }[];
   driveRenameOk: number;
   driveRenameErrors: { productId: string; message: string }[];
 };
@@ -46,10 +51,10 @@ type SyncOptions = {
   renameDriveFiles?: boolean;
 };
 
-function rowForUpsert(row: DriveImportRow): DriveImportUpsert {
+function rowForUpsert(row: DriveImportRow): DriveImportUpsert & { updated_at: string } {
   const { drive_modified_at, ...rest } = row;
   void drive_modified_at;
-  return rest;
+  return { ...rest, updated_at: new Date().toISOString() };
 }
 
 function mergePreservingStock(
@@ -71,7 +76,7 @@ function mergePreservingStock(
   });
 }
 
-type AdminClient = ReturnType<typeof createAdminClient>;
+type AdminClient = ReturnType<typeof getAdminClient>;
 
 type ImageStateRow = {
   id: string;
@@ -80,6 +85,115 @@ type ImageStateRow = {
   image_url: string | null;
   sync_status: string | null;
 };
+
+type PendingItemForRemovedProduct = {
+  order_id: string;
+  product_id: string | null;
+  quantity: number;
+  snapshot_brand: string;
+  snapshot_color: string;
+  snapshot_size: string;
+};
+
+async function fetchAllProductsMinimal(
+  admin: AdminClient,
+  columns: string
+): Promise<Array<{ id: string; drive_file_id: string | null; category?: string | null }>> {
+  const out: Array<{ id: string; drive_file_id: string | null; category?: string | null }> = [];
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await admin
+      .from("products")
+      .select(columns)
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as unknown as Array<{
+      id: string;
+      drive_file_id: string | null;
+      category?: string | null;
+    }>;
+    out.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return out;
+}
+
+async function flagPendingOrdersForRemovedProducts(
+  admin: AdminClient,
+  removedProductIds: string[]
+): Promise<void> {
+  if (removedProductIds.length === 0) return;
+
+  const conflictByOrder = new Map<
+    string,
+    Array<{
+      product_id: string | null;
+      brand: string;
+      color: string;
+      size: string;
+      quantity: number;
+      available: number;
+    }>
+  >();
+
+  for (let i = 0; i < removedProductIds.length; i += IN_CHUNK) {
+    const slice = removedProductIds.slice(i, i + IN_CHUNK);
+    const { data, error } = await admin
+      .from("order_items")
+      .select(
+        "order_id, product_id, quantity, snapshot_brand, snapshot_color, snapshot_size, orders!inner(id, status)"
+      )
+      .in("product_id", slice)
+      .eq("orders.status", "PENDENTE_PAGAMENTO");
+    if (error) throw new Error(error.message);
+
+    const qtyByOrderProduct = new Map<string, number>();
+    const metaByOrderProduct = new Map<string, PendingItemForRemovedProduct>();
+    for (const raw of data ?? []) {
+      const row = raw as PendingItemForRemovedProduct;
+      const pid = row.product_id?.trim();
+      if (!pid) continue;
+      const key = `${row.order_id}:${pid}`;
+      qtyByOrderProduct.set(key, (qtyByOrderProduct.get(key) ?? 0) + row.quantity);
+      if (!metaByOrderProduct.has(key)) metaByOrderProduct.set(key, row);
+    }
+
+    for (const [key, quantity] of Array.from(qtyByOrderProduct.entries())) {
+      const [orderId] = key.split(":");
+      const meta = metaByOrderProduct.get(key);
+      if (!meta) continue;
+      const list = conflictByOrder.get(orderId) ?? [];
+      list.push({
+        product_id: meta.product_id,
+        brand: meta.snapshot_brand,
+        color: meta.snapshot_color,
+        size: meta.snapshot_size,
+        quantity,
+        available: 0,
+      });
+      conflictByOrder.set(orderId, list);
+    }
+  }
+
+  const flaggedAt = new Date().toISOString();
+  for (const [orderId, items] of Array.from(conflictByOrder.entries())) {
+    await admin
+      .from("orders")
+      .update({
+        stock_conflict: {
+          flagged_at: flaggedAt,
+          triggered_by_order_id: "__drive_sync__",
+          triggered_by_display_number: null,
+          reason: "removed_from_drive_sync",
+          items,
+        },
+      })
+      .eq("id", orderId)
+      .eq("status", "PENDENTE_PAGAMENTO");
+  }
+}
 
 async function removeLegacyImportProducts(admin: AdminClient): Promise<void> {
   const { data: orderRows } = await admin
@@ -92,16 +206,12 @@ async function removeLegacyImportProducts(admin: AdminClient): Promise<void> {
   );
 
   async function deleteBatch(kind: "null" | "streetwear") {
-    let query = admin.from("products").select("id");
-    if (kind === "null") {
-      query = query.is("category", null);
-    } else {
-      query = query.eq("category", "STREETWEAR");
-    }
-    const { data: targets, error: selErr } = await query;
-    if (selErr) throw new Error(selErr.message);
-    const safeIds = (targets ?? [])
-      .map((t: { id: string }) => t.id)
+    const all = await fetchAllProductsMinimal(admin, "id, category");
+    const safeIds = all
+      .filter((t) =>
+        kind === "null" ? t.category == null : t.category === "STREETWEAR"
+      )
+      .map((t) => t.id)
       .filter((id: string) => !protectedIds.has(id));
     if (safeIds.length === 0) return;
     const { error: delErr } = await admin
@@ -118,25 +228,26 @@ async function removeLegacyImportProducts(admin: AdminClient): Promise<void> {
 async function pruneProductsMissingFromDrive(
   admin: AdminClient,
   driveFileIds: string[]
-): Promise<{ removed: number }> {
+): Promise<{ removed: number; removedDriveFileIds: string[] }> {
   const driveSet = new Set(driveFileIds);
 
-  const { data: products, error: listErr } = await admin
-    .from("products")
-    .select("id, drive_file_id");
-  if (listErr) throw new Error(listErr.message);
+  const products = await fetchAllProductsMinimal(admin, "id, drive_file_id");
 
   const removable: string[] = [];
+  const removedDriveFileIds: string[] = [];
   for (const p of products ?? []) {
     const row = p as { id: string; drive_file_id: string | null };
     const driveId = row.drive_file_id?.trim() ?? "";
     if (!driveId || driveSet.has(driveId)) continue;
     removable.push(row.id);
+    removedDriveFileIds.push(driveId);
   }
 
   if (removable.length === 0) {
-    return { removed: 0 };
+    return { removed: 0, removedDriveFileIds: [] };
   }
+
+  await flagPendingOrdersForRemovedProducts(admin, removable);
 
   let removed = 0;
   for (let i = 0; i < removable.length; i += IN_CHUNK) {
@@ -149,7 +260,22 @@ async function pruneProductsMissingFromDrive(
     removed += count ?? slice.length;
   }
 
-  return { removed };
+  return { removed, removedDriveFileIds };
+}
+
+function emptySyncResult(partial: Partial<SyncResult>): SyncResult {
+  return {
+    imported: 0,
+    totalParsed: 0,
+    removedMissingFromDrive: 0,
+    storageRemoved: 0,
+    storageUploaded: 0,
+    storageSkipped: 0,
+    storageErrors: [],
+    driveRenameOk: 0,
+    driveRenameErrors: [],
+    ...partial,
+  };
 }
 
 async function fetchExistingStockByDriveIds(
@@ -258,27 +384,43 @@ async function processImageQueue(
   queue: ImageSyncItem[],
   emit: ((e: SyncProgressEvent) => void) | undefined,
   skippedCount: number
-): Promise<{ uploaded: number; errors: { id: string; message: string }[] }> {
-  const errors: { id: string; message: string }[] = [];
+): Promise<{
+  uploaded: number;
+  errors: { id: string; drive_file_id?: string; message: string }[];
+}> {
+  const errors: { id: string; drive_file_id?: string; message: string }[] = [];
   let uploaded = 0;
   let completed = 0;
   const total = queue.length;
 
-  for (let i = 0; i < queue.length; i += IMAGE_BATCH) {
-    const batch = queue.slice(i, i + IMAGE_BATCH);
-    await Promise.all(
-      batch.map(async (item) => {
-        try {
-          await syncOneProductImageToStorage(admin, item);
-          uploaded++;
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "Erro";
-          errors.push({ id: item.id, message: msg });
-          await markProductImageSyncError(admin, item.id).catch(() => {});
-        }
-      })
-    );
-    completed += batch.length;
+  const driveAuth = await getDriveAuth();
+  await ensureDriveAuthorized(driveAuth);
+
+  for (let i = 0; i < queue.length; i++) {
+    const item = queue[i]!;
+    try {
+      await withRetry(
+        () => syncOneProductImageToStorage(admin, item, driveAuth),
+        { label: `image-sync:${item.id}`, attempts: 3, baseDelayMs: 900 }
+      );
+      uploaded++;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erro";
+      errors.push({
+        id: item.id,
+        drive_file_id: item.drive_file_id,
+        message: msg,
+      });
+      if (isTransientSyncError(e)) {
+        await delay(1200);
+      }
+      await withRetry(() => markProductImageSyncError(admin, item.id), {
+        label: `mark-sync-error:${item.id}`,
+        attempts: 3,
+        baseDelayMs: 500,
+      }).catch(() => {});
+    }
+    completed++;
     emit?.({
       type: "progress",
       phase: "images",
@@ -286,8 +428,8 @@ async function processImageQueue(
       total,
       skipped: skippedCount,
     });
-    if (i + IMAGE_BATCH < queue.length) {
-      await delay(BETWEEN_BATCH_MS);
+    if (i + 1 < queue.length) {
+      await delay(BETWEEN_IMAGES_MS);
     }
   }
 
@@ -299,29 +441,33 @@ async function runSync(
   emit?: (e: SyncProgressEvent) => void,
   opts?: SyncOptions
 ): Promise<SyncResult> {
+  emit?.({ type: "phase", phase: "drive_scan" });
+
   const fromDrive = await fetchDriveProductRows(rootFolderId);
-  if (!fromDrive.length) {
-    return {
-      imported: 0,
-      totalParsed: 0,
-      removedMissingFromDrive: 0,
-      message:
-        "Nenhuma imagem válida. Na pasta principal do catálogo: uma subpasta por categoria (nome da pasta = categoria); dentro, M, G, GG com ficheiros «MARCA COR». Verifique nomes e permissões no Drive.",
-      storageUploaded: 0,
-      storageSkipped: 0,
-      storageErrors: [],
-      driveRenameOk: 0,
-      driveRenameErrors: [],
-    };
-  }
 
-  emit?.({ type: "phase", phase: "produtos" });
-
-  const admin = createAdminClient();
+  const admin = getAdminClient();
   await removeLegacyImportProducts(admin);
 
   const ids = fromDrive.map((r) => r.drive_file_id);
   const prune = await pruneProductsMissingFromDrive(admin, ids);
+  let storageRemoved = 0;
+  if (prune.removedDriveFileIds.length > 0) {
+    storageRemoved = await deleteStorageForDriveFileIds(
+      admin,
+      prune.removedDriveFileIds
+    );
+  }
+
+  if (!fromDrive.length) {
+    return emptySyncResult({
+      removedMissingFromDrive: prune.removed,
+      storageRemoved,
+      message:
+        "Nenhuma imagem válida nas pastas M, G ou GG. Estrutura: uma subpasta por categoria; dentro, M, G, GG com ficheiros «MARCA COR».",
+    });
+  }
+
+  emit?.({ type: "phase", phase: "produtos" });
   const preserveExistingStock = opts?.preserveExistingStock === true;
   const rows = preserveExistingStock
     ? mergePreservingStock(
@@ -367,10 +513,24 @@ async function runSync(
     driveRenameErrors = rename.errors;
   }
 
+  const syncedAt = new Date().toISOString();
+  await admin
+    .from("catalog_settings")
+    .upsert(
+      { id: 1, catalog_synced_at: syncedAt },
+      { onConflict: "id", ignoreDuplicates: false }
+    )
+    .then(({ error }) => {
+      if (error && !error.message.includes("catalog_synced_at")) {
+        console.error("[drive-sync] catalog_synced_at:", error.message);
+      }
+    });
+
   return {
     imported: totalUpserted,
     totalParsed: rows.length,
     removedMissingFromDrive: prune.removed,
+    storageRemoved,
     storageUploaded: uploaded,
     storageSkipped: skippedCount,
     storageErrors: errors,
