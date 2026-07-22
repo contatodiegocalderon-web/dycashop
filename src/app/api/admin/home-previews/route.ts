@@ -10,7 +10,7 @@ import {
   aggregateStockInventory,
   type ProductStockRow,
 } from "@/lib/stock-inventory";
-import { fetchAllProductsPaginated } from "@/lib/fetch-all-products";
+import { fetchAllProductsForInventory } from "@/lib/fetch-all-products";
 import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
 import { applyRealAppConfirmedOrdersFilter } from "@/lib/real-app-orders";
 
@@ -114,8 +114,7 @@ export async function GET(request: NextRequest) {
     } | null = null;
 
     if (isOwner) {
-      const products = await fetchAllProductsPaginated<ProductStockRow>(
-        admin,
+      const { rows: products } = await fetchAllProductsForInventory<ProductStockRow>(
         "category, size, stock, status, updated_at"
       );
       const snap = aggregateStockInventory(products);

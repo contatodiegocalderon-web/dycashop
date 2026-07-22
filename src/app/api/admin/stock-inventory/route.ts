@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertOwnerAccess } from "@/lib/admin-auth";
-import { fetchAllProductsPaginated } from "@/lib/fetch-all-products";
+import { fetchAllProductsForInventory } from "@/lib/fetch-all-products";
 import {
   aggregateStockInventory,
   type ProductStockRow,
@@ -27,10 +27,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const admin = createAdminClient();
-    const all = await fetchAllProductsPaginated<ProductStockRow>(
-      admin,
-      "category, size, stock, status, updated_at"
-    );
+    const { rows: all, readVia, expectedCount } =
+      await fetchAllProductsForInventory<ProductStockRow>(
+        "category, size, stock, status, updated_at"
+      );
 
     const snapshot = aggregateStockInventory(all);
 
@@ -51,6 +51,8 @@ export async function GET(request: NextRequest) {
         driveSettingsUpdatedAt: settingsRow?.updated_at ?? null,
         catalogSyncedAt: settingsRow?.catalog_synced_at ?? null,
         productRows: all.length,
+        expectedProductCount: expectedCount,
+        readVia,
         generatedAt: new Date().toISOString(),
       },
       { headers: { "Cache-Control": "no-store" } }

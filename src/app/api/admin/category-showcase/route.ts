@@ -35,6 +35,7 @@ async function loadCatalogCategoryLabels(admin: ReturnType<typeof createAdminCli
     const { data, error } = await admin
       .from("products")
       .select("category")
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
     if (error) throw new Error(error.message);
     const chunk = (data ?? []) as { category: string | null }[];

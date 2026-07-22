@@ -107,6 +107,7 @@ export async function getCatalogCategories(): Promise<CategorySummary[]> {
     const { data: page, error: countErr } = await supabase
       .from("products")
       .select("category")
+      .order("id", { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
 
     if (countErr) {
