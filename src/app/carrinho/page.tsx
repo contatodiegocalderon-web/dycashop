@@ -11,7 +11,13 @@ import type { WhatsAppSeller } from "@/lib/sellers";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
 import { normalizeCheckoutWaDigits } from "@/lib/abandoned-checkout";
 import { buildOrderWhatsAppText, waMeUrl } from "@/lib/whatsapp";
+import { CartOrderSummary } from "@/components/cart-order-summary";
 import { CartShippingQuote } from "@/components/cart-shipping-quote";
+import { CartVarejoShippingAddress } from "@/components/cart-varejo-shipping-address";
+import { computeCartPricing, formatMoneyBrl } from "@/lib/cart-pricing";
+import type { ShippingAddress } from "@/lib/shipping-address";
+import { totalsByCategoryFromCartLines } from "@/lib/order-category-totals";
+import type { WholesaleTier } from "@/lib/category-showcase";
 import type { ShippingQuotePayload, ShippingQuoteOption } from "@/lib/shipping-quote-types";
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
@@ -107,21 +113,105 @@ export default function CarrinhoPage() {
   );
   const [selectedShipping, setSelectedShipping] =
     useState<ShippingQuoteOption | null>(null);
+  const [shippingAddress, setShippingAddress] = useState<ShippingAddress | null>(
+    null
+  );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
-  const [reconciling, setReconciling] = useState(false);
   const [sellerModalOpen, setSellerModalOpen] = useState(false);
   const [selectedSellerPhone, setSelectedSellerPhone] = useState<string | null>(
     WHATSAPP_SELLERS[0]?.phone ?? null
   );
   const [portalReady, setPortalReady] = useState(false);
+  const [checkoutStep, setCheckoutStep] = useState<"review" | "checkout">(
+    "review"
+  );
   const lastTouchRef = useRef(0);
   const initialReconcileDoneRef = useRef(false);
   /** Evita sobrescrever o nome depois de o cliente editar manualmente (ref lida no fim do debounce). */
   const nameManuallyEditedRef = useRef(false);
 
   const groups = useMemo(() => groupBySize(lines), [lines]);
+  const [tiersByCategory, setTiersByCategory] = useState<
+    Record<string, WholesaleTier[]>
+  >({});
+  const [retailByCategory, setRetailByCategory] = useState<
+    Record<string, number | null>
+  >({});
+
+  const cartCategoriesKey = useMemo(() => {
+    const cats = new Set<string>();
+    for (const line of lines) {
+      const c = line.product.category?.trim();
+      if (c) cats.add(c);
+    }
+    return Array.from(cats).sort().join("\0");
+  }, [lines]);
+
+  useEffect(() => {
+    if (!cartCategoriesKey) {
+      setTiersByCategory({});
+      setRetailByCategory({});
+      return;
+    }
+    const categories = cartCategoriesKey.split("\0");
+    const ac = new AbortController();
+    void (async () => {
+      try {
+        const r = await fetch(
+          `/api/catalog/category-pricing?categories=${encodeURIComponent(categories.join(","))}`,
+          { signal: ac.signal }
+        );
+        if (!r.ok) return;
+        const j = (await r.json()) as {
+          tiersByCategory?: Record<string, WholesaleTier[]>;
+          retailByCategory?: Record<string, number | null>;
+        };
+        if (j.tiersByCategory) setTiersByCategory(j.tiersByCategory);
+        if (j.retailByCategory) setRetailByCategory(j.retailByCategory);
+      } catch {
+        /* abort / rede */
+      }
+    })();
+    return () => ac.abort();
+  }, [cartCategoriesKey]);
+
+  const cartPricing = useMemo(
+    () => computeCartPricing(lines, tiersByCategory, retailByCategory),
+    [lines, tiersByCategory, retailByCategory]
+  );
+
+  const categoryTotals = useMemo(
+    () => totalsByCategoryFromCartLines(lines),
+    [lines]
+  );
+
+  const linePricingByProductId = useMemo(() => {
+    const map = new Map<string, (typeof cartPricing.lines)[number]>();
+    for (const row of cartPricing.lines) {
+      map.set(row.productId, row);
+    }
+    return map;
+  }, [cartPricing.lines]);
+
+  const isVarejoReview =
+    !cartPricing.isWholesaleCart && checkoutStep === "review";
+  const isVarejoCheckout =
+    !cartPricing.isWholesaleCart && checkoutStep === "checkout";
+
+  const beginVarejoCheckout = useCallback(() => {
+    setCheckoutStep("checkout");
+    setSelectedShipping(null);
+    setShippingAddress(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    if (cartPricing.isWholesaleCart) {
+      setCheckoutStep("review");
+    }
+  }, [cartPricing.isWholesaleCart]);
 
   const goBackToCatalog = useCallback(() => {
     markCatalogBrowseRestore();
@@ -138,12 +228,11 @@ export default function CarrinhoPage() {
     if (!lines.length) return;
 
     let cancelled = false;
-    setReconciling(true);
-    void reconcileWithCatalog().then((notice) => {
-      if (!cancelled) {
-        setCartNotice(notice);
-        setReconciling(false);
-      }
+    void reconcileWithCatalog().then((result) => {
+      if (cancelled) return;
+      setCartNotice(result.notice);
+      if (result.tiersByCategory) setTiersByCategory(result.tiersByCategory);
+      if (result.retailByCategory) setRetailByCategory(result.retailByCategory);
     });
     return () => {
       cancelled = true;
@@ -214,6 +303,109 @@ export default function CarrinhoPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [sellerModalOpen, closeSellerModal]);
 
+  async function finalizarVarejoCheckout() {
+    if (!lines.length) return;
+    const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
+    if (waDigits.length < 10) {
+      setErr("Informe um WhatsApp válido (com DDD).");
+      return;
+    }
+    const trimmedName = customerName.trim();
+    if (!trimmedName) {
+      setErr("Informe o seu nome para finalizar a compra.");
+      return;
+    }
+    if (!selectedShipping) {
+      setErr("Selecione uma opção de frete (PAC ou SEDEX).");
+      return;
+    }
+    if (!shippingAddress) {
+      setErr("Preencha o endereço de entrega completo.");
+      return;
+    }
+    if (cartPricing.subtotal == null) {
+      setErr("Não foi possível calcular o subtotal. Atualize o carrinho.");
+      return;
+    }
+
+    setBusy(true);
+    setErr(null);
+    setCartNotice(null);
+    try {
+      const reconcileResult = await reconcileWithCatalog();
+      if (reconcileResult.notice) {
+        setCartNotice(reconcileResult.notice);
+        throw new Error(
+          "O carrinho mudou: algumas peças já não estão disponíveis. Revise e tente outra vez."
+        );
+      }
+
+      const res = await fetch("/api/checkout/varejo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: lines.map((l) => ({
+            productId: l.productId,
+            quantity: l.quantity,
+          })),
+          customerName: trimmedName,
+          customerWhatsApp: customerWhatsApp.trim(),
+          shipping: {
+            service: selectedShipping.code,
+            code: selectedShipping.code,
+            label: selectedShipping.label,
+            price: selectedShipping.price,
+          },
+          shippingAddress,
+          subtotal: cartPricing.subtotal,
+        }),
+      });
+
+      const rawText = await res.text();
+      let data: {
+        error?: string;
+        initPoint?: string;
+        orderId?: string;
+        orderDisplayNumber?: number;
+      } = {};
+      try {
+        data = rawText ? (JSON.parse(rawText) as typeof data) : {};
+      } catch {
+        throw new Error("Resposta inválida do servidor.");
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Falha ao iniciar checkout");
+      }
+
+      const initPoint = data.initPoint?.trim();
+      if (!initPoint) {
+        throw new Error("Link de pagamento não recebido.");
+      }
+
+      clear();
+      try {
+        localStorage.removeItem(CART_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      nameManuallyEditedRef.current = false;
+      setCustomerName("");
+      setCustomerWhatsApp("+55 ");
+      setCep("");
+      setShippingQuote(null);
+      setSelectedShipping(null);
+      setShippingAddress(null);
+      window.location.assign(initPoint);
+    } catch (e) {
+      setErr(
+        e instanceof Error ? e.message : "Falha de rede ou do servidor."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitOrderToSeller(sellerPhone: string) {
     const phone = sellerPhone.replace(/\D/g, "");
     if (!phone.length) {
@@ -236,9 +428,9 @@ export default function CarrinhoPage() {
     setErr(null);
     setCartNotice(null);
     try {
-      const staleNotice = await reconcileWithCatalog();
-      if (staleNotice) {
-        setCartNotice(staleNotice);
+      const reconcileResult = await reconcileWithCatalog();
+      if (reconcileResult.notice) {
+        setCartNotice(reconcileResult.notice);
         throw new Error(
           "O carrinho mudou: algumas peças já não estão disponíveis. Revise e tente outra vez."
         );
@@ -336,8 +528,11 @@ export default function CarrinhoPage() {
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-xl font-bold text-stone-100">Carrinho</h1>
       <p className="mt-1 text-sm text-stone-400">
-        Confira por tamanho, preencha WhatsApp e nome (obrigatórios), o CEP e envie o pedido no
-        WhatsApp.
+        {cartPricing.isWholesaleCart
+          ? "Confira as peças, preencha WhatsApp e nome (obrigatórios) e envie o pedido no WhatsApp."
+          : checkoutStep === "review"
+            ? "Confira as peças e inicie a compra quando estiver pronto."
+            : "Preencha WhatsApp, nome, CEP, frete e endereço para finalizar a compra."}
       </p>
 
       {cartNotice && (
@@ -350,10 +545,6 @@ export default function CarrinhoPage() {
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {err}
         </div>
-      )}
-
-      {reconciling && lines.length > 0 && (
-        <p className="mt-4 text-sm text-stone-500">A verificar disponibilidade…</p>
       )}
 
       {portalReady && sellerModalOpen
@@ -481,7 +672,10 @@ export default function CarrinhoPage() {
                   Tamanho {size}
                 </h2>
                 <ul className="space-y-4">
-                  {g.map((line) => (
+                  {g.map((line) => {
+                    const linePricing = linePricingByProductId.get(line.productId);
+                    const unitPrice = linePricing?.unitPrice ?? null;
+                    return (
                     <li
                       key={line.productId}
                       className="flex gap-3 border-b border-white/[0.06] pb-4 last:border-0 last:pb-0"
@@ -497,9 +691,16 @@ export default function CarrinhoPage() {
                         />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-stone-100">
-                          {line.product.brand} — {line.product.color}
-                        </p>
+                        <div className="flex items-baseline justify-between gap-3">
+                          <p className="font-medium text-stone-100">
+                            {line.product.brand} — {line.product.color}
+                          </p>
+                          {!cartPricing.isWholesaleCart && unitPrice != null && (
+                            <span className="shrink-0 text-sm font-semibold tabular-nums text-stone-300">
+                              {formatMoneyBrl(unitPrice)}
+                            </span>
+                          )}
+                        </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <span className="text-xs text-stone-400">Qtd</span>
                           <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-zinc-600 bg-zinc-950 touch-manipulation">
@@ -576,134 +777,192 @@ export default function CarrinhoPage() {
                         </div>
                       </div>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </section>
             );
           })}
 
-          <div className="max-w-xs">
-            <label
-              htmlFor="checkout-customer-whatsapp"
-              className="text-sm font-medium text-stone-300"
-            >
-              WhatsApp <span className="text-red-400">*</span>
-            </label>
-            <p className="mt-0.5 text-xs text-stone-500">
-              Preencha primeiro (obrigatório). Se já comprou connosco, o nome pode ser preenchido
-              automaticamente.
-            </p>
-            <input
-              id="checkout-customer-whatsapp"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              value={customerWhatsApp}
-              onChange={(e) => {
-                nameManuallyEditedRef.current = false;
-                const digits = e.target.value.replace(/\D/g, "");
-                const brDigits = digits.startsWith("55")
-                  ? digits
-                  : `55${digits}`;
-                const national = brDigits.slice(2, 13);
-                const ddd = national.slice(0, 2);
-                const first = national.slice(2, 7);
-                const second = national.slice(7, 11);
-                const formatted = `+55 ${ddd}${first ? ` ${first}` : ""}${second ? `-${second}` : ""}`;
-                setCustomerWhatsApp(formatted.trimEnd());
-              }}
-              maxLength={20}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
-              placeholder="+55 11 99999-9999"
-            />
-          </div>
+          {isVarejoReview ? (
+            <>
+              <CartOrderSummary
+                categoryTotals={categoryTotals}
+                pricing={cartPricing}
+                showWholesaleProgress
+              />
 
-          <div className="max-w-xs">
-            <label
-              htmlFor="checkout-customer-name"
-              className="text-sm font-medium text-stone-300"
-            >
-              Seu nome <span className="text-red-400">*</span>
-            </label>
-            <p className="mt-0.5 text-xs text-stone-500">
-              Obrigatório. Usado para identificar o pedido no painel administrativo.
-            </p>
-            <input
-              id="checkout-customer-name"
-              type="text"
-              autoComplete="name"
-              value={customerName}
-              onChange={(e) => {
-                nameManuallyEditedRef.current = true;
-                setCustomerName(e.target.value);
-              }}
-              maxLength={120}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
-              placeholder="Nome completo"
-            />
-          </div>
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={beginVarejoCheckout}
+                  className="w-full rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                >
+                  Iniciar Compra — VAREJO
+                </button>
+                <button
+                  type="button"
+                  onClick={goBackToCatalog}
+                  className="w-full rounded-xl border border-white/15 px-5 py-3.5 text-sm font-medium text-stone-300 transition-colors hover:border-white/25 hover:bg-white/[0.04]"
+                >
+                  Continuar comprando
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {isVarejoCheckout && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCheckoutStep("review");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className="text-sm font-medium text-stone-400 transition-colors hover:text-stone-200"
+                >
+                  ← Voltar ao carrinho
+                </button>
+              )}
 
-          <div className="max-w-xs">
-            <label
-              htmlFor="checkout-cep"
-              className="text-sm font-medium text-stone-300"
-            >
-              CEP para frete
-            </label>
-            <p className="mt-0.5 text-xs text-stone-500">
-              Calculamos PAC e SEDEX automaticamente com o peso das categorias.
-            </p>
-            <input
-              id="checkout-cep"
-              type="text"
-              inputMode="numeric"
-              autoComplete="postal-code"
-              value={cep}
-              onChange={(e) => setCep(e.target.value)}
-              maxLength={9}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm tabular-nums text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
-              placeholder="00000-000"
-            />
-            <CartShippingQuote
-              lines={lines}
-              cep={cep}
-              onQuoteChange={setShippingQuote}
-              onSelectionChange={setSelectedShipping}
-            />
-          </div>
+              <CartOrderSummary
+                categoryTotals={categoryTotals}
+                pricing={cartPricing}
+                showWholesaleProgress={false}
+              />
 
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              disabled={
-                busy ||
-                reconciling ||
-                normalizeCheckoutWaDigits(customerWhatsApp).length < 10 ||
-                !customerName.trim()
-              }
-              onClick={openSellerModal}
-              className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
-            >
-              Enviar pedido no WhatsApp
-            </button>
-            <button
-              type="button"
-              onClick={goBackToCatalog}
-              className="rounded-xl border border-white/15 px-5 py-3 text-sm font-medium text-stone-300 transition-colors hover:border-white/25 hover:bg-white/[0.04]"
-            >
-              Continuar comprando
-            </button>
-          </div>
+              <div className="max-w-xs">
+                <label
+                  htmlFor="checkout-customer-whatsapp"
+                  className="text-sm font-medium text-stone-300"
+                >
+                  WhatsApp <span className="text-red-400">*</span>
+                </label>
+                <p className="mt-0.5 text-xs text-stone-500">
+                  Preencha primeiro (obrigatório). Se já comprou connosco, o nome pode ser
+                  preenchido automaticamente.
+                </p>
+                <input
+                  id="checkout-customer-whatsapp"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={customerWhatsApp}
+                  onChange={(e) => {
+                    nameManuallyEditedRef.current = false;
+                    const digits = e.target.value.replace(/\D/g, "");
+                    const brDigits = digits.startsWith("55")
+                      ? digits
+                      : `55${digits}`;
+                    const national = brDigits.slice(2, 13);
+                    const ddd = national.slice(0, 2);
+                    const first = national.slice(2, 7);
+                    const second = national.slice(7, 11);
+                    const formatted = `+55 ${ddd}${first ? ` ${first}` : ""}${second ? `-${second}` : ""}`;
+                    setCustomerWhatsApp(formatted.trimEnd());
+                  }}
+                  maxLength={20}
+                  className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
+                  placeholder="+55 11 99999-9999"
+                />
+              </div>
 
-          <p className="mt-10 text-center text-xs text-stone-600">
-            <button
-              type="button"
-              onClick={goBackToCatalog}
-              className="font-medium text-stone-400 transition-colors hover:text-stone-200"
-            >
-              Voltar
-            </button>
-          </p>
+              <div className="max-w-xs">
+                <label
+                  htmlFor="checkout-customer-name"
+                  className="text-sm font-medium text-stone-300"
+                >
+                  Seu nome <span className="text-red-400">*</span>
+                </label>
+                <p className="mt-0.5 text-xs text-stone-500">
+                  Obrigatório. Usado para identificar o pedido no painel administrativo.
+                </p>
+                <input
+                  id="checkout-customer-name"
+                  type="text"
+                  autoComplete="name"
+                  value={customerName}
+                  onChange={(e) => {
+                    nameManuallyEditedRef.current = true;
+                    setCustomerName(e.target.value);
+                  }}
+                  maxLength={120}
+                  className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
+                  placeholder="Nome completo"
+                />
+              </div>
+
+              <div className="max-w-xs">
+                <label
+                  htmlFor="checkout-cep"
+                  className="text-sm font-medium text-stone-300"
+                >
+                  CEP para frete
+                </label>
+                <p className="mt-0.5 text-xs text-stone-500">
+                  Calculamos PAC e SEDEX automaticamente com o peso das categorias.
+                </p>
+                <input
+                  id="checkout-cep"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                  value={cep}
+                  onChange={(e) => setCep(e.target.value)}
+                  maxLength={9}
+                  className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm tabular-nums text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
+                  placeholder="00000-000"
+                />
+                <CartShippingQuote
+                  lines={lines}
+                  cep={cep}
+                  checkoutMode={isVarejoCheckout ? "varejo" : "atacado"}
+                  onQuoteChange={setShippingQuote}
+                  onSelectionChange={setSelectedShipping}
+                />
+                {isVarejoCheckout && selectedShipping ? (
+                  <CartVarejoShippingAddress
+                    cep={cep}
+                    customerName={customerName}
+                    onChange={setShippingAddress}
+                  />
+                ) : null}
+              </div>
+
+              <div className={isVarejoCheckout ? "space-y-3" : "flex flex-wrap gap-3"}>
+                {isVarejoCheckout ? (
+                  <button
+                    type="button"
+                    disabled={
+                      busy ||
+                      normalizeCheckoutWaDigits(customerWhatsApp).length < 10 ||
+                      !customerName.trim() ||
+                      !selectedShipping ||
+                      !shippingAddress ||
+                      cartPricing.subtotal == null
+                    }
+                    onClick={() => void finalizarVarejoCheckout()}
+                    className="w-full rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                  >
+                    {busy ? "A processar…" : "Finalizar compra"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={
+                      busy ||
+                      normalizeCheckoutWaDigits(customerWhatsApp).length < 10 ||
+                      !customerName.trim()
+                    }
+                    onClick={openSellerModal}
+                    className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                  >
+                    Enviar pedido no WhatsApp
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

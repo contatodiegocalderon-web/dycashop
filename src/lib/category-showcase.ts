@@ -11,8 +11,15 @@ export type CategoryShowcaseConfig = {
   videoUrl: string | null;
   videoPoster?: string;
   wholesaleTiers: WholesaleTier[];
+  /** Preço unitário de varejo (< 5 peças no carrinho). */
+  retailPricePerPiece?: number | null;
   /** Banner largo no topo da página da categoria (`catalog_cover_image_url`). */
   catalogCoverImageUrl?: string | null;
+};
+
+export type CategoryPricingBatch = {
+  wholesaleTiers: WholesaleTier[];
+  retailPricePerPiece: number | null;
 };
 
 export const DEFAULT_SHOWCASE: CategoryShowcaseConfig = {
@@ -49,10 +56,18 @@ function normalizeTier(raw: unknown): WholesaleTier | null {
   return { minQty, maxQty, price };
 }
 
+function normalizeRetailPrice(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number(String(raw).replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 function normalizeShowcaseRow(row: {
   video_url?: string | null;
   video_poster_url?: string | null;
   wholesale_tiers?: unknown;
+  retail_price_per_piece?: unknown;
   catalog_cover_image_url?: string | null;
 }): CategoryShowcaseConfig {
   const tiersRaw = Array.isArray(row.wholesale_tiers) ? row.wholesale_tiers : [];
@@ -63,6 +78,7 @@ function normalizeShowcaseRow(row: {
     videoUrl: row.video_url?.trim() || null,
     videoPoster: row.video_poster_url?.trim() || undefined,
     wholesaleTiers: tiers.length > 0 ? tiers : DEFAULT_SHOWCASE.wholesaleTiers,
+    retailPricePerPiece: normalizeRetailPrice(row.retail_price_per_piece),
     catalogCoverImageUrl: row.catalog_cover_image_url?.trim() || null,
   };
 }
@@ -95,8 +111,12 @@ export async function getCategoryShowcaseConfig(
   }
 
   let q = await pickRow(
-    "video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url"
+    "video_url, video_poster_url, wholesale_tiers, retail_price_per_piece, catalog_cover_image_url"
   );
+
+  if (q.error && isMissingSchemaColumnError(q.error)) {
+    q = await pickRow("video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url");
+  }
 
   if (q.error && isMissingSchemaColumnError(q.error)) {
     q = await pickRow("video_url, video_poster_url, wholesale_tiers");
@@ -111,7 +131,93 @@ export async function getCategoryShowcaseConfig(
       video_url?: string | null;
       video_poster_url?: string | null;
       wholesale_tiers?: unknown;
+      retail_price_per_piece?: unknown;
       catalog_cover_image_url?: string | null;
     }
   );
+}
+
+/** Faixas de atacado e preço varejo para várias categorias. */
+export async function getCategoryPricingBatch(
+  categoryLabels: string[]
+): Promise<Record<string, CategoryPricingBatch>> {
+  const unique = Array.from(
+    new Set(
+      categoryLabels
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0)
+    )
+  );
+  if (!unique.length) return {};
+
+  const supabase = supabaseAnon();
+  let data: Array<{
+    category_label?: string;
+    wholesale_tiers?: unknown;
+    retail_price_per_piece?: unknown;
+  }> | null = null;
+
+  const full = await supabase
+    .from("category_showcase_settings")
+    .select("category_label, wholesale_tiers, retail_price_per_piece");
+  if (!full.error) {
+    data = full.data ?? [];
+  } else if (isMissingSchemaColumnError(full.error)) {
+    const legacy = await supabase
+      .from("category_showcase_settings")
+      .select("category_label, wholesale_tiers");
+    if (legacy.error) return buildDefaultPricingBatch(unique);
+    data = legacy.data ?? [];
+  } else {
+    return buildDefaultPricingBatch(unique);
+  }
+
+  const byExact = new Map<string, CategoryPricingBatch>();
+  const byLower = new Map<string, CategoryPricingBatch>();
+  for (const row of data) {
+    const rawLabel = String(row.category_label ?? "").trim();
+    if (!rawLabel) continue;
+    const entry: CategoryPricingBatch = {
+      wholesaleTiers: sanitizeWholesaleTiers(row.wholesale_tiers),
+      retailPricePerPiece: normalizeRetailPrice(row.retail_price_per_piece),
+    };
+    byExact.set(rawLabel, entry);
+    byLower.set(rawLabel.toLowerCase(), entry);
+  }
+
+  const result: Record<string, CategoryPricingBatch> = {};
+  for (const label of unique) {
+    result[label] =
+      byExact.get(label) ??
+      byLower.get(label.toLowerCase()) ?? {
+        wholesaleTiers: DEFAULT_SHOWCASE.wholesaleTiers,
+        retailPricePerPiece: null,
+      };
+  }
+  return result;
+}
+
+function buildDefaultPricingBatch(
+  labels: string[]
+): Record<string, CategoryPricingBatch> {
+  const result: Record<string, CategoryPricingBatch> = {};
+  for (const label of labels) {
+    result[label] = {
+      wholesaleTiers: DEFAULT_SHOWCASE.wholesaleTiers,
+      retailPricePerPiece: null,
+    };
+  }
+  return result;
+}
+
+/** @deprecated Use getCategoryPricingBatch */
+export async function getCategoryWholesaleTiersBatch(
+  categoryLabels: string[]
+): Promise<Record<string, WholesaleTier[]>> {
+  const batch = await getCategoryPricingBatch(categoryLabels);
+  const result: Record<string, WholesaleTier[]> = {};
+  for (const [label, cfg] of Object.entries(batch)) {
+    result[label] = cfg.wholesaleTiers;
+  }
+  return result;
 }

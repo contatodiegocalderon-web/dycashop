@@ -1,4 +1,5 @@
 import type { CategoryShowcaseConfig } from "@/lib/category-showcase";
+import { WHOLESALE_CART_MIN_PIECES } from "@/lib/cart-pricing";
 import {
   parseYouTubeVideoId,
   youtubeEmbedUrl,
@@ -27,6 +28,8 @@ export function CategoryShowcaseBanner({ categoryLabel, config }: Props) {
   const ytId = rawUrl ? parseYouTubeVideoId(rawUrl) : null;
   const youtubeLike =
     !!rawUrl && /youtube\.com|youtu\.be/i.test(rawUrl) && !ytId;
+  const retailPrice = config.retailPricePerPiece;
+  const varejoMaxQty = WHOLESALE_CART_MIN_PIECES - 1;
 
   return (
     <section className="mb-6 grid gap-3 rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-3 ring-1 ring-white/[0.04] md:grid-cols-2 md:p-4">
@@ -44,6 +47,19 @@ export function CategoryShowcaseBanner({ categoryLabel, config }: Props) {
               </tr>
             </thead>
             <tbody>
+              {retailPrice != null && varejoMaxQty >= 1 ? (
+                <tr className="border-t border-white/[0.08] bg-sky-500/[0.08]">
+                  <td className="px-3 py-2 text-sky-300">
+                    {varejoMaxQty === 1
+                      ? "1 peça"
+                      : `1–${varejoMaxQty} peças`}{" "}
+                    <span className="text-sky-400/90">(varejo)</span>
+                  </td>
+                  <td className="px-3 py-2 font-semibold text-sky-300">
+                    {formatCurrency(retailPrice)}
+                  </td>
+                </tr>
+              ) : null}
               {config.wholesaleTiers.map((tier) => (
                 <tr
                   key={`${tier.minQty}-${tier.maxQty ?? "plus"}`}

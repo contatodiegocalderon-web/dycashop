@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCategoryPricingBatch } from "@/lib/category-showcase";
 import { isProductOrderable } from "@/lib/product-availability";
 import { productPublicImageUrl } from "@/lib/product-image-url";
 import type { Product } from "@/types";
@@ -122,11 +123,28 @@ export async function POST(request: NextRequest) {
       drive_image_url: productPublicImageUrl(p),
     }));
 
+    const categoryLabels = Array.from(
+      new Set(
+        refreshedProducts
+          .map((p) => p.category?.trim())
+          .filter((c): c is string => Boolean(c))
+      )
+    );
+    const pricingByCategory = await getCategoryPricingBatch(categoryLabels);
+    const tiersByCategory: Record<string, (typeof pricingByCategory)[string]["wholesaleTiers"]> = {};
+    const retailByCategory: Record<string, number | null> = {};
+    for (const [label, cfg] of Object.entries(pricingByCategory)) {
+      tiersByCategory[label] = cfg.wholesaleTiers;
+      retailByCategory[label] = cfg.retailPricePerPiece;
+    }
+
     return NextResponse.json({
       lines,
       removed,
       adjusted,
       products: refreshedProducts,
+      tiersByCategory,
+      retailByCategory,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";

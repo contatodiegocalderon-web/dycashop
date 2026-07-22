@@ -12,11 +12,19 @@ import React, {
 import { CartAddedToast } from "@/components/cart-added-toast";
 import type { CartLine, Product } from "@/types";
 
+import type { WholesaleTier } from "@/lib/category-showcase";
+
 export const CART_STORAGE_KEY = "streetwear-cart-v1";
 
 export type CartAddToastState = {
   key: number;
   totalItems: number;
+};
+
+export type CartReconcileResult = {
+  notice: string | null;
+  tiersByCategory?: Record<string, WholesaleTier[]>;
+  retailByCategory?: Record<string, number | null>;
 };
 
 type CartContextValue = {
@@ -27,7 +35,7 @@ type CartContextValue = {
   removeLine: (productId: string) => void;
   clear: () => void;
   /** Alinha o carrinho ao catálogo/stock actual (remove esgotados, ajusta quantidades). */
-  reconcileWithCatalog: () => Promise<string | null>;
+  reconcileWithCatalog: () => Promise<CartReconcileResult>;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -167,9 +175,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const reconcileWithCatalog = useCallback(async (): Promise<string | null> => {
+  const reconcileWithCatalog = useCallback(async (): Promise<CartReconcileResult> => {
     const current = lines;
-    if (!current.length) return null;
+    if (!current.length) {
+      return { notice: null };
+    }
 
     try {
       const res = await fetch("/api/cart/validate", {
@@ -209,10 +219,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         products?: Array<
           Product & { drive_image_url: string }
         >;
+        tiersByCategory?: Record<string, WholesaleTier[]>;
+        retailByCategory?: Record<string, number | null>;
       };
 
       if (!res.ok) {
-        return data.error ?? "Não foi possível validar o carrinho.";
+        return {
+          notice: data.error ?? "Não foi possível validar o carrinho.",
+        };
       }
 
       const productById = new Map(
@@ -238,7 +252,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setLines(next);
 
       if (next.length === 0 && current.length > 0) {
-        return "As peças do seu carrinho já não estão disponíveis. Monte o pedido de novo no catálogo.";
+        return {
+          notice:
+            "As peças do seu carrinho já não estão disponíveis. Monte o pedido de novo no catálogo.",
+          tiersByCategory: data.tiersByCategory,
+          retailByCategory: data.retailByCategory,
+        };
       }
       if (removedCount > 0 || adjustedCount > 0) {
         const parts: string[] = [];
@@ -252,11 +271,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             `${adjustedCount} linha${adjustedCount > 1 ? "s" : ""} com quantidade reduzida`
           );
         }
-        return `${parts.join("; ")}. Revise o carrinho antes de enviar.`;
+        return {
+          notice: `${parts.join("; ")}. Revise o carrinho antes de enviar.`,
+          tiersByCategory: data.tiersByCategory,
+          retailByCategory: data.retailByCategory,
+        };
       }
-      return null;
+      return {
+        notice: null,
+        tiersByCategory: data.tiersByCategory,
+        retailByCategory: data.retailByCategory,
+      };
     } catch {
-      return "Não foi possível validar o carrinho. Tente de novo.";
+      return { notice: "Não foi possível validar o carrinho. Tente de novo." };
     }
   }, [lines]);
 

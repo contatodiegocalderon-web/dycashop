@@ -8,12 +8,16 @@ import {
   getOrderReceiptByToken,
   isCancelledReceiptToken,
   isValidReceiptToken,
+  isVarejoOnlineOrder,
 } from "@/lib/order-receipt";
 import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
 import { orderItemImageUrl } from "@/lib/order-item-image-url";
 import type { OrderItemRow, OrderStatus, ProductSize } from "@/types";
 
-type Props = { params: { token: string } };
+type Props = {
+  params: { token: string };
+  searchParams: { paid?: string; pending?: string };
+};
 
 export const dynamic = "force-dynamic";
 
@@ -33,12 +37,19 @@ function itemImageSrc(it: OrderItemRow): string {
   return orderItemImageUrl(it, 320) ?? "";
 }
 
-function statusLabel(s: OrderStatus): string {
+function statusLabel(
+  s: OrderStatus,
+  opts?: { varejoConfirmed?: boolean }
+): string {
   switch (s) {
     case "PENDENTE_PAGAMENTO":
-      return "Aguardando confirmação do vendedor";
+      return opts?.varejoConfirmed
+        ? "Pagamento confirmado · Em preparação"
+        : "Aguardando confirmação do vendedor";
     case "PAGO":
-      return "Pagamento confirmado";
+      return opts?.varejoConfirmed
+        ? "Pagamento confirmado · Em preparação"
+        : "Pagamento confirmado";
     case "CANCELADO":
       return "Pedido cancelado";
     default:
@@ -46,7 +57,7 @@ function statusLabel(s: OrderStatus): string {
   }
 }
 
-export default async function ReciboPage({ params }: Props) {
+export default async function ReciboPage({ params, searchParams }: Props) {
   const token = params.token;
   if (!isValidReceiptToken(token)) notFound();
 
@@ -69,6 +80,19 @@ export default async function ReciboPage({ params }: Props) {
       : await fetchOrderDisplayNumberPublic(order.id);
   const bySize = groupItems(items);
   const categoryTotals = totalsByCategoryFromOrderItems(items);
+  const varejoOnline = isVarejoOnlineOrder(order);
+  const fromMpPaid = searchParams.paid === "1";
+  const fromMpPending = searchParams.pending === "1";
+  const showVarejoConfirmed =
+    varejoOnline &&
+    !order.stock_conflict &&
+    (fromMpPaid || order.status === "PAGO");
+  const showVarejoPending =
+    varejoOnline &&
+    !order.stock_conflict &&
+    !showVarejoConfirmed &&
+    (fromMpPending ||
+      (order.status === "PENDENTE_PAGAMENTO" && order.checkout_channel === "VAREJO_MP"));
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -113,15 +137,39 @@ export default async function ReciboPage({ params }: Props) {
 
         {order.stock_conflict ? (
           <StockConflictNotice conflict={order.stock_conflict} variant="client" />
+        ) : showVarejoConfirmed ? (
+          <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/35 px-4 py-4 ring-1 ring-emerald-500/20">
+            <p className="text-base font-semibold text-emerald-100">
+              Pedido confirmado
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-emerald-100/90">
+              Seu pedido está em preparação.
+            </p>
+            <p className="mt-1 text-sm leading-relaxed text-emerald-100/80">
+              Você receberá as atualizações no WhatsApp.
+            </p>
+          </div>
+        ) : showVarejoPending ? (
+          <div className="rounded-xl border border-amber-500/35 bg-amber-950/30 px-4 py-4 ring-1 ring-amber-500/15">
+            <p className="text-base font-semibold text-amber-100">
+              Pagamento em processamento
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-amber-100/90">
+              Assim que o Mercado Pago confirmar, atualizamos o status aqui e avisamos
+              você no WhatsApp.
+            </p>
+          </div>
         ) : (
           <p className="text-sm leading-relaxed text-stone-400">
-            O vendedor vai calcular seu frete e finalizar seu pedido o quanto antes,
+            O vendedor vai te passar o orçamento e finalizar seu pedido o quanto antes,
             aguarde só um momento!
           </p>
         )}
 
         <div className="border-t border-white/[0.06] pt-4">
-          <p className="text-sm text-stone-500">{statusLabel(order.status)}</p>
+          <p className="text-sm text-stone-500">
+            {statusLabel(order.status, { varejoConfirmed: showVarejoConfirmed })}
+          </p>
           <p className="mt-1 text-xs text-stone-600">
             {new Date(order.created_at).toLocaleString("pt-BR")}
           </p>

@@ -9,6 +9,15 @@ export function isValidReceiptToken(token: string): boolean {
   return TOKEN_RE.test(token);
 }
 
+export function isVarejoOnlineOrder(
+  order: Pick<OrderRow, "sales_channel" | "checkout_channel" | "requested_seller_name">
+): boolean {
+  if (order.checkout_channel === "VAREJO_MP") return true;
+  if (order.sales_channel === "VAREJO") return true;
+  if (order.requested_seller_name?.trim() === "SITE-VAREJO") return true;
+  return false;
+}
+
 export async function isCancelledReceiptToken(token: string): Promise<boolean> {
   if (!isValidReceiptToken(token)) return false;
   const admin = createAdminClient();
@@ -55,6 +64,9 @@ export async function getOrderReceiptByToken(
       status,
       customer_note,
       customer_name,
+      requested_seller_name,
+      sales_channel,
+      checkout_channel,
       stock_conflict,
       created_at,
       updated_at,
@@ -96,6 +108,10 @@ export async function getOrderReceiptByToken(
       status: row.status,
       customer_note: row.customer_note,
       customer_name: row.customer_name ?? null,
+      requested_seller_name: row.requested_seller_name ?? null,
+      sales_channel: (row as { sales_channel?: string | null }).sales_channel ?? null,
+      checkout_channel:
+        (row as { checkout_channel?: string | null }).checkout_channel ?? null,
       stock_conflict: parseOrderStockConflict(
         (row as { stock_conflict?: unknown }).stock_conflict
       ),

@@ -108,6 +108,10 @@ export interface OrderRow {
   /** Aviso de peças esgotadas por confirmação de outro pedido (ver `order-stock-conflict`). */
   stock_conflict?: OrderStockConflict | null;
   order_items?: OrderItemRow[];
+  shipping_cost?: number | null;
+  sales_channel?: string | null;
+  checkout_channel?: string | null;
+  mp_payment_id?: string | null;
 }
 
 export interface ParsedFileName {

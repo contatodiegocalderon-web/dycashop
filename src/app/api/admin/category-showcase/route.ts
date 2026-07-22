@@ -20,6 +20,7 @@ type ShowcaseRow = {
   video_url: string | null;
   video_poster_url: string | null;
   wholesale_tiers: WholesaleTier[];
+  retail_price_per_piece?: number | null;
   /** Cartão na grelha da página inicial */
   home_grid_cover_image_url: string | null;
   /** Banner ao abrir a categoria */
@@ -53,11 +54,23 @@ async function loadCatalogCategoryLabels(admin: ReturnType<typeof createAdminCli
 
 async function fetchShowcaseRows(admin: ReturnType<typeof createAdminClient>) {
   const full = await admin.from("category_showcase_settings").select(
-    "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, home_grid_cover_image_url, display_order"
+    "category_label, video_url, video_poster_url, wholesale_tiers, retail_price_per_piece, catalog_cover_image_url, home_grid_cover_image_url, display_order"
   );
   if (!full.error) return full.data ?? [];
   if (!isMissingSchemaColumnError(full.error)) {
     throw new Error(full.error.message);
+  }
+  const withRetail = await admin.from("category_showcase_settings").select(
+    "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, home_grid_cover_image_url, display_order"
+  );
+  if (!withRetail.error) {
+    return (withRetail.data ?? []).map((row) => ({
+      ...row,
+      retail_price_per_piece: null,
+    }));
+  }
+  if (!isMissingSchemaColumnError(withRetail.error)) {
+    throw new Error(withRetail.error.message);
   }
   const mid = await admin.from("category_showcase_settings").select(
     "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, display_order"
@@ -108,6 +121,7 @@ export async function GET(request: NextRequest) {
         video_url?: string | null;
         video_poster_url?: string | null;
         wholesale_tiers?: unknown;
+        retail_price_per_piece?: unknown;
         catalog_cover_image_url?: string | null;
         home_grid_cover_image_url?: string | null;
         display_order?: number | null;
@@ -117,6 +131,10 @@ export async function GET(request: NextRequest) {
         video_url: r.video_url?.trim() || null,
         video_poster_url: r.video_poster_url?.trim() || null,
         wholesale_tiers: sanitizeWholesaleTiers(r.wholesale_tiers),
+        retail_price_per_piece: (() => {
+          const n = Number(r.retail_price_per_piece);
+          return Number.isFinite(n) && n > 0 ? n : null;
+        })(),
         home_grid_cover_image_url: r.home_grid_cover_image_url?.trim() || null,
         catalog_cover_image_url: r.catalog_cover_image_url?.trim() || null,
         display_order:
@@ -136,6 +154,7 @@ export async function GET(request: NextRequest) {
           video_url: null,
           video_poster_url: null,
           wholesale_tiers: DEFAULT_SHOWCASE.wholesaleTiers,
+          retail_price_per_piece: null,
           home_grid_cover_image_url: null,
           catalog_cover_image_url: null,
           display_order: null,
@@ -169,6 +188,7 @@ export async function PUT(request: NextRequest) {
         video_url?: string | null;
         video_poster_url?: string | null;
         wholesale_tiers?: unknown;
+        retail_price_per_piece?: number | null;
         home_grid_cover_image_url?: string | null;
         catalog_cover_image_url?: string | null;
         display_order?: number | null;
@@ -210,6 +230,12 @@ export async function PUT(request: NextRequest) {
         video_url: raw.video_url?.trim() || null,
         video_poster_url: raw.video_poster_url?.trim() || null,
         wholesale_tiers: sanitizeWholesaleTiers(raw.wholesale_tiers),
+        retail_price_per_piece:
+          raw.retail_price_per_piece != null &&
+          Number.isFinite(Number(raw.retail_price_per_piece)) &&
+          Number(raw.retail_price_per_piece) > 0
+            ? Number(raw.retail_price_per_piece)
+            : null,
         home_grid_cover_image_url: raw.home_grid_cover_image_url?.trim() || null,
         catalog_cover_image_url: raw.catalog_cover_image_url?.trim() || null,
         display_order: resolveDisplayOrderForUpsert(

@@ -19,6 +19,7 @@ type Props = {
   cep: string;
   onQuoteChange?: (quote: ShippingQuotePayload | null) => void;
   onSelectionChange?: (option: ShippingQuoteOption | null) => void;
+  checkoutMode?: "varejo" | "atacado";
 };
 
 function CorreiosLogo({ className }: { className?: string }) {
@@ -91,6 +92,7 @@ export function CartShippingQuote({
   cep,
   onQuoteChange,
   onSelectionChange,
+  checkoutMode = "atacado",
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -271,7 +273,9 @@ export function CartShippingQuote({
           <p className="text-xs font-semibold text-stone-400">{destinationLabel}</p>
         ) : null}
         <p className="text-[10px] leading-snug text-stone-600">
-          Os demais dados para entrega serão solicitados pelo vendedor no WhatsApp.
+          {checkoutMode === "varejo"
+            ? "Preencha o endereço abaixo para envio via SuperFrete."
+            : "Os demais dados para entrega serão solicitados pelo vendedor no WhatsApp."}
         </p>
       </div>
     </div>
