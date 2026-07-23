@@ -220,7 +220,7 @@ function StepContent({ step }: { step: number }) {
             </table>
           </div>
           <p className="text-center text-sm font-medium text-stone-300">
-            Preço pra atacado exclusivo pra membros!
+            Preço atacado exclusivo pra membros!
           </p>
         </div>
       );
@@ -476,12 +476,12 @@ export function DropshippingCta() {
 
   return (
     <>
-      <section className="mt-4">
+      <section className="w-full">
         <button
           type="button"
           onClick={() => setOpen(true)}
           className="w-full rounded-xl border border-white/[0.1] bg-zinc-800/90 px-4 py-4 text-center text-sm font-bold uppercase tracking-wide text-stone-100 shadow-inner shadow-black/25 transition hover:border-white/[0.16] hover:bg-zinc-700 active:scale-[0.99]"
-          >
+        >
           Venda sem estoque
         </button>
       </section>

@@ -21,25 +21,27 @@ export default async function HomePage() {
           Catálogo 100% atualizado
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-stone-400">
-          Abra para filtrar por tamanho, marca e cor, monte o carrinho e envie o pedido
-          pelo WhatsApp.
+          Abra para filtrar por tamanho, marca e cor, monte o carrinho e faça seu
+          pedido.
         </p>
       </div>
 
       <CategoryGrid categories={categories} />
 
       <VideoCallCta />
-      <DropshippingCta />
 
-      <p className="mt-12 text-center text-xs text-stone-600">
+      <div className="mt-12 flex flex-col items-center gap-4">
         <Link
           href="/carrinho"
           prefetch
-          className="font-medium text-stone-400 transition-colors hover:text-stone-200"
+          className="text-center text-xs font-medium text-stone-400 transition-colors hover:text-stone-200"
         >
           Ver carrinho
         </Link>
-      </p>
+        <div className="w-full max-w-md">
+          <DropshippingCta />
+        </div>
+      </div>
     </div>
   );
 }
