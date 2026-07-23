@@ -14,6 +14,18 @@ function ensureIdColumn(columns: string): string {
   return parts.join(", ");
 }
 
+function dedupeById<T extends Record<string, unknown>>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const row of rows) {
+    const id = String((row as { id?: unknown }).id ?? "");
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(row);
+  }
+  return out;
+}
+
 /** Cliente anon (mesmas credenciais públicas do catálogo / `/api/products`). */
 export function createCatalogAnonClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
@@ -37,8 +49,8 @@ export async function getProductsTableCount(
 }
 
 /**
- * Lista todos os produtos com paginação estável por `id` (keyset).
- * Ordenar só por colunas não-únicas faz saltar/duplicar linhas entre páginas no PostgREST.
+ * Lista todos os produtos com paginação estável por `id` (offset + order).
+ * Keyset pode divergir do count sob inserts concorrentes na sync Drive.
  */
 export async function fetchAllProductsPaginated<T extends Record<string, unknown>>(
   client: SupabaseClient,
@@ -46,44 +58,47 @@ export async function fetchAllProductsPaginated<T extends Record<string, unknown
 ): Promise<T[]> {
   const selectCols = ensureIdColumn(columns);
   const all: T[] = [];
-  let lastId: string | null = null;
+  let offset = 0;
 
   for (;;) {
-    let q = client
+    const { data, error } = await client
       .from("products")
       .select(selectCols)
       .order("id", { ascending: true })
-      .limit(PAGE_SIZE);
+      .range(offset, offset + PAGE_SIZE - 1);
 
-    if (lastId) {
-      q = q.gt("id", lastId);
-    }
-
-    const { data, error } = await q;
     if (error) throw new Error(error.message);
 
     const chunk = (data ?? []) as unknown as T[];
     all.push(...chunk);
     if (chunk.length < PAGE_SIZE) break;
-
-    const tail = chunk[chunk.length - 1] as { id?: string };
-    if (!tail?.id) {
-      throw new Error("Paginação de produtos interrompida: coluna id ausente no lote.");
-    }
-    lastId = tail.id;
+    offset += PAGE_SIZE;
   }
 
-  return all;
+  return dedupeById(all);
 }
 
+export type InventoryProductsRead = {
+  rows: Array<Record<string, unknown>>;
+  readVia: "service_role" | "anon_fallback";
+  expectedCount: number;
+  /** Aviso não-bloqueante (ex.: count vs linhas em corrida na sync). */
+  warning?: string | null;
+};
+
 /**
- * Lê o catálogo completo para inventário. Prefere service role; se a chave admin
- * na Vercel estiver desatualizada (contagem menor que o anon público), faz fallback
- * para o cliente anon — o mesmo caminho que `/api/products` usa em produção.
+ * Lê o catálogo completo para inventário.
+ * Prefere service role; se anon enxergar mais linhas, usa anon (mesmo caminho da loja).
+ * Não falha se count e listagem divergirem por corrida — devolve as linhas únicas.
  */
 export async function fetchAllProductsForInventory<T extends Record<string, unknown>>(
   columns: string
-): Promise<{ rows: T[]; readVia: "service_role" | "anon_fallback"; expectedCount: number }> {
+): Promise<{
+  rows: T[];
+  readVia: "service_role" | "anon_fallback";
+  expectedCount: number;
+  warning?: string | null;
+}> {
   const admin = createAdminClient();
   const anon = createCatalogAnonClient();
 
@@ -92,21 +107,43 @@ export async function fetchAllProductsForInventory<T extends Record<string, unkn
     getProductsTableCount(anon),
   ]);
 
-  if (anonCount > adminCount) {
-    const rows = await fetchAllProductsPaginated<T>(anon, columns);
-    if (rows.length !== anonCount) {
-      throw new Error(
-        `Leitura anon incompleta: ${rows.length}/${anonCount} produtos. Verifique RLS ou paginação.`
-      );
+  const preferAnon = anonCount > adminCount;
+  const primary = preferAnon ? anon : admin;
+  const primaryVia: "service_role" | "anon_fallback" = preferAnon
+    ? "anon_fallback"
+    : "service_role";
+  const expectedHint = Math.max(adminCount, anonCount);
+
+  let rows = await fetchAllProductsPaginated<T>(primary, columns);
+  let readVia = primaryVia;
+
+  if (rows.length < expectedHint) {
+    const secondary = preferAnon ? admin : anon;
+    const secondaryVia: "service_role" | "anon_fallback" = preferAnon
+      ? "service_role"
+      : "anon_fallback";
+    const other = await fetchAllProductsPaginated<T>(secondary, columns);
+    if (other.length > rows.length) {
+      rows = other;
+      readVia = secondaryVia;
     }
-    return { rows, readVia: "anon_fallback", expectedCount: anonCount };
   }
 
-  const rows = await fetchAllProductsPaginated<T>(admin, columns);
-  if (rows.length !== adminCount) {
+  const expectedCount = Math.max(expectedHint, rows.length);
+  let warning: string | null = null;
+
+  if (rows.length === 0 && expectedHint > 0) {
     throw new Error(
-      `Leitura service_role incompleta: ${rows.length}/${adminCount} produtos. Verifique SUPABASE_SERVICE_ROLE_KEY na Vercel.`
+      "Nenhum produto lido do catálogo. Verifique SUPABASE_SERVICE_ROLE_KEY e NEXT_PUBLIC_SUPABASE_ANON_KEY na Vercel."
     );
   }
-  return { rows, readVia: "service_role", expectedCount: adminCount };
+
+  if (preferAnon) {
+    warning =
+      "Service role vê menos produtos que o catálogo público — confira SUPABASE_SERVICE_ROLE_KEY na Vercel. Estoque calculado via anon.";
+  } else if (adminCount !== anonCount) {
+    warning = `Contagens admin/anon divergem (${adminCount}/${anonCount}). Usando ${rows.length} produto(s).`;
+  }
+
+  return { rows, readVia, expectedCount, warning };
 }

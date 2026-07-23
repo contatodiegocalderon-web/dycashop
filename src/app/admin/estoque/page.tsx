@@ -12,6 +12,9 @@ type ApiPayload = StockInventorySnapshot & {
   driveSettingsUpdatedAt?: string | null;
   catalogSyncedAt?: string | null;
   productRows?: number;
+  expectedProductCount?: number;
+  readVia?: string;
+  warning?: string | null;
   generatedAt?: string;
   error?: string;
 };
@@ -226,6 +229,12 @@ export default function AdminEstoquePage() {
       {error && (
         <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}
+        </div>
+      )}
+
+      {data?.warning && !error && (
+        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {data.warning}
         </div>
       )}
 

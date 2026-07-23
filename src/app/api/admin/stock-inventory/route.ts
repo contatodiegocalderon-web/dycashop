@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const admin = createAdminClient();
-    const { rows: all, readVia, expectedCount } =
+    const { rows: all, readVia, expectedCount, warning } =
       await fetchAllProductsForInventory<ProductStockRow>(
         "category, size, stock, status, updated_at"
       );
@@ -53,6 +53,7 @@ export async function GET(request: NextRequest) {
         productRows: all.length,
         expectedProductCount: expectedCount,
         readVia,
+        warning: warning ?? null,
         generatedAt: new Date().toISOString(),
       },
       { headers: { "Cache-Control": "no-store" } }
