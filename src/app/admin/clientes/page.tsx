@@ -15,6 +15,8 @@ export default function AdminClientesPage() {
   );
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOwner) {
@@ -92,23 +94,67 @@ export default function AdminClientesPage() {
     [adminFetch]
   );
 
-  const importControls = isOwner ? (
+  const onExportLeads = useCallback(async () => {
+    setExportMsg(null);
+    setExporting(true);
+    try {
+      const q = new URLSearchParams();
+      if (isOwner && sellerScope && sellerScope !== "all") {
+        q.set("sellerScope", sellerScope);
+      }
+      const suffix = q.toString() ? `?${q.toString()}` : "";
+      const res = await adminFetch(`/api/admin/clients/export${suffix}`);
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "Falha ao exportar");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `crm-leads-${stamp}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setExportMsg("Excel baixado com sucesso.");
+    } catch (err) {
+      setExportMsg(err instanceof Error ? err.message : "Erro na exportação");
+    } finally {
+      setExporting(false);
+    }
+  }, [adminFetch, isOwner, sellerScope]);
+
+  const importControls = (
     <>
-      <label className="cursor-pointer rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-950 hover:bg-violet-100">
-        {importing ? "A importar…" : "Importar Excel"}
-        <input
-          type="file"
-          accept=".xlsx,.xls"
-          className="hidden"
-          disabled={importing}
-          onChange={(e) => void onImportLegacyFile(e)}
-        />
-      </label>
-      {importMsg && (
-        <p className="w-full text-xs text-amber-800">{importMsg}</p>
+      <button
+        type="button"
+        onClick={() => void onExportLeads()}
+        disabled={exporting}
+        className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-100 disabled:opacity-50"
+      >
+        {exporting ? "A exportar…" : "Exportar Excel"}
+      </button>
+      {isOwner ? (
+        <label className="cursor-pointer rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-950 hover:bg-violet-100">
+          {importing ? "A importar…" : "Importar Excel"}
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            disabled={importing}
+            onChange={(e) => void onImportLegacyFile(e)}
+          />
+        </label>
+      ) : null}
+      {(importMsg || exportMsg) && (
+        <p className="w-full text-xs text-amber-800">
+          {[exportMsg, importMsg].filter(Boolean).join(" · ")}
+        </p>
       )}
     </>
-  ) : null;
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">

@@ -140,3 +140,97 @@ body {
 .animate-cart-total-ring {
   animation: cart-total-ring 1.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+@keyframes drop-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-drop-backdrop {
+  animation: drop-backdrop-in 0.28s ease-out both;
+}
+
+@keyframes drop-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (min-width: 640px) {
+  @keyframes drop-sheet-in {
+    from {
+      opacity: 0;
+      transform: translateY(16px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+}
+
+.animate-drop-sheet {
+  animation: drop-sheet-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes drop-calc-pop {
+  from {
+    opacity: 0.55;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-drop-calc-pop {
+  animation: drop-calc-pop 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Range calculadora — tema zinc/stone do site */
+.drop-calc-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+}
+
+.drop-calc-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #f5f5f4;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+}
+
+.drop-calc-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #f5f5f4;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+}
+
+.drop-calc-range::-moz-range-track {
+  height: 5px;
+  border-radius: 9999px;
+  background: transparent;
+}

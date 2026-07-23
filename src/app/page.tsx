@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CategoryGrid } from "@/components/category-grid";
+import { DropshippingCta } from "@/components/dropshipping-funnel";
 import { VideoCallCta } from "@/components/video-call-cta";
 import { getCatalogCategories } from "@/lib/catalog-categories";
 
@@ -28,6 +29,7 @@ export default async function HomePage() {
       <CategoryGrid categories={categories} />
 
       <VideoCallCta />
+      <DropshippingCta />
 
       <p className="mt-12 text-center text-xs text-stone-600">
         <Link
