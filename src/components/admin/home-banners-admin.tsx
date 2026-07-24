@@ -18,6 +18,7 @@ export function HomeBannersAdminPanel({ enabled }: Props) {
   const [hrefDraft, setHrefDraft] = useState("");
   const [desktopFile, setDesktopFile] = useState<File | null>(null);
   const [mobileFile, setMobileFile] = useState<File | null>(null);
+  const [hrefEdits, setHrefEdits] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!enabled) return;
@@ -30,7 +31,13 @@ export function HomeBannersAdminPanel({ enabled }: Props) {
         banners?: HomeBanner[];
       };
       if (!res.ok) throw new Error(data.error ?? "Falha ao carregar banners");
-      setBanners(data.banners ?? []);
+      const list = data.banners ?? [];
+      setBanners(list);
+      const hrefMap: Record<string, string> = {};
+      for (const b of list) {
+        hrefMap[b.id] = b.href?.trim() || "";
+      }
+      setHrefEdits(hrefMap);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
       setBanners([]);
@@ -121,6 +128,29 @@ export function HomeBannersAdminPanel({ enabled }: Props) {
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Falha ao limpar");
       setOk("Imagem do celular removida (no telemóvel usa a do PC).");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveHref(id: string) {
+    if (!isOwner) return;
+    setBusy(true);
+    setError(null);
+    setOk(null);
+    try {
+      const href = (hrefEdits[id] ?? "").trim() || null;
+      const res = await adminFetch("/api/admin/home-banners", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, href }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Falha ao salvar link");
+      setOk(href ? "Link do banner salvo." : "Link removido do banner.");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
@@ -434,7 +464,37 @@ export function HomeBannersAdminPanel({ enabled }: Props) {
                 </div>
               </div>
 
-              {b.href ? (
+              {isOwner ? (
+                <div className="mt-3 flex flex-wrap items-end gap-2">
+                  <label className="min-w-[12rem] flex-1 text-sm text-stone-700">
+                    Link ao clicar (opcional)
+                    <input
+                      type="text"
+                      value={hrefEdits[b.id] ?? ""}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setHrefEdits((prev) => ({
+                          ...prev,
+                          [b.id]: e.target.value,
+                        }))
+                      }
+                      placeholder="/categoria/… ou https://…"
+                      className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 disabled:bg-stone-100"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={
+                      busy ||
+                      (hrefEdits[b.id] ?? "").trim() === (b.href?.trim() || "")
+                    }
+                    onClick={() => void saveHref(b.id)}
+                    className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50 disabled:opacity-40"
+                  >
+                    Salvar link
+                  </button>
+                </div>
+              ) : b.href ? (
                 <p className="mt-2 truncate text-xs text-stone-500">{b.href}</p>
               ) : null}
             </li>

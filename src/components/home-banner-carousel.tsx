@@ -82,13 +82,29 @@ export function HomeBannerCarousel({ banners }: Props) {
     >
       <div className="relative w-full">
         {current.href?.trim() ? (
-          <Link
-            href={current.href.trim()}
-            className="block w-full"
-            aria-label="Abrir banner"
-          >
-            {media}
-          </Link>
+          (() => {
+            const href = current.href.trim();
+            const external = /^https?:\/\//i.test(href);
+            const className = "block w-full";
+            if (external) {
+              return (
+                <a
+                  href={href}
+                  className={className}
+                  aria-label="Abrir banner"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {media}
+                </a>
+              );
+            }
+            return (
+              <Link href={href} className={className} aria-label="Abrir banner">
+                {media}
+              </Link>
+            );
+          })()
         ) : (
           <div className="w-full">{media}</div>
         )}
