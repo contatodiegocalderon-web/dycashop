@@ -8,7 +8,7 @@ type Props = {
   banners: HomeBanner[];
 };
 
-const AUTO_MS = 5000;
+const AUTO_MS = 45_000;
 
 function BannerSlideImage({
   banner,
