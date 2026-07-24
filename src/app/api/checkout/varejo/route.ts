@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { notifyAdminsNewPendingOrder } from "@/lib/admin-push";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   computeCartPricing,
@@ -411,6 +412,11 @@ export async function POST(request: NextRequest) {
     if (prefErr) {
       console.error("[varejo-checkout] mp_preference_id:", prefErr.message);
     }
+
+    void notifyAdminsNewPendingOrder({
+      displayNumber: orderDisplayNumber,
+      channel: "VAREJO",
+    });
 
     return NextResponse.json({
       initPoint: preference.initPoint,

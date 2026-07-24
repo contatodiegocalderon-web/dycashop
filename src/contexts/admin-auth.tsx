@@ -12,6 +12,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { ensureAdminPushSubscription } from "@/lib/admin-push-client";
 
 export const ADMIN_KEY_STORAGE = "admin_api_key";
 
@@ -255,6 +256,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       void Notification.requestPermission();
     }
 
+    // Web Push: funciona com o app fechado / tela bloqueada (PWA na tela inicial).
+    void ensureAdminPushSubscription(adminFetch).then((r) => {
+      if (!r.ok && r.reason && r.reason !== "denied") {
+        console.warn("[admin-push] subscribe:", r.reason);
+      }
+    });
+
     const tick = async () => {
       const next = await refreshPendingOrdersCount();
       if (next == null) return;
@@ -270,7 +278,14 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       void tick();
     }, 15000);
     return () => window.clearInterval(id);
-  }, [ready, session, pathname, refreshPendingOrdersCount, notifyNewOrder]);
+  }, [
+    ready,
+    session,
+    pathname,
+    refreshPendingOrdersCount,
+    notifyNewOrder,
+    adminFetch,
+  ]);
 
   const logout = useCallback(async () => {
     try {

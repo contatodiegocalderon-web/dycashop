@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { notifyAdminsNewPendingOrder } from "@/lib/admin-push";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchOrderDisplayNumberPublic } from "@/lib/order-display-number";
 import { productPublicImageUrl } from "@/lib/product-image-url";
@@ -240,6 +241,12 @@ export async function POST(request: NextRequest) {
     const dn = Number((order as { display_number?: unknown }).display_number);
     const orderDisplayNumber =
       Number.isFinite(dn) && dn > 0 ? dn : await fetchOrderDisplayNumberPublic(order.id);
+
+    void notifyAdminsNewPendingOrder({
+      displayNumber: orderDisplayNumber,
+      channel: "ATACADO",
+    });
+
     return NextResponse.json({
       orderId: order.id,
       orderDisplayNumber,

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getMercadoPagoPayment } from "@/lib/mercadopago";
 import { applyPaidOrderStockAndDrive } from "@/lib/apply-paid-order-stock";
 import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
+import { notifyAdminsVarejoPaid } from "@/lib/admin-push";
 import {
   clearVarejoDriveSyncFailed,
   hasVarejoStockApplied,
@@ -248,6 +249,10 @@ export async function POST(request: NextRequest) {
       console.error("[mp-webhook] order update after stock:", uErr.message);
       return NextResponse.json({ error: uErr.message }, { status: 500 });
     }
+
+    void notifyAdminsVarejoPaid({
+      displayNumber: Number.isFinite(dn) && dn > 0 ? dn : null,
+    });
 
     return NextResponse.json({
       ok: true,
