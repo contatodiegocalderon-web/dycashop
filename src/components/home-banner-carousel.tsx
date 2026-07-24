@@ -8,7 +8,7 @@ type Props = {
   banners: HomeBanner[];
 };
 
-const AUTO_MS = 45_000;
+const AUTO_MS = 20_000;
 
 function slideSrc(banner: HomeBanner): string {
   return (
