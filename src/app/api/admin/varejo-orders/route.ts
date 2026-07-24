@@ -13,7 +13,7 @@ import type { OrderItemRow, OrderRow } from "@/types";
 export const runtime = "nodejs";
 
 const ORDER_SELECT =
-  "id, status, sales_channel, checkout_channel, customer_name, customer_whatsapp, sale_amount, shipping_cost, confirmed_at, created_at, updated_at, mp_payment_id";
+  "id, status, sales_channel, checkout_channel, customer_name, customer_whatsapp, customer_note, sale_amount, shipping_cost, shipping_service, shipping_address, display_number, confirmed_at, created_at, updated_at, mp_payment_id";
 
 export async function GET(request: NextRequest) {
   try {

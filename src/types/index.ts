@@ -109,6 +109,18 @@ export interface OrderRow {
   stock_conflict?: OrderStockConflict | null;
   order_items?: OrderItemRow[];
   shipping_cost?: number | null;
+  shipping_service?: string | null;
+  shipping_address?: {
+    street?: string;
+    number?: string;
+    complement?: string | null;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+    cep?: string;
+    cpf?: string;
+    recipientName?: string | null;
+  } | null;
   sales_channel?: string | null;
   checkout_channel?: string | null;
   mp_payment_id?: string | null;
