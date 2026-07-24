@@ -32,7 +32,7 @@ function BannerSlideImage({
         decoding="async"
         loading={priority ? "eager" : "lazy"}
         fetchPriority={priority ? "high" : "auto"}
-        className="block h-auto w-full"
+        className="block h-auto w-full md:max-h-[280px] md:object-contain md:object-center"
       />
     </picture>
   );
@@ -74,13 +74,13 @@ export function HomeBannerCarousel({ banners }: Props) {
 
   return (
     <div
-      className="relative mb-10 overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.06]"
+      className="relative mx-auto mb-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.06] md:max-w-3xl"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
     >
-      <div className="relative w-full">
+      <div className="relative w-full md:max-h-[280px]">
         {current.href?.trim() ? (
           (() => {
             const href = current.href.trim();
