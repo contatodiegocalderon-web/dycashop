@@ -115,7 +115,7 @@ export function HomeBannerCarousel({ banners }: Props) {
               type="button"
               aria-label="Banner anterior"
               onClick={() => go(index - 1)}
-              className="absolute left-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-lg text-white ring-1 ring-white/20 backdrop-blur-sm transition hover:bg-black/65 sm:left-3"
+              className="absolute left-1.5 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/20 text-base leading-none text-white/70 opacity-50 transition hover:bg-black/40 hover:text-white hover:opacity-90 sm:left-2 sm:opacity-40 sm:hover:opacity-90"
             >
               ‹
             </button>
@@ -123,11 +123,11 @@ export function HomeBannerCarousel({ banners }: Props) {
               type="button"
               aria-label="Próximo banner"
               onClick={() => go(index + 1)}
-              className="absolute right-2 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-lg text-white ring-1 ring-white/20 backdrop-blur-sm transition hover:bg-black/65 sm:right-3"
+              className="absolute right-1.5 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/20 text-base leading-none text-white/70 opacity-50 transition hover:bg-black/40 hover:text-white hover:opacity-90 sm:right-2 sm:opacity-40 sm:hover:opacity-90"
             >
               ›
             </button>
-            <div className="absolute bottom-3 left-0 right-0 z-10 flex justify-center gap-1.5">
+            <div className="absolute bottom-2 left-0 right-0 z-10 flex justify-center gap-1">
               {slides.map((s, i) => (
                 <button
                   key={s.id}
@@ -135,10 +135,10 @@ export function HomeBannerCarousel({ banners }: Props) {
                   aria-label={`Ir para banner ${i + 1}`}
                   aria-current={i === index}
                   onClick={() => setIndex(i)}
-                  className={`h-1.5 rounded-full transition-all ${
+                  className={`h-1 rounded-full transition-all ${
                     i === index
-                      ? "w-5 bg-white"
-                      : "w-1.5 bg-white/45 hover:bg-white/70"
+                      ? "w-3 bg-white/70"
+                      : "w-1 bg-white/30 hover:bg-white/50"
                   }`}
                 />
               ))}
