@@ -126,6 +126,9 @@ export interface OrderRow {
   sales_channel?: string | null;
   checkout_channel?: string | null;
   mp_payment_id?: string | null;
+  /** Pagamento MP ok, mas rename no Drive falhou — precisa confirmar. */
+  varejo_drive_pending?: boolean;
+  varejo_drive_warning?: string | null;
 }
 
 export interface ParsedFileName {

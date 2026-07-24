@@ -1,30 +1,44 @@
 import Link from "next/link";
 import { CategoryGrid } from "@/components/category-grid";
 import { DropshippingCta } from "@/components/dropshipping-funnel";
+import { HomeBannerCarousel } from "@/components/home-banner-carousel";
 import { VideoCallCta } from "@/components/video-call-cta";
 import { getCatalogCategories } from "@/lib/catalog-categories";
+import { sortHomeBanners, type HomeBanner } from "@/lib/home-banners";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 /** Lista pastas/categorias sempre com dados atuais (evita HTML estático desatualizado). */
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+async function getHomeBanners(): Promise<HomeBanner[]> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("home_banners")
+      .select("id, image_url, image_url_mobile, href, sort_order, active, created_at")
+      .eq("active", true)
+      .order("sort_order", { ascending: true });
+    if (error) {
+      console.error("[home] banners:", error.message);
+      return [];
+    }
+    return sortHomeBanners((data ?? []) as HomeBanner[]);
+  } catch (e) {
+    console.error("[home] banners:", e);
+    return [];
+  }
+}
+
 export default async function HomePage() {
-  const categories = await getCatalogCategories();
+  const [categories, banners] = await Promise.all([
+    getCatalogCategories(),
+    getHomeBanners(),
+  ]);
 
   return (
     <div className="mx-auto max-w-7xl px-3 py-8 sm:px-5">
-      <div className="relative mb-10 max-w-2xl rounded-2xl border border-white/[0.08] bg-gradient-to-br from-zinc-900/45 via-[#121214]/90 to-black/50 px-5 py-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.06] sm:px-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-400">
-          Selecione uma categoria
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-50 sm:text-4xl">
-          Catálogo 100% atualizado
-        </h1>
-        <p className="mt-3 text-sm leading-relaxed text-stone-400">
-          Abra para filtrar por tamanho, marca e cor, monte o carrinho e faça seu
-          pedido.
-        </p>
-      </div>
+      <HomeBannerCarousel banners={banners} />
 
       <CategoryGrid categories={categories} />
 

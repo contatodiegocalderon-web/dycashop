@@ -8,12 +8,17 @@ import {
 import { applyConfirmedAtFilterToOrdersQuery } from "@/lib/admin-orders-query";
 import { attachDisplayNumbers, fetchAllOrderIdsNewestFirst } from "@/lib/order-display-number";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  isVarejoDrivePending,
+  parseVarejoDriveSync,
+  varejoDriveFailureSummary,
+} from "@/lib/varejo-drive-sync";
 import type { OrderItemRow, OrderRow } from "@/types";
 
 export const runtime = "nodejs";
 
 const ORDER_SELECT =
-  "id, status, sales_channel, checkout_channel, customer_name, customer_whatsapp, customer_note, sale_amount, shipping_cost, shipping_service, shipping_address, varejo_fulfillment_status, display_number, confirmed_at, created_at, updated_at, mp_payment_id";
+  "id, status, sales_channel, checkout_channel, customer_name, customer_whatsapp, customer_note, sale_amount, sale_amount_by_category, shipping_cost, shipping_service, shipping_address, varejo_fulfillment_status, display_number, confirmed_at, created_at, updated_at, mp_payment_id";
 
 export async function GET(request: NextRequest) {
   try {
@@ -84,15 +89,23 @@ export async function GET(request: NextRequest) {
     itemsByOrder.set(it.order_id, list);
   }
 
-  const enriched = withDisplay.map((o) => ({
-    ...o,
-    order_items: itemsByOrder.get(o.id) ?? [],
-    varejo_fulfillment_status:
-      o.varejo_fulfillment_status === "SEPARADO" ||
-      o.varejo_fulfillment_status === "DESPACHADO"
-        ? o.varejo_fulfillment_status
-        : "EM_ABERTO",
-  }));
+  const enriched = withDisplay.map((o) => {
+    const driveSync = parseVarejoDriveSync(o.sale_amount_by_category);
+    const drivePending = isVarejoDrivePending(o.sale_amount_by_category);
+    return {
+      ...o,
+      order_items: itemsByOrder.get(o.id) ?? [],
+      varejo_fulfillment_status:
+        o.varejo_fulfillment_status === "SEPARADO" ||
+        o.varejo_fulfillment_status === "DESPACHADO"
+          ? o.varejo_fulfillment_status
+          : "EM_ABERTO",
+      varejo_drive_pending: drivePending,
+      varejo_drive_warning: drivePending
+        ? varejoDriveFailureSummary(driveSync)
+        : null,
+    };
+  });
 
   return NextResponse.json({ orders: enriched });
 }

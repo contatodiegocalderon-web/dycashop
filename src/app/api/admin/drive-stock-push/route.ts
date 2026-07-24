@@ -18,15 +18,29 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const admin = createAdminClient();
-    const { data: rows, error } = await admin.from("products").select("id");
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    let bodyProductIds: string[] | null = null;
+    try {
+      const body = (await request.json()) as { productIds?: unknown };
+      if (Array.isArray(body?.productIds)) {
+        bodyProductIds = body.productIds
+          .map((id) => String(id ?? "").trim())
+          .filter(Boolean);
+      }
+    } catch {
+      bodyProductIds = null;
     }
 
-    const productIds = (rows ?? [])
-      .map((r) => String((r as { id?: string }).id ?? "").trim())
-      .filter(Boolean);
+    const admin = createAdminClient();
+    let productIds = bodyProductIds;
+    if (!productIds?.length) {
+      const { data: rows, error } = await admin.from("products").select("id");
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      productIds = (rows ?? [])
+        .map((r) => String((r as { id?: string }).id ?? "").trim())
+        .filter(Boolean);
+    }
 
     const rename = await renameDriveFilesToCurrentStock(productIds);
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { HomeBannersAdminPanel } from "@/components/admin/home-banners-admin";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import {
   DISPLAY_ORDER_DEFAULT_SENTINEL,
@@ -63,7 +64,7 @@ function parseTierText(input: string): WholesaleTier[] {
   return tiers;
 }
 
-type AdminTab = "operacao" | "capas";
+type AdminTab = "banners" | "operacao" | "capas";
 
 export default function AdminCategoriasPage() {
   const { adminFetch, isOwner } = useAdminAuth();
@@ -71,7 +72,7 @@ export default function AdminCategoriasPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
-  const [tab, setTab] = useState<AdminTab>("operacao");
+  const [tab, setTab] = useState<AdminTab>("banners");
 
   const [categories, setCategories] = useState<string[]>([]);
   const [costEdits, setCostEdits] = useState<Record<string, string>>({});
@@ -343,7 +344,7 @@ export default function AdminCategoriasPage() {
             Categorias
           </h1>
           <p className="mt-1 text-sm text-stone-600">
-            Custos, vídeo, atacado, ordem na home e capa da vitrine.
+            Banners da home, custos, vídeo, atacado, ordem e capas das categorias.
           </p>
         </div>
         <button
@@ -356,45 +357,60 @@ export default function AdminCategoriasPage() {
         </button>
       </div>
 
-      {categories.length > 0 && (
-        <div className="mb-6 flex flex-wrap gap-1 border-b border-stone-200">
-          <button
-            type="button"
-            onClick={() => setTab("operacao")}
-            className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
-              tab === "operacao"
-                ? "border-b-2 border-violet-600 text-violet-800"
-                : "text-stone-500 hover:text-stone-800"
-            }`}
-          >
-            Operação & vídeo
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("capas")}
-            className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
-              tab === "capas"
-                ? "border-b-2 border-violet-600 text-violet-800"
-                : "text-stone-500 hover:text-stone-800"
-            }`}
-          >
-            Capas na página inicial
-          </button>
-        </div>
-      )}
+      <div className="mb-6 flex flex-wrap gap-1 border-b border-stone-200">
+        <button
+          type="button"
+          onClick={() => setTab("banners")}
+          className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
+            tab === "banners"
+              ? "border-b-2 border-violet-600 text-violet-800"
+              : "text-stone-500 hover:text-stone-800"
+          }`}
+        >
+          Banners da home
+        </button>
+        {categories.length > 0 ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setTab("operacao")}
+              className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
+                tab === "operacao"
+                  ? "border-b-2 border-violet-600 text-violet-800"
+                  : "text-stone-500 hover:text-stone-800"
+              }`}
+            >
+              Operação & vídeo
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("capas")}
+              className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
+                tab === "capas"
+                  ? "border-b-2 border-violet-600 text-violet-800"
+                  : "text-stone-500 hover:text-stone-800"
+              }`}
+            >
+              Capas na página inicial
+            </button>
+          </>
+        ) : null}
+      </div>
 
-      {error && (
+      {error && tab !== "banners" && (
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}
         </div>
       )}
-      {ok && (
+      {ok && tab !== "banners" && (
         <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
           {ok}
         </div>
       )}
 
-      {categories.length === 0 ? (
+      {tab === "banners" ? (
+        <HomeBannersAdminPanel enabled />
+      ) : categories.length === 0 ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Ainda não há categorias importadas no catálogo.
         </p>

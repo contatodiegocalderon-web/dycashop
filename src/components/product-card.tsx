@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import type { Product } from "@/types";
-import { ProductImagePreview } from "@/components/product-image-preview";
+import { ProductImagePreview, prefetchProductPreview } from "@/components/product-image-preview";
 import { useCart } from "@/providers/cart-provider";
 
 type Props = {
@@ -28,11 +28,18 @@ export function ProductCard({ product, imagePriority }: Props) {
   const imageSrc = product.drive_image_url;
   const previewLabel = `${product.brand} ${product.color} · ${product.size}`;
 
+  const warmPreview = () => {
+    prefetchProductPreview(imageSrc, product.drive_file_id);
+  };
+
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-zinc-900/60 shadow-lg shadow-black/20 ring-1 ring-white/[0.04]">
       <button
         type="button"
         onClick={() => setPreviewOpen(true)}
+        onPointerEnter={warmPreview}
+        onFocus={warmPreview}
+        onTouchStart={warmPreview}
         className="relative aspect-[3/4] max-h-[220px] w-full cursor-zoom-in bg-zinc-950 sm:max-h-[240px]"
         aria-label={`Ver imagem maior: ${previewLabel}`}
       >
@@ -51,6 +58,7 @@ export function ProductCard({ product, imagePriority }: Props) {
         </span>
       </button>
       <ProductImagePreview
+        thumbSrc={imageSrc}
         driveFileId={product.drive_file_id}
         label={previewLabel}
         open={previewOpen}

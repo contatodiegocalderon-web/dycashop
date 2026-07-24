@@ -1,24 +1,55 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { publicDriveImageUrl } from "@/lib/drive-image-url";
 
 type Props = {
+  /** URL já usada no card (cache do browser → abre na hora). */
+  thumbSrc: string;
   driveFileId: string;
   label: string;
   open: boolean;
   onClose: () => void;
 };
 
+/** Versão maior só quando o thumb veio do proxy Drive (Storage já costuma ser full). */
+function hiResCandidate(thumbSrc: string, driveFileId: string): string | null {
+  if (!thumbSrc.includes("/api/drive-image/")) return null;
+  const hi = publicDriveImageUrl(driveFileId, 960);
+  return hi === thumbSrc ? null : hi;
+}
+
+export function prefetchProductPreview(
+  thumbSrc: string,
+  driveFileId: string
+): void {
+  if (typeof window === "undefined") return;
+  const urls = [thumbSrc, hiResCandidate(thumbSrc, driveFileId)].filter(
+    (u): u is string => Boolean(u)
+  );
+  for (const url of urls) {
+    const img = new window.Image();
+    img.decoding = "async";
+    img.src = url;
+  }
+}
+
 export function ProductImagePreview({
+  thumbSrc,
   driveFileId,
   label,
   open,
   onClose,
 }: Props) {
+  const hiRes = hiResCandidate(thumbSrc, driveFileId);
+  const [hiResReady, setHiResReady] = useState(false);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setHiResReady(false);
+      return;
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -31,13 +62,31 @@ export function ProductImagePreview({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  useEffect(() => {
+    if (!open || !hiRes) return;
+    let cancelled = false;
+    const img = new window.Image();
+    img.decoding = "async";
+    img.onload = () => {
+      if (!cancelled) setHiResReady(true);
+    };
+    img.onerror = () => {
+      if (!cancelled) setHiResReady(false);
+    };
+    img.src = hiRes;
+    if (img.complete && img.naturalWidth > 0) {
+      setHiResReady(true);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [open, hiRes]);
 
-  const src = publicDriveImageUrl(driveFileId, 1280);
+  if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-3 backdrop-blur-[2px] sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label={label}
@@ -55,8 +104,9 @@ export function ProductImagePreview({
         className="relative h-[min(90vh,900px)] w-[min(92vw,720px)]"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Thumb já em cache no card → aparece na hora */}
         <Image
-          src={src}
+          src={thumbSrc}
           alt={label}
           fill
           priority
@@ -64,6 +114,17 @@ export function ProductImagePreview({
           className="rounded-lg object-contain drop-shadow-2xl"
           sizes="(max-width: 768px) 92vw, 720px"
         />
+        {hiResReady && hiRes ? (
+          <Image
+            src={hiRes}
+            alt=""
+            fill
+            priority
+            unoptimized
+            className="rounded-lg object-contain drop-shadow-2xl"
+            sizes="(max-width: 768px) 92vw, 720px"
+          />
+        ) : null}
       </div>
     </div>
   );

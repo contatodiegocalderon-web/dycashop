@@ -147,6 +147,9 @@ export default function AdminVarejoPage() {
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<PeriodKey>("last30");
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [confirmingDriveId, setConfirmingDriveId] = useState<string | null>(
+    null
+  );
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -207,6 +210,38 @@ export default function AdminVarejoPage() {
         setError(e instanceof Error ? e.message : "Erro ao salvar status");
       } finally {
         setSavingId(null);
+      }
+    },
+    [adminFetch]
+  );
+
+  const confirmDrive = useCallback(
+    async (orderId: string) => {
+      setConfirmingDriveId(orderId);
+      setError(null);
+      try {
+        const res = await adminFetch("/api/admin/varejo-orders/confirm-drive", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId }),
+        });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(data.error ?? "Falha ao confirmar Drive");
+        setOrders((list) =>
+          list.map((o) =>
+            o.id === orderId
+              ? {
+                  ...o,
+                  varejo_drive_pending: false,
+                  varejo_drive_warning: null,
+                }
+              : o
+          )
+        );
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Erro ao confirmar Drive");
+      } finally {
+        setConfirmingDriveId(null);
       }
     },
     [adminFetch]
@@ -295,11 +330,16 @@ export default function AdminVarejoPage() {
                 const statusOpt = FULFILLMENT_OPTIONS.find(
                   (o) => o.value === fulfillment
                 );
+                const drivePending = Boolean(order.varejo_drive_pending);
 
                 return (
                   <li
                     key={order.id}
-                    className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm"
+                    className={`rounded-2xl border bg-white p-4 shadow-sm ${
+                      drivePending
+                        ? "border-amber-400 ring-1 ring-amber-200"
+                        : "border-stone-200"
+                    }`}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -336,29 +376,52 @@ export default function AdminVarejoPage() {
                             WhatsApp
                           </a>
                         ) : null}
-                        <select
-                          value={fulfillment}
-                          disabled={savingId === order.id}
-                          onChange={(e) =>
-                            void updateFulfillment(
-                              order.id,
-                              e.target.value as FulfillmentStatus
-                            )
-                          }
-                          className={`rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-60 ${
-                            statusOpt?.className ??
-                            "border-stone-300 bg-white text-stone-800"
-                          }`}
-                          aria-label="Status de separação"
-                        >
-                          {FULFILLMENT_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
+                        {drivePending ? (
+                          <button
+                            type="button"
+                            disabled={confirmingDriveId === order.id}
+                            onClick={() => void confirmDrive(order.id)}
+                            className="rounded-xl border border-amber-500 bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+                          >
+                            {confirmingDriveId === order.id
+                              ? "Confirmando…"
+                              : "Confirmar"}
+                          </button>
+                        ) : (
+                          <select
+                            value={fulfillment}
+                            disabled={savingId === order.id}
+                            onChange={(e) =>
+                              void updateFulfillment(
+                                order.id,
+                                e.target.value as FulfillmentStatus
+                              )
+                            }
+                            className={`rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-60 ${
+                              statusOpt?.className ??
+                              "border-stone-300 bg-white text-stone-800"
+                            }`}
+                            aria-label="Status de separação"
+                          >
+                            {FULFILLMENT_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </div>
                     </div>
+
+                    {drivePending ? (
+                      <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
+                        <p className="font-semibold">Falha ao atualizar o Drive</p>
+                        <p className="mt-0.5 text-amber-900/90">
+                          {order.varejo_drive_warning?.trim() ||
+                            "O pagamento foi confirmado e o estoque do site já foi baixado. Clique em Confirmar para alinhar os nomes no Google Drive."}
+                        </p>
+                      </div>
+                    ) : null}
 
                     {items.length > 0 ? (
                       <ul className="mt-4 space-y-2">

@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMercadoPagoPayment } from "@/lib/mercadopago";
+import { applyPaidOrderStockAndDrive } from "@/lib/apply-paid-order-stock";
+import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
+import {
+  clearVarejoDriveSyncFailed,
+  hasVarejoStockApplied,
+  withVarejoDriveSync,
+  withVarejoStockApplied,
+} from "@/lib/varejo-drive-sync";
 
 export const runtime = "nodejs";
 
@@ -24,55 +32,57 @@ function extractPaymentId(request: NextRequest, body: unknown): string | null {
   return null;
 }
 
-async function deductStockForOrder(orderId: string): Promise<string | null> {
-  const admin = createAdminClient();
-  const { data: items, error: iErr } = await admin
+async function productIdsForOrder(
+  admin: ReturnType<typeof createAdminClient>,
+  orderId: string
+): Promise<string[]> {
+  const { data: items } = await admin
     .from("order_items")
-    .select("product_id, quantity")
+    .select("product_id")
     .eq("order_id", orderId);
+  return Array.from(
+    new Set(
+      (items ?? [])
+        .map((it) => String(it.product_id ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+}
 
-  if (iErr || !items?.length) {
-    return iErr?.message ?? "Itens do pedido não encontrados.";
-  }
-
-  const totals = new Map<string, number>();
-  for (const it of items) {
-    if (!it.product_id) continue;
-    totals.set(
-      it.product_id,
-      (totals.get(it.product_id) ?? 0) + Number(it.quantity ?? 0)
-    );
-  }
-
-  for (const [productId, qty] of Array.from(totals.entries())) {
-    const { data: product, error: pErr } = await admin
+async function deleteZeroStockProducts(
+  admin: ReturnType<typeof createAdminClient>,
+  productIds: string[]
+): Promise<void> {
+  for (const productId of productIds) {
+    const { data: p } = await admin
       .from("products")
-      .select("id, stock, status")
+      .select("id, stock")
       .eq("id", productId)
-      .single();
-    if (pErr || !product) {
-      return `Produto ${productId} não encontrado.`;
-    }
-    const available = Number(product.stock ?? 0);
-    if (available <= 0) {
-      return `Produto ${productId} sem estoque.`;
-    }
-    const deducted = Math.min(available, qty);
-    const newStock = available - deducted;
-    const { error: uErr } = await admin
-      .from("products")
-      .update({
-        stock: newStock,
-        status: newStock <= 0 ? "ESGOTADO" : product.status,
-      })
-      .eq("id", productId);
-    if (uErr) return uErr.message;
-    if (newStock <= 0) {
+      .maybeSingle();
+    if (p && Number(p.stock ?? 0) <= 0) {
       await admin.from("products").delete().eq("id", productId);
     }
   }
+}
 
-  return null;
+function buildMetaAfterDrive(opts: {
+  base: unknown;
+  productIds: string[];
+  driveOk: boolean;
+  driveErrors: { productId: string; message: string }[];
+}): Record<string, unknown> {
+  let meta = withVarejoStockApplied(opts.base);
+  if (opts.driveOk) {
+    meta = clearVarejoDriveSyncFailed(meta);
+  } else {
+    meta = withVarejoDriveSync(meta, {
+      status: "failed",
+      at: new Date().toISOString(),
+      product_ids: opts.productIds,
+      errors: opts.driveErrors.filter((e) => e.productId !== "_rollback"),
+    });
+  }
+  return meta;
 }
 
 export async function POST(request: NextRequest) {
@@ -104,9 +114,21 @@ export async function POST(request: NextRequest) {
     }
 
     const admin = createAdminClient();
+    const paymentIdStr = String(payment.id);
+
+    // Claim atómico: evita dois webhooks baixarem stock em paralelo.
+    const { data: claimed } = await admin
+      .from("orders")
+      .update({ mp_payment_id: paymentIdStr })
+      .eq("id", orderId)
+      .eq("status", "PENDENTE_PAGAMENTO")
+      .is("mp_payment_id", null)
+      .select("id, display_number, sale_amount_by_category")
+      .maybeSingle();
+
     const { data: order, error: oErr } = await admin
       .from("orders")
-      .select("id, status, checkout_channel")
+      .select("id, status, display_number, sale_amount_by_category, mp_payment_id")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -122,10 +144,92 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, ignored: true, status: order.status });
     }
 
-    const stockErr = await deductStockForOrder(orderId);
-    if (stockErr) {
-      console.error("[mp-webhook] stock:", stockErr);
-      return NextResponse.json({ error: stockErr }, { status: 409 });
+    if (String(order.mp_payment_id ?? "") !== paymentIdStr) {
+      return NextResponse.json({
+        ok: true,
+        ignored: true,
+        reason: "payment_claimed_by_other",
+      });
+    }
+
+    const dn = Number((order as { display_number?: unknown }).display_number);
+    const stockAlreadyApplied = hasVarejoStockApplied(
+      order.sale_amount_by_category
+    );
+
+    let driveRenamed = 0;
+    let flaggedPending = 0;
+    let driveOk = true;
+    let driveErrors: { productId: string; message: string }[] = [];
+    let productIds: string[] = [];
+    let meta: unknown = order.sale_amount_by_category;
+
+    if (!stockAlreadyApplied) {
+      if (!claimed) {
+        // Outro worker claimou e ainda não marcou stock — evita baixa duplicada.
+        return NextResponse.json({
+          ok: true,
+          deferred: true,
+          reason: "stock_in_progress",
+        });
+      }
+
+      const stockResult = await applyPaidOrderStockAndDrive(admin, {
+        orderId,
+        confirmedDisplayNumber:
+          Number.isFinite(dn) && dn > 0 ? dn : null,
+      });
+
+      if (!stockResult.ok) {
+        console.error("[mp-webhook] stock:", stockResult.error);
+        // Libera claim para o MP retentar.
+        await admin
+          .from("orders")
+          .update({ mp_payment_id: null })
+          .eq("id", orderId)
+          .eq("status", "PENDENTE_PAGAMENTO")
+          .eq("mp_payment_id", paymentIdStr);
+        return NextResponse.json(
+          { error: stockResult.error },
+          { status: stockResult.status }
+        );
+      }
+
+      driveRenamed = stockResult.driveRenamed;
+      flaggedPending = stockResult.flaggedPending;
+      driveOk = stockResult.driveOk;
+      driveErrors = stockResult.driveErrors;
+      productIds = stockResult.productIds;
+      meta = buildMetaAfterDrive({
+        base: order.sale_amount_by_category,
+        productIds,
+        driveOk,
+        driveErrors,
+      });
+
+      // Persiste marker antes de PAGO — se crashar, o retry não re-baixa.
+      await admin
+        .from("orders")
+        .update({ sale_amount_by_category: meta })
+        .eq("id", orderId)
+        .eq("status", "PENDENTE_PAGAMENTO");
+    } else {
+      productIds = await productIdsForOrder(admin, orderId);
+      if (productIds.length > 0) {
+        const rename = await renameDriveFilesToCurrentStock(productIds);
+        driveRenamed = rename.ok.length;
+        driveOk = rename.errors.length === 0;
+        driveErrors = rename.errors;
+        if (driveOk) {
+          await deleteZeroStockProducts(admin, productIds);
+        }
+      }
+      meta = buildMetaAfterDrive({
+        base: order.sale_amount_by_category,
+        productIds,
+        driveOk,
+        driveErrors,
+      });
     }
 
     const confirmedAt = new Date().toISOString();
@@ -134,16 +238,26 @@ export async function POST(request: NextRequest) {
       .update({
         status: "PAGO",
         confirmed_at: confirmedAt,
-        mp_payment_id: String(payment.id),
+        mp_payment_id: paymentIdStr,
+        sale_amount_by_category: meta,
       })
       .eq("id", orderId)
       .eq("status", "PENDENTE_PAGAMENTO");
 
     if (uErr) {
+      console.error("[mp-webhook] order update after stock:", uErr.message);
       return NextResponse.json({ error: uErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, orderId, paymentId: payment.id });
+    return NextResponse.json({
+      ok: true,
+      orderId,
+      paymentId: payment.id,
+      driveRenamed,
+      driveOk,
+      flaggedPending,
+      stockAlreadyApplied,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";
     return NextResponse.json({ error: msg }, { status: 500 });
