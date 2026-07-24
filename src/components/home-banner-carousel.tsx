@@ -10,31 +10,39 @@ type Props = {
 
 const AUTO_MS = 45_000;
 
-function BannerSlideImage({
-  banner,
-  priority,
-}: {
-  banner: HomeBanner;
-  priority?: boolean;
-}) {
-  const desktop = banner.image_url.trim();
-  const mobile = banner.image_url_mobile?.trim() || desktop;
-
+function slideSrc(banner: HomeBanner): string {
   return (
-    <picture>
-      <source media="(max-width: 767px)" srcSet={mobile} />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={desktop}
-        alt=""
-        width={1600}
-        height={600}
-        decoding="async"
-        loading={priority ? "eager" : "lazy"}
-        fetchPriority={priority ? "high" : "auto"}
-        className="block h-auto w-full md:max-h-[280px] md:object-contain md:object-center"
-      />
-    </picture>
+    banner.image_url_mobile?.trim() ||
+    banner.image_url.trim()
+  );
+}
+
+function BannerHref({
+  href,
+  children,
+}: {
+  href: string | null | undefined;
+  children: React.ReactNode;
+}) {
+  const raw = href?.trim();
+  if (!raw) return <div className="w-full">{children}</div>;
+  if (/^https?:\/\//i.test(raw)) {
+    return (
+      <a
+        href={raw}
+        className="block w-full"
+        aria-label="Abrir banner"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link href={raw} className="block w-full" aria-label="Abrir banner">
+      {children}
+    </Link>
   );
 }
 
@@ -56,6 +64,21 @@ export function HomeBannerCarousel({ banners }: Props) {
     setIndex(0);
   }, [count]);
 
+  // Pré-carrega todas as imagens (mobile) no cache do browser.
+  const preloadKey = slides.map((s) => `${s.id}:${slideSrc(s)}`).join("|");
+  useEffect(() => {
+    if (typeof window === "undefined" || !preloadKey) return;
+    const urls = Array.from(
+      new Set(slides.map(slideSrc).filter(Boolean))
+    );
+    for (const url of urls) {
+      const img = new window.Image();
+      img.decoding = "async";
+      img.src = url;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- preloadKey cobre urls
+  }, [preloadKey]);
+
   useEffect(() => {
     if (count <= 1 || paused) return;
     const t = window.setInterval(() => {
@@ -66,12 +89,6 @@ export function HomeBannerCarousel({ banners }: Props) {
 
   if (count === 0) return null;
 
-  const current = slides[index]!;
-
-  const media = (
-    <BannerSlideImage banner={current} priority={index === 0} />
-  );
-
   return (
     <div
       className="relative mx-auto mb-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-white/[0.06] md:hidden"
@@ -80,34 +97,36 @@ export function HomeBannerCarousel({ banners }: Props) {
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
     >
-      <div className="relative w-full md:max-h-[280px]">
-        {current.href?.trim() ? (
-          (() => {
-            const href = current.href.trim();
-            const external = /^https?:\/\//i.test(href);
-            const className = "block w-full";
-            if (external) {
-              return (
-                <a
-                  href={href}
-                  className={className}
-                  aria-label="Abrir banner"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {media}
-                </a>
-              );
-            }
-            return (
-              <Link href={href} className={className} aria-label="Abrir banner">
-                {media}
-              </Link>
-            );
-          })()
-        ) : (
-          <div className="w-full">{media}</div>
-        )}
+      <div className="relative w-full">
+        {slides.map((slide, i) => {
+          const src = slideSrc(slide);
+          const active = i === index;
+          return (
+            <div
+              key={slide.id}
+              className={
+                active
+                  ? "relative w-full"
+                  : "pointer-events-none absolute left-0 top-0 w-full opacity-0"
+              }
+              aria-hidden={!active}
+            >
+              <BannerHref href={active ? slide.href : null}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={src}
+                  alt=""
+                  width={1080}
+                  height={600}
+                  decoding="async"
+                  loading="eager"
+                  fetchPriority={i === 0 ? "high" : "low"}
+                  className="block h-auto w-full"
+                />
+              </BannerHref>
+            </div>
+          );
+        })}
 
         {count > 1 ? (
           <>
