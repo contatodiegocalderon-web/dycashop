@@ -298,6 +298,7 @@ export async function POST(request: NextRequest) {
         shipping_service: shippingLabel || shippingService,
         checkout_channel: "VAREJO_MP",
         sales_channel: "VAREJO",
+        varejo_fulfillment_status: "EM_ABERTO",
         customer_note: `CEP ${shippingAddress.cep} — ${shippingAddress.street}, ${shippingAddress.number}`,
       })
       .select("id, display_number")
@@ -306,8 +307,8 @@ export async function POST(request: NextRequest) {
     if (oErr || !order) {
       const msg = oErr?.message ?? "Falha ao criar pedido";
       const hint =
-        /shipping_address|checkout_channel|mp_preference_id/i.test(msg)
-          ? "Execute o SQL em supabase/migration_varejo_checkout.sql no painel do Supabase."
+        /shipping_address|checkout_channel|mp_preference_id|varejo_fulfillment_status/i.test(msg)
+          ? "Execute o SQL em supabase/migration_varejo_checkout.sql e migration_varejo_fulfillment_status.sql no painel do Supabase."
           : undefined;
       return NextResponse.json(
         { error: msg, ...(hint ? { hint } : {}) },

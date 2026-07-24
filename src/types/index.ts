@@ -121,6 +121,8 @@ export interface OrderRow {
     cpf?: string;
     recipientName?: string | null;
   } | null;
+  /** Operacional varejo: EM_ABERTO | SEPARADO | DESPACHADO */
+  varejo_fulfillment_status?: "EM_ABERTO" | "SEPARADO" | "DESPACHADO" | null;
   sales_channel?: string | null;
   checkout_channel?: string | null;
   mp_payment_id?: string | null;
