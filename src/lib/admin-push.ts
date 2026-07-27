@@ -123,8 +123,8 @@ export async function notifyAdminsNewPendingOrder(opts: {
     await sendAdminPush({
       title: "Novo pedido! 💰",
       body: n
-        ? `Pedido ${n} (${channel}) aguardando no admin.`
-        : `Novo pedido ${channel} aguardando no admin.`,
+        ? `Pedido ${n} (${channel}).`
+        : `Novo pedido ${channel}.`,
       url:
         opts.channel === "VAREJO" ? "/admin/varejo" : "/admin/pedidos",
       tag: `order-pending-${opts.displayNumber ?? Date.now()}`,
@@ -144,9 +144,7 @@ export async function notifyAdminsVarejoPaid(opts: {
   try {
     await sendAdminPush({
       title: "Venda varejo paga! ✅",
-      body: n
-        ? `Pedido ${n} pago no Mercado Pago.`
-        : "Pedido varejo pago no Mercado Pago.",
+      body: n ? `Pedido ${n} pago.` : "Pedido varejo pago.",
       url: "/admin/varejo",
       tag: `order-paid-${opts.displayNumber ?? Date.now()}`,
     });
