@@ -11,7 +11,10 @@ import type {
 } from "@/types";
 import { StockConflictNotice } from "@/components/stock-conflict-notice";
 import { orderItemImageUrl } from "@/lib/order-item-image-url";
-import { parseOrderStockConflict } from "@/lib/order-stock-conflict";
+import {
+  orderItemHasStockConflict,
+  parseOrderStockConflict,
+} from "@/lib/order-stock-conflict";
 
 type SellerFilterOption = { value: string; label: string };
 
@@ -580,10 +583,7 @@ export default function AdminPedidosClient() {
                   )}
                   {stockConflict && (
                     <div className="mt-2 max-w-xl">
-                      <StockConflictNotice
-                        conflict={stockConflict}
-                        variant="admin"
-                      />
+                      <StockConflictNotice variant="admin" />
                     </div>
                   )}
                   {driveLocked && (
@@ -961,7 +961,12 @@ export default function AdminPedidosClient() {
                         Tamanho {size}
                       </h3>
                       <ul className="grid gap-3 sm:grid-cols-2">
-                        {list.map((it) => (
+                        {list.map((it) => {
+                          const soldOut = orderItemHasStockConflict(
+                            it,
+                            stockConflict
+                          );
+                          return (
                           <li
                             key={it.id}
                             className="flex gap-3 rounded-xl border border-stone-100 bg-stone-50/80 p-2"
@@ -975,6 +980,11 @@ export default function AdminPedidosClient() {
                                 loading="lazy"
                                 decoding="async"
                               />
+                              {soldOut ? (
+                                <span className="absolute inset-x-0 bottom-0 bg-red-700/95 px-0.5 py-0.5 text-center text-[9px] font-bold uppercase leading-tight tracking-wide text-white">
+                                  esgotado
+                                </span>
+                              ) : null}
                             </div>
                             <div className="min-w-0 text-sm">
                               <p className="font-medium text-stone-900">
@@ -983,7 +993,8 @@ export default function AdminPedidosClient() {
                               </p>
                             </div>
                           </li>
-                        ))}
+                          );
+                        })}
                       </ul>
                     </div>
                   );

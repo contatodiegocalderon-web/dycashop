@@ -11,6 +11,7 @@ import {
   isVarejoOnlineOrder,
 } from "@/lib/order-receipt";
 import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
+import { orderItemHasStockConflict } from "@/lib/order-stock-conflict";
 import { orderItemImageUrl } from "@/lib/order-item-image-url";
 import type { OrderItemRow, OrderStatus, ProductSize } from "@/types";
 
@@ -136,7 +137,7 @@ export default async function ReciboPage({ params, searchParams }: Props) {
         ) : null}
 
         {order.stock_conflict ? (
-          <StockConflictNotice conflict={order.stock_conflict} variant="client" />
+          <StockConflictNotice variant="client" />
         ) : showVarejoConfirmed ? (
           <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/35 px-4 py-4 ring-1 ring-emerald-500/20">
             <p className="text-base font-semibold text-emerald-100">
@@ -192,18 +193,30 @@ export default async function ReciboPage({ params, searchParams }: Props) {
                   Tamanho {size}
                 </h2>
                 <ul className="space-y-3">
-                  {list.map((it) => (
+                  {list.map((it) => {
+                    const soldOut = orderItemHasStockConflict(
+                      it,
+                      order.stock_conflict
+                    );
+                    return (
                     <li
                       key={it.id}
                       className="flex gap-3 rounded-xl border border-white/[0.06] bg-zinc-900/40 p-3 ring-1 ring-white/[0.03]"
                     >
-                      <ClickableImageThumb
-                        src={itemImageSrc(it)}
-                        driveFileId={it.snapshot_drive_file_id}
-                        label={`${it.snapshot_brand} — ${it.snapshot_color}`}
-                        className="relative h-24 w-[4.5rem] shrink-0 overflow-hidden rounded-lg bg-zinc-950"
-                        sizes="72px"
-                      />
+                      <div className="relative shrink-0">
+                        <ClickableImageThumb
+                          src={itemImageSrc(it)}
+                          driveFileId={it.snapshot_drive_file_id}
+                          label={`${it.snapshot_brand} — ${it.snapshot_color}`}
+                          className="relative h-24 w-[4.5rem] shrink-0 overflow-hidden rounded-lg bg-zinc-950"
+                          sizes="72px"
+                        />
+                        {soldOut ? (
+                          <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-red-700/95 px-0.5 py-0.5 text-center text-[10px] font-bold uppercase leading-tight tracking-wide text-white">
+                            esgotado
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="min-w-0 flex-1 py-0.5">
                         <p className="font-medium text-stone-100">
                           {it.snapshot_brand}{" "}
@@ -218,7 +231,8 @@ export default async function ReciboPage({ params, searchParams }: Props) {
                         </p>
                       </div>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </section>
             );

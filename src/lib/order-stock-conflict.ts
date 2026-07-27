@@ -92,6 +92,33 @@ export const STOCK_CONFLICT_CLIENT_MESSAGE = MESSAGES.sold_out_other_order.clien
 /** @deprecated Use stockConflictMessage */
 export const STOCK_CONFLICT_ADMIN_MESSAGE = MESSAGES.sold_out_other_order.admin;
 
+/** Indica se um item do pedido está no conflito de stock. */
+export function orderItemHasStockConflict(
+  item: {
+    product_id?: string | null;
+    snapshot_brand: string;
+    snapshot_color: string;
+    snapshot_size: string;
+  },
+  conflict: OrderStockConflict | null | undefined
+): boolean {
+  if (!conflict?.items?.length) return false;
+  return conflict.items.some((c) => {
+    if (c.product_id && item.product_id && c.product_id === item.product_id) {
+      return true;
+    }
+    return (
+      c.brand.localeCompare(item.snapshot_brand, undefined, {
+        sensitivity: "accent",
+      }) === 0 &&
+      c.color.localeCompare(item.snapshot_color, undefined, {
+        sensitivity: "accent",
+      }) === 0 &&
+      c.size === item.snapshot_size
+    );
+  });
+}
+
 export function parseOrderStockConflict(raw: unknown): OrderStockConflict | null {
   if (raw == null || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
