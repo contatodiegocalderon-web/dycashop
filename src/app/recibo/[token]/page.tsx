@@ -1,6 +1,6 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ClickableImageThumb } from "@/components/clickable-image-thumb";
 import { fetchOrderDisplayNumberPublic } from "@/lib/order-display-number";
 import { ReceiptCancelledMessage } from "@/components/receipt-cancelled";
 import { StockConflictNotice } from "@/components/stock-conflict-notice";
@@ -197,16 +197,13 @@ export default async function ReciboPage({ params, searchParams }: Props) {
                       key={it.id}
                       className="flex gap-3 rounded-xl border border-white/[0.06] bg-zinc-900/40 p-3 ring-1 ring-white/[0.03]"
                     >
-                      <div className="relative h-24 w-[4.5rem] shrink-0 overflow-hidden rounded-lg bg-zinc-950">
-                        <Image
-                          src={itemImageSrc(it)}
-                          alt=""
-                          fill
-                          unoptimized
-                          className="object-cover"
-                          sizes="72px"
-                        />
-                      </div>
+                      <ClickableImageThumb
+                        src={itemImageSrc(it)}
+                        driveFileId={it.snapshot_drive_file_id}
+                        label={`${it.snapshot_brand} — ${it.snapshot_color}`}
+                        className="relative h-24 w-[4.5rem] shrink-0 overflow-hidden rounded-lg bg-zinc-950"
+                        sizes="72px"
+                      />
                       <div className="min-w-0 flex-1 py-0.5">
                         <p className="font-medium text-stone-100">
                           {it.snapshot_brand}{" "}

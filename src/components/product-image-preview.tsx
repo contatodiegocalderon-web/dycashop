@@ -7,22 +7,28 @@ import { publicDriveImageUrl } from "@/lib/drive-image-url";
 type Props = {
   /** URL já usada no card (cache do browser → abre na hora). */
   thumbSrc: string;
-  driveFileId: string;
+  /** Se existir e o thumb for proxy Drive, tenta carregar versão maior. */
+  driveFileId?: string | null;
   label: string;
   open: boolean;
   onClose: () => void;
 };
 
 /** Versão maior só quando o thumb veio do proxy Drive (Storage já costuma ser full). */
-function hiResCandidate(thumbSrc: string, driveFileId: string): string | null {
+function hiResCandidate(
+  thumbSrc: string,
+  driveFileId?: string | null
+): string | null {
+  const fid = driveFileId?.trim();
+  if (!fid) return null;
   if (!thumbSrc.includes("/api/drive-image/")) return null;
-  const hi = publicDriveImageUrl(driveFileId, 960);
+  const hi = publicDriveImageUrl(fid, 960);
   return hi === thumbSrc ? null : hi;
 }
 
 export function prefetchProductPreview(
   thumbSrc: string,
-  driveFileId: string
+  driveFileId?: string | null
 ): void {
   if (typeof window === "undefined") return;
   const urls = [thumbSrc, hiResCandidate(thumbSrc, driveFileId)].filter(

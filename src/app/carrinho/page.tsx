@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -14,6 +13,7 @@ import { buildOrderWhatsAppText, waMeUrl } from "@/lib/whatsapp";
 import { CartOrderSummary } from "@/components/cart-order-summary";
 import { CartShippingQuote } from "@/components/cart-shipping-quote";
 import { CartVarejoShippingAddress } from "@/components/cart-varejo-shipping-address";
+import { ClickableImageThumb } from "@/components/clickable-image-thumb";
 import { computeCartPricing, formatMoneyBrl } from "@/lib/cart-pricing";
 import type { ShippingAddress } from "@/lib/shipping-address";
 import { totalsByCategoryFromCartLines } from "@/lib/order-category-totals";
@@ -680,16 +680,13 @@ export default function CarrinhoPage() {
                       key={line.productId}
                       className="flex gap-3 border-b border-white/[0.06] pb-4 last:border-0 last:pb-0"
                     >
-                      <div className="relative h-[4.5rem] w-[3.25rem] shrink-0 overflow-hidden rounded-md bg-zinc-950">
-                        <Image
-                          src={line.product.drive_image_url}
-                          alt=""
-                          fill
-                          unoptimized
-                          className="object-cover"
-                          sizes="52px"
-                        />
-                      </div>
+                      <ClickableImageThumb
+                        src={line.product.drive_image_url}
+                        driveFileId={line.product.drive_file_id}
+                        label={`${line.product.brand} — ${line.product.color}`}
+                        className="relative h-[4.5rem] w-[3.25rem] shrink-0 overflow-hidden rounded-md bg-zinc-950"
+                        sizes="52px"
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-3">
                           <p className="font-medium text-stone-100">
