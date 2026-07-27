@@ -682,7 +682,7 @@ export default function CarrinhoPage() {
                     >
                       <ClickableImageThumb
                         src={line.product.drive_image_url}
-                        driveFileId={line.product.drive_file_id}
+                        driveFileId={line.driveFileId}
                         label={`${line.product.brand} — ${line.product.color}`}
                         className="relative h-[4.5rem] w-[3.25rem] shrink-0 overflow-hidden rounded-md bg-zinc-950"
                         sizes="52px"
