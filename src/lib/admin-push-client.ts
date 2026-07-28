@@ -41,8 +41,12 @@ export async function ensureAdminPushSubscription(
   const { publicKey } = (await keyRes.json()) as { publicKey?: string };
   if (!publicKey) return { ok: false, reason: "vapid" };
 
-  const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  const reg = await navigator.serviceWorker.register("/sw.js", {
+    scope: "/",
+    updateViaCache: "none",
+  });
   await navigator.serviceWorker.ready;
+  void reg.update();
 
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {

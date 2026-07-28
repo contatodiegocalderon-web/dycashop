@@ -60,6 +60,7 @@ export async function sendAdminPush(
     body: payload.body,
     url: payload.url ?? "/admin/pedidos",
     tag: payload.tag ?? "dycashop-admin",
+    playSound: true,
   });
 
   let sent = 0;

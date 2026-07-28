@@ -13,6 +13,10 @@ import {
   type ReactNode,
 } from "react";
 import { ensureAdminPushSubscription } from "@/lib/admin-push-client";
+import {
+  playAdminSaleSound,
+  warmAdminSaleSound,
+} from "@/lib/admin-sale-sound";
 
 export const ADMIN_KEY_STORAGE = "admin_api_key";
 
@@ -219,13 +223,17 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   const notifyNewOrder = useCallback((nextCount: number, prevCount: number) => {
     const delta = Math.max(1, nextCount - prevCount);
+    playAdminSaleSound();
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
     const body =
       delta > 1
         ? `${delta} novos pedidos pendentes.`
         : "Novo pedido pendente no admin.";
-    void new Notification("Novo pedido realizado! 💰", { body });
+    void new Notification("Novo pedido realizado! 💰", {
+      body,
+      silent: false,
+    });
   }, []);
 
   useEffect(() => {
@@ -263,6 +271,19 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
+    warmAdminSaleSound();
+
+    const onSwMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || typeof data !== "object") return;
+      if ((data as { type?: string }).type !== "DYCASHOP_ADMIN_PUSH") return;
+      if ((data as { playSound?: boolean }).playSound === false) return;
+      playAdminSaleSound();
+    };
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("message", onSwMessage);
+    }
+
     const tick = async () => {
       const next = await refreshPendingOrdersCount();
       if (next == null) return;
@@ -277,7 +298,12 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     const id = window.setInterval(() => {
       void tick();
     }, 15000);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.removeEventListener("message", onSwMessage);
+      }
+    };
   }, [
     ready,
     session,

@@ -12,6 +12,8 @@ self.addEventListener("push", (event) => {
     title: "DYCASHOP",
     body: "Nova atualização no admin.",
     url: "/admin/pedidos",
+    tag: "dycashop-admin",
+    playSound: true,
   };
   try {
     if (event.data) {
@@ -28,35 +30,57 @@ self.addEventListener("push", (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(data.title || "DYCASHOP", {
-      body: data.body || "",
-      icon: "/brand-logo.png",
-      badge: "/brand-logo.png",
-      data: { url: data.url || "/admin/pedidos" },
-      tag: data.tag || "dycashop-admin",
-      renotify: true,
-    })
+    (async () => {
+      const clients = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const client of clients) {
+        client.postMessage({
+          type: "DYCASHOP_ADMIN_PUSH",
+          title: data.title,
+          body: data.body,
+          url: data.url,
+          playSound: data.playSound !== false,
+        });
+      }
+
+      await self.registration.showNotification(data.title || "DYCASHOP", {
+        body: data.body || "",
+        icon: "/brand-logo.png",
+        badge: "/brand-logo.png",
+        data: { url: data.url || "/admin/pedidos" },
+        tag: data.tag || "dycashop-admin",
+        renotify: true,
+        silent: false,
+        // Vibração tipo "dinheiro" (Android / PWA)
+        vibrate: [80, 40, 80, 40, 160, 60, 220],
+      });
+    })()
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || "/admin/pedidos";
+  const target =
+    (event.notification.data && event.notification.data.url) || "/admin/pedidos";
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if ("focus" in client) {
-          client.focus();
-          if ("navigate" in client) {
-            return client.navigate(target);
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          if ("focus" in client) {
+            client.focus();
+            if ("navigate" in client) {
+              return client.navigate(target);
+            }
+            return undefined;
           }
-          return undefined;
         }
-      }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(target);
-      }
-      return undefined;
-    })
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(target);
+        }
+        return undefined;
+      })
   );
 });
