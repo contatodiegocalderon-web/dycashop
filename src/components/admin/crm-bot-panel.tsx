@@ -29,6 +29,7 @@ export function CrmBotPanel({
 }: Props) {
   const { adminFetch } = useAdminAuth();
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tickInFlight = useRef(false);
 
   const [phase, setPhase] = useState<Phase>("config");
   const [error, setError] = useState<string | null>(null);
@@ -78,19 +79,25 @@ export function CrmBotPanel({
 
   const runTick = useCallback(
     async (id: string) => {
-      const res = await adminFetch(`/api/admin/crm/bot/campaigns/${id}/tick`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Falha no envio");
-      setConnectionState(data.connectionState ?? null);
-      if (data.campaign) setCampaign(data.campaign as CrmBotCampaignRow);
-      if (data.completed) {
-        setPhase("done");
-        stopTick();
-        onCampaignCompleted?.();
+      if (tickInFlight.current) return;
+      tickInFlight.current = true;
+      try {
+        const res = await adminFetch(`/api/admin/crm/bot/campaigns/${id}/tick`, {
+          method: "POST",
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Falha no envio");
+        setConnectionState(data.connectionState ?? null);
+        if (data.campaign) setCampaign(data.campaign as CrmBotCampaignRow);
+        if (data.completed) {
+          setPhase("done");
+          stopTick();
+          onCampaignCompleted?.();
+        }
+        await refreshCampaign(id);
+      } finally {
+        tickInFlight.current = false;
       }
-      await refreshCampaign(id);
     },
     [adminFetch, refreshCampaign, stopTick, onCampaignCompleted]
   );
@@ -117,18 +124,27 @@ export function CrmBotPanel({
     })();
   }, [adminFetch]);
 
+  const runTickRef = useRef(runTick);
+  runTickRef.current = runTick;
+
   useEffect(() => {
     if ((phase === "running" || phase === "connecting") && campaignId) {
       stopTick();
+      const configured =
+        campaign?.seconds_per_person ?? secondsPerPerson ?? 10;
+      const intervalMs = Math.max(2000, Math.min(5000, configured * 1000));
+      const id = campaignId;
       tickRef.current = setInterval(() => {
-        void runTick(campaignId).catch((e) =>
+        void runTickRef.current(id).catch((e) =>
           setError(e instanceof Error ? e.message : "Erro no bot")
         );
-      }, 5000);
-      void runTick(campaignId).catch(() => {});
+      }, intervalMs);
+      void runTickRef.current(id).catch(() => {});
     }
     return () => stopTick();
-  }, [phase, campaignId, runTick, stopTick]);
+    // Intencionalmente sem runTick/campaign: evita reiniciar o poll a cada refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- poll estável por phase/campaignId
+  }, [phase, campaignId, stopTick, secondsPerPerson]);
 
   useEffect(() => {
     if (selectedCount > 0 && variationCount > selectedCount) {

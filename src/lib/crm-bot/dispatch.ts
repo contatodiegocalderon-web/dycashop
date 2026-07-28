@@ -7,10 +7,99 @@ import {
 } from "@/lib/crm-bot/evolution";
 import type { CrmBotCampaignRow } from "@/lib/crm-bot/types";
 
-const MAX_SENDS_PER_TICK = 3;
+/** Um envio por tick — o intervalo real vem de scheduled_at (seconds_per_person). */
+const MAX_SENDS_PER_TICK = 1;
+
+/** Claims órfãos (crash a meio) liberam após este tempo. */
+const STALE_CLAIM_MS = 2 * 60 * 1000;
+
+type Admin = ReturnType<typeof createAdminClient>;
+
+type RecipientRow = {
+  id: string;
+  customer_whatsapp: string;
+  message_text: string;
+  error_message: string | null;
+};
+
+function makeClaimToken(): string {
+  return `claim:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function claimAgeMs(errorMessage: string | null): number | null {
+  const m = /^claim:(\d+):/.exec(errorMessage ?? "");
+  if (!m) return null;
+  const ts = Number(m[1]);
+  if (!Number.isFinite(ts)) return null;
+  return Date.now() - ts;
+}
+
+async function releaseStaleClaims(admin: Admin, campaignId: string) {
+  const { data: rows, error } = await admin
+    .from("crm_bot_recipients")
+    .select("id, error_message")
+    .eq("campaign_id", campaignId)
+    .eq("status", "pending")
+    .like("error_message", "claim:%")
+    .limit(50);
+
+  if (error || !rows?.length) return;
+
+  for (const row of rows as Array<{ id: string; error_message: string | null }>) {
+    const age = claimAgeMs(row.error_message);
+    if (age == null || age < STALE_CLAIM_MS) continue;
+    await admin
+      .from("crm_bot_recipients")
+      .update({
+        error_message: null,
+      })
+      .eq("id", row.id)
+      .eq("status", "pending")
+      .like("error_message", "claim:%");
+  }
+}
+
+/**
+ * Reserva atomicamente o próximo destinatário due.
+ * Usa error_message como token de claim (sem alterar o CHECK de status).
+ * Dois ticks em paralelo: só um consegue o update com error_message IS NULL.
+ */
+async function claimNextDueRecipient(
+  admin: Admin,
+  campaignId: string
+): Promise<(RecipientRow & { claimToken: string }) | null> {
+  const now = new Date().toISOString();
+  const { data: dueRows, error: dueErr } = await admin
+    .from("crm_bot_recipients")
+    .select("id, customer_whatsapp, message_text, error_message")
+    .eq("campaign_id", campaignId)
+    .eq("status", "pending")
+    .is("error_message", null)
+    .lte("scheduled_at", now)
+    .order("scheduled_at", { ascending: true })
+    .limit(1);
+
+  if (dueErr) throw new Error(dueErr.message);
+  const candidate = (dueRows?.[0] ?? null) as RecipientRow | null;
+  if (!candidate) return null;
+
+  const claimToken = makeClaimToken();
+  const { data: claimed, error: claimErr } = await admin
+    .from("crm_bot_recipients")
+    .update({ error_message: claimToken })
+    .eq("id", candidate.id)
+    .eq("status", "pending")
+    .is("error_message", null)
+    .select("id, customer_whatsapp, message_text, error_message")
+    .maybeSingle();
+
+  if (claimErr) throw new Error(claimErr.message);
+  if (!claimed) return null;
+  return { ...(claimed as RecipientRow), claimToken };
+}
 
 export async function processCampaignTick(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: Admin,
   campaign: CrmBotCampaignRow
 ): Promise<{
   sentThisTick: number;
@@ -62,26 +151,14 @@ export async function processCampaignTick(
       .eq("id", campaign.id);
   }
 
-  const now = new Date().toISOString();
-  const { data: dueRows, error: dueErr } = await admin
-    .from("crm_bot_recipients")
-    .select("id, customer_whatsapp, message_text")
-    .eq("campaign_id", campaign.id)
-    .eq("status", "pending")
-    .lte("scheduled_at", now)
-    .order("scheduled_at", { ascending: true })
-    .limit(MAX_SENDS_PER_TICK);
-
-  if (dueErr) throw new Error(dueErr.message);
+  await releaseStaleClaims(admin, campaign.id);
 
   let sentThisTick = 0;
 
-  for (const row of dueRows ?? []) {
-    const r = row as {
-      id: string;
-      customer_whatsapp: string;
-      message_text: string;
-    };
+  for (let i = 0; i < MAX_SENDS_PER_TICK; i += 1) {
+    const r = await claimNextDueRecipient(admin, campaign.id);
+    if (!r) break;
+
     try {
       if (isEvolutionConfigured()) {
         if (campaign.media_base64 && campaign.media_mimetype) {
@@ -94,20 +171,29 @@ export async function processCampaignTick(
           await sendEvolutionText(instance, r.customer_whatsapp, r.message_text);
         }
       }
-      await admin
+      const { data: marked } = await admin
         .from("crm_bot_recipients")
         .update({
           status: "sent",
           sent_at: new Date().toISOString(),
+          error_message: null,
         })
-        .eq("id", r.id);
-      sentThisTick += 1;
+        .eq("id", r.id)
+        .eq("status", "pending")
+        .eq("error_message", r.claimToken)
+        .select("id")
+        .maybeSingle();
+
+      // Outro worker já processou — não conta de novo
+      if (marked) sentThisTick += 1;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao enviar";
       await admin
         .from("crm_bot_recipients")
         .update({ status: "failed", error_message: msg })
-        .eq("id", r.id);
+        .eq("id", r.id)
+        .eq("status", "pending")
+        .eq("error_message", r.claimToken);
       await admin
         .from("crm_bot_campaigns")
         .update({

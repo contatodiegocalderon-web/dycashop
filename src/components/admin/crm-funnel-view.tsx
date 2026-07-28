@@ -832,6 +832,11 @@ export function CrmFunnelView({
     }
   }, [activeTab, loadAbandoned, loadOpen, loadClients]);
 
+  const onBotCampaignCompleted = useCallback(() => {
+    void load();
+    void loadStats();
+  }, [load, loadStats]);
+
   useEffect(() => {
     void loadStats();
   }, [loadStats]);
@@ -1045,10 +1050,7 @@ export function CrmFunnelView({
             onStartSelection={startBotSelection}
             onCloseSelection={closeBotSelection}
             onClose={closeBotPanel}
-            onCampaignCompleted={() => {
-              void load();
-              void loadStats();
-            }}
+            onCampaignCompleted={onBotCampaignCompleted}
           />
         </div>
       )}
