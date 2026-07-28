@@ -98,7 +98,7 @@ export default async function ReciboPage({ params, searchParams }: Props) {
       (order.status === "PENDENTE_PAGAMENTO" && order.checkout_channel === "VAREJO_MP"));
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto max-w-2xl px-4 py-8" data-receipt-build="sc-v2">
       <nav className="mb-6 text-sm text-stone-500">
         <Link href="/" className="text-stone-400 hover:text-stone-200">
           ← Catálogo

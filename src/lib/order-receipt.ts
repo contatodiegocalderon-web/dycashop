@@ -93,8 +93,20 @@ export async function getOrderReceiptByToken(
 
   const row = data as OrderRow & {
     order_items?: OrderItemRow[] | null;
+    stock_conflict?: unknown;
   };
   const items = row.order_items ?? [];
+
+  // Leitura extra só de stock_conflict — evita cache/stale do select aninhado no recibo.
+  let stockConflictRaw: unknown = row.stock_conflict;
+  const { data: conflictRow } = await admin
+    .from("orders")
+    .select("stock_conflict")
+    .eq("id", row.id)
+    .maybeSingle();
+  if (conflictRow && "stock_conflict" in conflictRow) {
+    stockConflictRaw = (conflictRow as { stock_conflict?: unknown }).stock_conflict;
+  }
 
   return {
     order: {
@@ -112,9 +124,7 @@ export async function getOrderReceiptByToken(
       sales_channel: (row as { sales_channel?: string | null }).sales_channel ?? null,
       checkout_channel:
         (row as { checkout_channel?: string | null }).checkout_channel ?? null,
-      stock_conflict: parseOrderStockConflict(
-        (row as { stock_conflict?: unknown }).stock_conflict
-      ),
+      stock_conflict: parseOrderStockConflict(stockConflictRaw),
       created_at: row.created_at,
       updated_at: row.updated_at,
     },
