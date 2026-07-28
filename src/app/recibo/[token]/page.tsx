@@ -21,6 +21,8 @@ type Props = {
 };
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
 

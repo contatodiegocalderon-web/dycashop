@@ -35,5 +35,13 @@ export function createAdminClient() {
   }
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      // Next.js cacheia fetch por defeito — recibo/admin precisam de dados frescos (ex.: stock_conflict).
+      fetch: (input, init) =>
+        fetch(input, {
+          ...init,
+          cache: "no-store",
+        }),
+    },
   });
 }

@@ -103,25 +103,34 @@ export function orderItemHasStockConflict(
   conflict: OrderStockConflict | null | undefined
 ): boolean {
   if (!conflict?.items?.length) return false;
+  const brand = String(item.snapshot_brand ?? "").trim();
+  const color = String(item.snapshot_color ?? "").trim();
+  const size = String(item.snapshot_size ?? "").trim();
   return conflict.items.some((c) => {
     if (c.product_id && item.product_id && c.product_id === item.product_id) {
       return true;
     }
     return (
-      c.brand.localeCompare(item.snapshot_brand, undefined, {
-        sensitivity: "accent",
-      }) === 0 &&
-      c.color.localeCompare(item.snapshot_color, undefined, {
-        sensitivity: "accent",
-      }) === 0 &&
-      c.size === item.snapshot_size
+      c.brand.localeCompare(brand, "pt-BR", { sensitivity: "base" }) === 0 &&
+      c.color.localeCompare(color, "pt-BR", { sensitivity: "base" }) === 0 &&
+      c.size.localeCompare(size, "pt-BR", { sensitivity: "base" }) === 0
     );
   });
 }
 
 export function parseOrderStockConflict(raw: unknown): OrderStockConflict | null {
-  if (raw == null || typeof raw !== "object") return null;
-  const o = raw as Record<string, unknown>;
+  let value: unknown = raw;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    try {
+      value = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+  if (value == null || typeof value !== "object") return null;
+  const o = value as Record<string, unknown>;
   const itemsRaw = o.items;
   if (!Array.isArray(itemsRaw) || itemsRaw.length === 0) return null;
   const items: OrderStockConflictItem[] = [];
