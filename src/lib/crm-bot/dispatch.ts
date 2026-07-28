@@ -7,7 +7,7 @@ import {
 } from "@/lib/crm-bot/evolution";
 import type { CrmBotCampaignRow } from "@/lib/crm-bot/types";
 
-/** Um envio por tick — o intervalo real vem de scheduled_at (seconds_per_person). */
+/** Um envio por tick — intervalo real medido desde o último envio. */
 const MAX_SENDS_PER_TICK = 1;
 
 /** Claims órfãos (crash a meio) liberam após este tempo. */
@@ -20,6 +20,7 @@ type RecipientRow = {
   customer_whatsapp: string;
   message_text: string;
   error_message: string | null;
+  group_index: number;
 };
 
 function makeClaimToken(): string {
@@ -59,29 +60,80 @@ async function releaseStaleClaims(admin: Admin, campaignId: string) {
   }
 }
 
+async function releaseClaim(
+  admin: Admin,
+  recipientId: string,
+  claimToken: string
+) {
+  await admin
+    .from("crm_bot_recipients")
+    .update({ error_message: null })
+    .eq("id", recipientId)
+    .eq("status", "pending")
+    .eq("error_message", claimToken);
+}
+
 /**
- * Reserva atomicamente o próximo destinatário due.
- * Usa error_message como token de claim (sem alterar o CHECK de status).
- * Dois ticks em paralelo: só um consegue o update com error_message IS NULL.
+ * Intervalo desde o último envio real (não o horário pré-agendado na criação).
+ * Assim o tempo do QR / conexão não “come” o espaçamento entre mensagens.
+ */
+function gapSecondsForNext(
+  campaign: CrmBotCampaignRow,
+  lastGroupIndex: number | null,
+  nextGroupIndex: number
+): number {
+  if (lastGroupIndex == null) return 0;
+  if (nextGroupIndex !== lastGroupIndex) {
+    return Math.max(0, Number(campaign.group_pause_seconds) || 0);
+  }
+  return Math.max(3, Number(campaign.seconds_per_person) || 10);
+}
+
+/**
+ * Reserva o próximo da fila só se o intervalo desde o último envio já passou.
  */
 async function claimNextDueRecipient(
   admin: Admin,
-  campaignId: string
+  campaign: CrmBotCampaignRow
 ): Promise<(RecipientRow & { claimToken: string }) | null> {
-  const now = new Date().toISOString();
-  const { data: dueRows, error: dueErr } = await admin
+  const { data: nextRows, error: nextErr } = await admin
     .from("crm_bot_recipients")
-    .select("id, customer_whatsapp, message_text, error_message")
-    .eq("campaign_id", campaignId)
+    .select("id, customer_whatsapp, message_text, error_message, group_index")
+    .eq("campaign_id", campaign.id)
     .eq("status", "pending")
     .is("error_message", null)
-    .lte("scheduled_at", now)
     .order("scheduled_at", { ascending: true })
     .limit(1);
 
-  if (dueErr) throw new Error(dueErr.message);
-  const candidate = (dueRows?.[0] ?? null) as RecipientRow | null;
+  if (nextErr) throw new Error(nextErr.message);
+  const candidate = (nextRows?.[0] ?? null) as RecipientRow | null;
   if (!candidate) return null;
+
+  const { data: lastRows, error: lastErr } = await admin
+    .from("crm_bot_recipients")
+    .select("sent_at, group_index")
+    .eq("campaign_id", campaign.id)
+    .not("sent_at", "is", null)
+    .order("sent_at", { ascending: false })
+    .limit(1);
+
+  if (lastErr) throw new Error(lastErr.message);
+  const last = (lastRows?.[0] ?? null) as {
+    sent_at: string;
+    group_index: number;
+  } | null;
+
+  if (last?.sent_at) {
+    const gapSec = gapSecondsForNext(
+      campaign,
+      last.group_index,
+      candidate.group_index
+    );
+    const readyAt = new Date(last.sent_at).getTime() + gapSec * 1000;
+    if (Date.now() < readyAt) {
+      return null;
+    }
+  }
 
   const claimToken = makeClaimToken();
   const { data: claimed, error: claimErr } = await admin
@@ -90,11 +142,40 @@ async function claimNextDueRecipient(
     .eq("id", candidate.id)
     .eq("status", "pending")
     .is("error_message", null)
-    .select("id, customer_whatsapp, message_text, error_message")
+    .select("id, customer_whatsapp, message_text, error_message, group_index")
     .maybeSingle();
 
   if (claimErr) throw new Error(claimErr.message);
   if (!claimed) return null;
+
+  // Revalida intervalo após o claim (evita 2 abas furarem o gap).
+  const { data: lastAfter } = await admin
+    .from("crm_bot_recipients")
+    .select("id, sent_at, group_index")
+    .eq("campaign_id", campaign.id)
+    .not("sent_at", "is", null)
+    .order("sent_at", { ascending: false })
+    .limit(1);
+
+  const last2 = (lastAfter?.[0] ?? null) as {
+    id: string;
+    sent_at: string;
+    group_index: number;
+  } | null;
+
+  if (last2?.sent_at && last2.id !== claimed.id) {
+    const gapSec = gapSecondsForNext(
+      campaign,
+      last2.group_index,
+      (claimed as RecipientRow).group_index
+    );
+    const readyAt = new Date(last2.sent_at).getTime() + gapSec * 1000;
+    if (Date.now() < readyAt) {
+      await releaseClaim(admin, claimed.id, claimToken);
+      return null;
+    }
+  }
+
   return { ...(claimed as RecipientRow), claimToken };
 }
 
@@ -106,6 +187,7 @@ export async function processCampaignTick(
   pendingLeft: number;
   status: string;
   completed: boolean;
+  nextSendInSeconds?: number | null;
 }> {
   if (campaign.status !== "running" && campaign.status !== "connecting") {
     return {
@@ -156,9 +238,10 @@ export async function processCampaignTick(
   let sentThisTick = 0;
 
   for (let i = 0; i < MAX_SENDS_PER_TICK; i += 1) {
-    const r = await claimNextDueRecipient(admin, campaign.id);
+    const r = await claimNextDueRecipient(admin, campaign);
     if (!r) break;
 
+    const attemptedAt = new Date().toISOString();
     try {
       if (isEvolutionConfigured()) {
         if (campaign.media_base64 && campaign.media_mimetype) {
@@ -175,7 +258,7 @@ export async function processCampaignTick(
         .from("crm_bot_recipients")
         .update({
           status: "sent",
-          sent_at: new Date().toISOString(),
+          sent_at: attemptedAt,
           error_message: null,
         })
         .eq("id", r.id)
@@ -184,13 +267,17 @@ export async function processCampaignTick(
         .select("id")
         .maybeSingle();
 
-      // Outro worker já processou — não conta de novo
       if (marked) sentThisTick += 1;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao enviar";
+      // sent_at marca o instante da tentativa — serve de âncora do intervalo
       await admin
         .from("crm_bot_recipients")
-        .update({ status: "failed", error_message: msg })
+        .update({
+          status: "failed",
+          error_message: msg,
+          sent_at: attemptedAt,
+        })
         .eq("id", r.id)
         .eq("status", "pending")
         .eq("error_message", r.claimToken);
@@ -220,6 +307,40 @@ export async function processCampaignTick(
   const left = pendingLeft ?? 0;
   const sent = sentTotal ?? 0;
 
+  let nextSendInSeconds: number | null = null;
+  if (left > 0) {
+    const { data: nextRows } = await admin
+      .from("crm_bot_recipients")
+      .select("group_index")
+      .eq("campaign_id", campaign.id)
+      .eq("status", "pending")
+      .is("error_message", null)
+      .order("scheduled_at", { ascending: true })
+      .limit(1);
+    const { data: lastRows } = await admin
+      .from("crm_bot_recipients")
+      .select("sent_at, group_index")
+      .eq("campaign_id", campaign.id)
+      .not("sent_at", "is", null)
+      .order("sent_at", { ascending: false })
+      .limit(1);
+    const next = nextRows?.[0] as { group_index: number } | undefined;
+    const last = lastRows?.[0] as
+      | { sent_at: string; group_index: number }
+      | undefined;
+    if (next && last?.sent_at) {
+      const gapSec = gapSecondsForNext(
+        campaign,
+        last.group_index,
+        next.group_index
+      );
+      const readyAt = new Date(last.sent_at).getTime() + gapSec * 1000;
+      nextSendInSeconds = Math.max(0, Math.ceil((readyAt - Date.now()) / 1000));
+    } else {
+      nextSendInSeconds = 0;
+    }
+  }
+
   if (left === 0) {
     await admin
       .from("crm_bot_campaigns")
@@ -230,7 +351,13 @@ export async function processCampaignTick(
         updated_at: new Date().toISOString(),
       })
       .eq("id", campaign.id);
-    return { sentThisTick, pendingLeft: 0, status: "completed", completed: true };
+    return {
+      sentThisTick,
+      pendingLeft: 0,
+      status: "completed",
+      completed: true,
+      nextSendInSeconds: null,
+    };
   }
 
   await admin
@@ -246,5 +373,6 @@ export async function processCampaignTick(
     pendingLeft: left,
     status: "running",
     completed: false,
+    nextSendInSeconds,
   };
 }

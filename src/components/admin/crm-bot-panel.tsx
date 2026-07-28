@@ -104,6 +104,9 @@ export function CrmBotPanel({
     failed: 0,
   });
   const [recipients, setRecipients] = useState<CampaignRecipientRow[]>([]);
+  const [nextSendInSeconds, setNextSendInSeconds] = useState<number | null>(
+    null
+  );
 
   const stopTick = useCallback(() => {
     if (tickRef.current) {
@@ -149,6 +152,11 @@ export function CrmBotPanel({
         if (!res.ok) throw new Error(data.error ?? "Falha no envio");
         setConnectionState(data.connectionState ?? null);
         if (data.campaign) setCampaign(data.campaign as CrmBotCampaignRow);
+        if (typeof data.nextSendInSeconds === "number") {
+          setNextSendInSeconds(data.nextSendInSeconds);
+        } else if (data.nextSendInSeconds === null) {
+          setNextSendInSeconds(null);
+        }
         if (data.completed) {
           setPhase("done");
           stopTick();
@@ -191,9 +199,13 @@ export function CrmBotPanel({
   useEffect(() => {
     if ((phase === "running" || phase === "connecting") && campaignId) {
       stopTick();
+      // Poll curto o suficiente para acordar perto do fim do intervalo configurado.
       const configured =
         campaign?.seconds_per_person ?? secondsPerPerson ?? 10;
-      const intervalMs = Math.max(2000, Math.min(5000, configured * 1000));
+      const intervalMs = Math.max(
+        1000,
+        Math.min(2000, Math.floor((configured * 1000) / 3))
+      );
       const id = campaignId;
       tickRef.current = setInterval(() => {
         void runTickRef.current(id).catch((e) =>
@@ -594,6 +606,16 @@ export function CrmBotPanel({
                 style={{ width: `${progressPct}%` }}
               />
             </div>
+            {phase === "running" &&
+            nextSendInSeconds != null &&
+            nextSendInSeconds > 0 ? (
+              <p className="mt-2 text-xs font-medium text-violet-800">
+                Próximo envio em {nextSendInSeconds}s
+                {campaign.seconds_per_person
+                  ? ` · intervalo configurado: ${campaign.seconds_per_person}s`
+                  : ""}
+              </p>
+            ) : null}
           </div>
 
           {recipientsList}
