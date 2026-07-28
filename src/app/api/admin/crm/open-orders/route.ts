@@ -15,6 +15,10 @@ import {
 import { applyPendingOrdersSellerScope } from "@/lib/crm-pending-seller-filter";
 import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
 import { normalizeWhatsappDigits, whatsappMatchesLookup, buildWhatsappLookup, lookupWhatsappMapValue, expandWhatsappQueryKeys } from "@/lib/whatsapp-normalize";
+import {
+  botDispatchCountForWhatsapp,
+  fetchBotDispatchCountsByWhatsapp,
+} from "@/lib/crm-bot/dispatch-counts";
 import type { BusinessProfile } from "@/lib/client-follow-up";
 import type { OrderItemRow } from "@/types";
 
@@ -31,6 +35,8 @@ export type OpenOrderRow = {
   volume_tier: "atacado" | "varejo";
   has_paid_before: boolean;
   business_profile: BusinessProfile | null;
+  /** Quantas vezes já recebeu disparo do bot (status sent). */
+  bot_dispatch_count: number;
 };
 
 /**
@@ -124,6 +130,7 @@ export async function GET(request: NextRequest) {
       admin,
       expandWhatsappQueryKeys(Array.from(waSet))
     );
+    const dispatchCounts = await fetchBotDispatchCountsByWhatsapp(admin);
 
     const rows: OpenOrderRow[] = [];
 
@@ -164,6 +171,7 @@ export async function GET(request: NextRequest) {
         volume_tier,
         has_paid_before: hasPaidHistory || !!business_profile,
         business_profile,
+        bot_dispatch_count: botDispatchCountForWhatsapp(wa, dispatchCounts),
       });
     }
 

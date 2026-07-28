@@ -41,6 +41,7 @@ export type CrmClientRow = {
   sellers_label: string;
   business_profile: BusinessProfile | null;
   recency_status: ClientRecencyStatus;
+  bot_dispatch_count?: number;
 };
 
 type FunnelStats = {
@@ -488,6 +489,7 @@ function ClientCard({
   selectionMode?: boolean;
   selected?: boolean;
 }) {
+  const dispatchCount = c.bot_dispatch_count ?? 0;
   return (
     <article
       className={`rounded-lg border bg-white p-3 shadow-sm transition hover:shadow-md ${
@@ -500,7 +502,12 @@ function ClientCard({
         </p>
       ) : null}
       <div className="flex items-start justify-between gap-2">
-        <p className="font-semibold text-stone-900">{c.customer_name ?? "—"}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {dispatchCount > 0 ? (
+            <DispatchCountBadge count={dispatchCount} />
+          ) : null}
+          <p className="font-semibold text-stone-900">{c.customer_name ?? "—"}</p>
+        </div>
         {c.business_profile ? (
           <ClientProfileBadge profile={c.business_profile} />
         ) : null}
@@ -537,6 +544,19 @@ function RepeatBuyerBadge() {
   );
 }
 
+/** Círculo com quantas vezes o lead já recebeu disparo do bot. */
+function DispatchCountBadge({ count }: { count: number }) {
+  if (count < 1) return null;
+  return (
+    <span
+      className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 px-1.5 text-[11px] font-black tabular-nums text-white shadow-sm ring-2 ring-violet-200"
+      title={`Já recebeu ${count} disparo${count === 1 ? "" : "s"}`}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
 function OrderMiniCard({
   name,
   wa,
@@ -553,6 +573,7 @@ function OrderMiniCard({
   onRemove,
   cancelledOrderCount,
   hasOpenOrder,
+  botDispatchCount,
 }: {
   name: string | null;
   wa: string;
@@ -569,7 +590,9 @@ function OrderMiniCard({
   onRemove?: () => void;
   cancelledOrderCount?: number;
   hasOpenOrder?: boolean;
+  botDispatchCount?: number;
 }) {
+  const dispatchCount = botDispatchCount ?? 0;
   return (
     <article
       className={`relative rounded-lg border bg-white p-3 shadow-sm transition hover:shadow-md ${
@@ -588,6 +611,9 @@ function OrderMiniCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
+            {dispatchCount > 0 ? (
+              <DispatchCountBadge count={dispatchCount} />
+            ) : null}
             {hasPaidBefore ? <RepeatBuyerBadge /> : null}
             <p className="font-semibold text-stone-900">{name?.trim() || "—"}</p>
             {profile ? <ClientProfileBadge profile={profile} /> : null}
@@ -1019,6 +1045,10 @@ export function CrmFunnelView({
             onStartSelection={startBotSelection}
             onCloseSelection={closeBotSelection}
             onClose={closeBotPanel}
+            onCampaignCompleted={() => {
+              void load();
+              void loadStats();
+            }}
           />
         </div>
       )}
@@ -1095,6 +1125,7 @@ export function CrmFunnelView({
                   selected={isSelected}
                   cancelledOrderCount={order.cancelled_order_count}
                   hasOpenOrder={order.has_open_order}
+                  botDispatchCount={order.bot_dispatch_count}
                   onRemove={
                     botSelectMode
                       ? undefined
@@ -1180,6 +1211,7 @@ export function CrmFunnelView({
                   hasPaidBefore={order.has_paid_before || !!order.business_profile}
                   selectionMode={botSelectMode}
                   selected={isSelected}
+                  botDispatchCount={order.bot_dispatch_count}
                   lines={lines}
                   extra={
                     order.has_paid_before || order.business_profile ? (

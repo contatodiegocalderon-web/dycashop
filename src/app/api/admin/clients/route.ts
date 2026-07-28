@@ -15,6 +15,10 @@ import {
 } from "@/lib/admin-orders-query";
 import { classifyBusinessProfileFromPaidOrders } from "@/lib/crm-auto-profile";
 import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
+import {
+  botDispatchCountForWhatsapp,
+  fetchBotDispatchCountsByWhatsapp,
+} from "@/lib/crm-bot/dispatch-counts";
 
 export const runtime = "nodejs";
 
@@ -71,6 +75,8 @@ export type AdminClientRow = {
   sellers_label: string;
   business_profile: BusinessProfile | null;
   recency_status: ClientRecencyStatus;
+  /** Quantas vezes já recebeu disparo do bot (status sent). */
+  bot_dispatch_count: number;
 };
 
 async function resolveOwnerStaffId(
@@ -206,6 +212,7 @@ export async function GET(request: NextRequest) {
       Array.from(waKeys)
     );
     const profileMap = profileRaw;
+    const dispatchCounts = await fetchBotDispatchCountsByWhatsapp(admin);
 
     const byWa = new Map<
       string,
@@ -285,6 +292,7 @@ export async function GET(request: NextRequest) {
           sellers_label: sellers_label || "—",
           business_profile: businessProfile,
           recency_status: clientRecencyStatus(lastAt),
+          bot_dispatch_count: botDispatchCountForWhatsapp(wa, dispatchCounts),
         };
       });
 

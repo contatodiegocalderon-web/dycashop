@@ -26,6 +26,10 @@ import {
   expandWhatsappQueryKeys,
   whatsappDedupeKeys,
 } from "@/lib/whatsapp-normalize";
+import {
+  botDispatchCountForWhatsapp,
+  fetchBotDispatchCountsByWhatsapp,
+} from "@/lib/crm-bot/dispatch-counts";
 import type { BusinessProfile } from "@/lib/client-follow-up";
 import type { OrderItemRow } from "@/types";
 
@@ -49,6 +53,8 @@ export type AbandonedOrderRow = {
   cancelled_order_count: number;
   /** Cliente também tem pedido PENDENTE na etapa 2. */
   has_open_order: boolean;
+  /** Quantas vezes já recebeu disparo do bot (status sent). */
+  bot_dispatch_count: number;
 };
 
 type RawCancelledOrder = {
@@ -228,11 +234,13 @@ export async function GET(request: NextRequest) {
         has_paid_before,
         cancelled_order_count: count,
         has_open_order: hasOpenOrderFlag(wa, openOrderLookup),
+        bot_dispatch_count: 0,
       });
     }
 
     const clickMap = new Map<string, number>();
     const followMap = new Map<string, number>();
+    const dispatchCounts = await fetchBotDispatchCountsByWhatsapp(admin);
 
     if (waForMeta.size > 0) {
       const waList = expandWhatsappQueryKeys(Array.from(waForMeta));
@@ -267,6 +275,10 @@ export async function GET(request: NextRequest) {
       cart.follow_up_remaining = Math.max(
         0,
         CRM_ABANDONED_FOLLOW_UP_MAX - cart.follow_up_count
+      );
+      cart.bot_dispatch_count = botDispatchCountForWhatsapp(
+        cart.customer_whatsapp,
+        dispatchCounts
       );
     }
 

@@ -12,6 +12,8 @@ type Props = {
   onStartSelection: () => void;
   onCloseSelection: () => void;
   onClose: () => void;
+  /** Chamado quando a campanha termina (para atualizar contadores no funil). */
+  onCampaignCompleted?: () => void;
 };
 
 type Phase = "config" | "connecting" | "running" | "done";
@@ -23,6 +25,7 @@ export function CrmBotPanel({
   onStartSelection,
   onCloseSelection,
   onClose,
+  onCampaignCompleted,
 }: Props) {
   const { adminFetch } = useAdminAuth();
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -85,10 +88,11 @@ export function CrmBotPanel({
       if (data.completed) {
         setPhase("done");
         stopTick();
+        onCampaignCompleted?.();
       }
       await refreshCampaign(id);
     },
-    [adminFetch, refreshCampaign, stopTick]
+    [adminFetch, refreshCampaign, stopTick, onCampaignCompleted]
   );
 
   useEffect(() => {
