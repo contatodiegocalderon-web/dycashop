@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>DYCASHOP</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0f0f11;
+        color: #a8a29e;
+        font: 14px/1.4 system-ui, sans-serif;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <p>💰</p>
+    <script>
+      (function () {
+        var audio = new Audio("/sounds/sale-cash.wav");
+        audio.volume = 0.9;
+        var done = false;
+        function finish() {
+          if (done) return;
+          done = true;
+          try {
+            window.close();
+          } catch (e) {}
+          setTimeout(function () {
+            location.replace("/admin/pedidos");
+          }, 400);
+        }
+        audio
+          .play()
+          .then(function () {
+            setTimeout(finish, 1200);
+          })
+          .catch(function () {
+            setTimeout(finish, 600);
+          });
+        setTimeout(finish, 2500);
+      })();
+    </script>
+  </body>
+</html>

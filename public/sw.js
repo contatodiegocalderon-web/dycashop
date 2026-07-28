@@ -1,4 +1,5 @@
 /* Service worker — notificações push com o app fechado / tela bloqueada */
+/* v3: som de dinheiro também com ecrã bloqueado */
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
 });
@@ -31,18 +32,34 @@ self.addEventListener("push", (event) => {
 
   event.waitUntil(
     (async () => {
-      const clients = await self.clients.matchAll({
+      const wantSound = data.playSound !== false;
+      const clientList = await self.clients.matchAll({
         type: "window",
         includeUncontrolled: true,
       });
-      for (const client of clients) {
+
+      let hasVisibleClient = false;
+      for (const client of clientList) {
+        if (client.visibilityState === "visible") {
+          hasVisibleClient = true;
+        }
         client.postMessage({
           type: "DYCASHOP_ADMIN_PUSH",
           title: data.title,
           body: data.body,
           url: data.url,
-          playSound: data.playSound !== false,
+          // Com ecrã bloqueado a página fica hidden/frozen — o som vai pelo chime.
+          playSound: wantSound && client.visibilityState === "visible",
         });
+      }
+
+      // Sem janela visível (bloqueado / app fechado): abre página mínima só para tocar o cash.
+      if (wantSound && !hasVisibleClient && self.clients.openWindow) {
+        try {
+          await self.clients.openWindow("/chime.html");
+        } catch {
+          /* alguns browsers bloqueiam openWindow sem gesto */
+        }
       }
 
       await self.registration.showNotification(data.title || "DYCASHOP", {
@@ -53,7 +70,6 @@ self.addEventListener("push", (event) => {
         tag: data.tag || "dycashop-admin",
         renotify: true,
         silent: false,
-        // Vibração tipo "dinheiro" (Android / PWA)
         vibrate: [80, 40, 80, 40, 160, 60, 220],
       });
     })()
@@ -69,6 +85,8 @@ self.addEventListener("notificationclick", (event) => {
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clients) => {
         for (const client of clients) {
+          const url = client.url || "";
+          if (url.includes("/chime.html")) continue;
           if ("focus" in client) {
             client.focus();
             if ("navigate" in client) {
