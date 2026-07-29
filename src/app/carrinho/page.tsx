@@ -796,7 +796,7 @@ export default function CarrinhoPage() {
                   onClick={beginVarejoCheckout}
                   className="w-full rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
                 >
-                  Iniciar Compra — VAREJO
+                  Iniciar Compra
                 </button>
                 <button
                   type="button"
