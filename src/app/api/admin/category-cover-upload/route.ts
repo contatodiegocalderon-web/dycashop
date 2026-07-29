@@ -30,6 +30,7 @@ type ExistingShowcase = {
   display_order?: number | null;
   catalog_cover_image_url?: string | null;
   home_grid_cover_image_url?: string | null;
+  catalog_banner_hidden?: boolean | null;
 };
 
 async function upsertCoverUrl(
@@ -39,13 +40,27 @@ async function upsertCoverUrl(
   kind: CoverKind
 ) {
   let hasHomeGridColumn = true;
+  let hasBannerHiddenColumn = true;
   let sel = await admin
     .from("category_showcase_settings")
     .select(
-      "video_url, video_poster_url, wholesale_tiers, display_order, catalog_cover_image_url, home_grid_cover_image_url"
+      "video_url, video_poster_url, wholesale_tiers, display_order, catalog_cover_image_url, home_grid_cover_image_url, catalog_banner_hidden"
     )
     .eq("category_label", categoryLabel)
     .maybeSingle();
+
+  if (sel.error && isMissingSchemaColumnError(sel.error)) {
+    if (/catalog_banner_hidden/i.test(sel.error.message)) {
+      hasBannerHiddenColumn = false;
+      sel = await admin
+        .from("category_showcase_settings")
+        .select(
+          "video_url, video_poster_url, wholesale_tiers, display_order, catalog_cover_image_url, home_grid_cover_image_url"
+        )
+        .eq("category_label", categoryLabel)
+        .maybeSingle();
+    }
+  }
 
   if (sel.error && isMissingSchemaColumnError(sel.error)) {
     hasHomeGridColumn = false;
@@ -100,6 +115,9 @@ async function upsertCoverUrl(
 
   if (hasHomeGridColumn) {
     payload.home_grid_cover_image_url = grid;
+  }
+  if (hasBannerHiddenColumn) {
+    payload.catalog_banner_hidden = ex?.catalog_banner_hidden === true;
   }
 
   const { error } = await admin

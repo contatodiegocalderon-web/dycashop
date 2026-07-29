@@ -25,6 +25,8 @@ type ShowcaseRow = {
   home_grid_cover_image_url: string | null;
   /** Banner ao abrir a categoria */
   catalog_cover_image_url: string | null;
+  /** Ocultar banner no topo da página da categoria */
+  catalog_banner_hidden?: boolean;
   display_order: number | null;
 };
 
@@ -54,10 +56,23 @@ async function loadCatalogCategoryLabels(admin: ReturnType<typeof createAdminCli
 }
 
 async function fetchShowcaseRows(admin: ReturnType<typeof createAdminClient>) {
+  const withHidden = await admin.from("category_showcase_settings").select(
+    "category_label, video_url, video_poster_url, wholesale_tiers, retail_price_per_piece, catalog_cover_image_url, home_grid_cover_image_url, catalog_banner_hidden, display_order"
+  );
+  if (!withHidden.error) return withHidden.data ?? [];
+  if (!isMissingSchemaColumnError(withHidden.error)) {
+    throw new Error(withHidden.error.message);
+  }
+
   const full = await admin.from("category_showcase_settings").select(
     "category_label, video_url, video_poster_url, wholesale_tiers, retail_price_per_piece, catalog_cover_image_url, home_grid_cover_image_url, display_order"
   );
-  if (!full.error) return full.data ?? [];
+  if (!full.error) {
+    return (full.data ?? []).map((row) => ({
+      ...row,
+      catalog_banner_hidden: false,
+    }));
+  }
   if (!isMissingSchemaColumnError(full.error)) {
     throw new Error(full.error.message);
   }
@@ -68,6 +83,7 @@ async function fetchShowcaseRows(admin: ReturnType<typeof createAdminClient>) {
     return (withRetail.data ?? []).map((row) => ({
       ...row,
       retail_price_per_piece: null,
+      catalog_banner_hidden: false,
     }));
   }
   if (!isMissingSchemaColumnError(withRetail.error)) {
@@ -80,6 +96,7 @@ async function fetchShowcaseRows(admin: ReturnType<typeof createAdminClient>) {
     return (mid.data ?? []).map((row) => ({
       ...row,
       home_grid_cover_image_url: null,
+      catalog_banner_hidden: false,
     }));
   }
   if (!isMissingSchemaColumnError(mid.error)) {
@@ -93,6 +110,7 @@ async function fetchShowcaseRows(admin: ReturnType<typeof createAdminClient>) {
     ...row,
     catalog_cover_image_url: null,
     home_grid_cover_image_url: null,
+    catalog_banner_hidden: false,
     display_order: null,
   }));
 }
@@ -125,6 +143,7 @@ export async function GET(request: NextRequest) {
         retail_price_per_piece?: unknown;
         catalog_cover_image_url?: string | null;
         home_grid_cover_image_url?: string | null;
+        catalog_banner_hidden?: boolean | null;
         display_order?: number | null;
       };
       const parsed: ShowcaseRow = {
@@ -138,6 +157,7 @@ export async function GET(request: NextRequest) {
         })(),
         home_grid_cover_image_url: r.home_grid_cover_image_url?.trim() || null,
         catalog_cover_image_url: r.catalog_cover_image_url?.trim() || null,
+        catalog_banner_hidden: r.catalog_banner_hidden === true,
         display_order:
           typeof r.display_order === "number" ? r.display_order : null,
       };
@@ -158,6 +178,7 @@ export async function GET(request: NextRequest) {
           retail_price_per_piece: null,
           home_grid_cover_image_url: null,
           catalog_cover_image_url: null,
+          catalog_banner_hidden: false,
           display_order: null,
         }
       );
@@ -192,6 +213,7 @@ export async function PUT(request: NextRequest) {
         retail_price_per_piece?: number | null;
         home_grid_cover_image_url?: string | null;
         catalog_cover_image_url?: string | null;
+        catalog_banner_hidden?: boolean;
         display_order?: number | null;
       }[];
     };
@@ -239,6 +261,7 @@ export async function PUT(request: NextRequest) {
             : null,
         home_grid_cover_image_url: raw.home_grid_cover_image_url?.trim() || null,
         catalog_cover_image_url: raw.catalog_cover_image_url?.trim() || null,
+        catalog_banner_hidden: raw.catalog_banner_hidden === true,
         display_order: resolveDisplayOrderForUpsert(
           incomingOrder,
           existingByLabel.get(category_label)
@@ -249,6 +272,20 @@ export async function PUT(request: NextRequest) {
       onConflict: "category_label",
     });
     if (error) {
+      if (isMissingSchemaColumnError(error) && /catalog_banner_hidden/i.test(error.message)) {
+        const withoutHidden = entries.map(({ catalog_banner_hidden: _h, ...rest }) => rest);
+        const retry = await admin
+          .from("category_showcase_settings")
+          .upsert(withoutHidden, { onConflict: "category_label" });
+        if (retry.error) {
+          return NextResponse.json({ error: retry.error.message }, { status: 500 });
+        }
+        return NextResponse.json({
+          ok: true,
+          warning:
+            "Execute supabase/migration_catalog_banner_hidden.sql para guardar «ocultar banner».",
+        });
+      }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     return NextResponse.json({ ok: true });

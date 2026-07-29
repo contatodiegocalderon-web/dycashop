@@ -19,6 +19,9 @@ export default async function CategoriaPage({ params }: Props) {
   const cat = await getCategoryBySlug(params.slug, categories);
   if (!cat) notFound();
   const showcaseConfig = await getCategoryShowcaseConfig(cat.label);
+  const showCatalogBanner =
+    Boolean(showcaseConfig.catalogCoverImageUrl) &&
+    !showcaseConfig.catalogBannerHidden;
 
   return (
     <div className="mx-auto max-w-7xl px-3 py-6 sm:px-4">
@@ -28,11 +31,11 @@ export default async function CategoriaPage({ params }: Props) {
         </Link>
       </nav>
 
-      {showcaseConfig.catalogCoverImageUrl ? (
+      {showCatalogBanner ? (
         <div className="relative mb-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-zinc-950 ring-1 ring-white/[0.04]">
           <div className="relative aspect-[21/9] min-h-[140px] w-full max-h-[260px] sm:min-h-[168px]">
             <Image
-              src={showcaseConfig.catalogCoverImageUrl}
+              src={showcaseConfig.catalogCoverImageUrl!}
               alt=""
               fill
               priority
@@ -43,15 +46,7 @@ export default async function CategoriaPage({ params }: Props) {
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-zinc-900/20" />
           </div>
         </div>
-      ) : (
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-stone-50">{cat.label}</h1>
-          <p className="mt-1 text-sm text-stone-500">
-            Escolha outra pasta na lista ou os filtros de tamanho, marca e cor (listas abaixo).
-            Toque em &quot;Todos&quot; ou em M / G / GG.
-          </p>
-        </div>
-      )}
+      ) : null}
 
       <CategoryShowcaseBanner categoryLabel={cat.label} config={showcaseConfig} />
 

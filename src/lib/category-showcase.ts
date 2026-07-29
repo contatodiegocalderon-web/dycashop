@@ -15,6 +15,8 @@ export type CategoryShowcaseConfig = {
   retailPricePerPiece?: number | null;
   /** Banner largo no topo da página da categoria (`catalog_cover_image_url`). */
   catalogCoverImageUrl?: string | null;
+  /** Se true, não renderiza o banner no topo (imagem pode continuar guardada). */
+  catalogBannerHidden?: boolean;
 };
 
 export type CategoryPricingBatch = {
@@ -69,6 +71,7 @@ function normalizeShowcaseRow(row: {
   wholesale_tiers?: unknown;
   retail_price_per_piece?: unknown;
   catalog_cover_image_url?: string | null;
+  catalog_banner_hidden?: boolean | null;
 }): CategoryShowcaseConfig {
   const tiersRaw = Array.isArray(row.wholesale_tiers) ? row.wholesale_tiers : [];
   const tiers = tiersRaw
@@ -80,6 +83,7 @@ function normalizeShowcaseRow(row: {
     wholesaleTiers: tiers.length > 0 ? tiers : DEFAULT_SHOWCASE.wholesaleTiers,
     retailPricePerPiece: normalizeRetailPrice(row.retail_price_per_piece),
     catalogCoverImageUrl: row.catalog_cover_image_url?.trim() || null,
+    catalogBannerHidden: row.catalog_banner_hidden === true,
   };
 }
 
@@ -111,8 +115,14 @@ export async function getCategoryShowcaseConfig(
   }
 
   let q = await pickRow(
-    "video_url, video_poster_url, wholesale_tiers, retail_price_per_piece, catalog_cover_image_url"
+    "video_url, video_poster_url, wholesale_tiers, retail_price_per_piece, catalog_cover_image_url, catalog_banner_hidden"
   );
+
+  if (q.error && isMissingSchemaColumnError(q.error)) {
+    q = await pickRow(
+      "video_url, video_poster_url, wholesale_tiers, retail_price_per_piece, catalog_cover_image_url"
+    );
+  }
 
   if (q.error && isMissingSchemaColumnError(q.error)) {
     q = await pickRow("video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url");
@@ -133,6 +143,7 @@ export async function getCategoryShowcaseConfig(
       wholesale_tiers?: unknown;
       retail_price_per_piece?: unknown;
       catalog_cover_image_url?: string | null;
+      catalog_banner_hidden?: boolean | null;
     }
   );
 }

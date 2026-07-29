@@ -48,6 +48,7 @@ type RowLite = {
   wholesale_tiers: WholesaleTier[];
   home_grid_cover_image_url: string | null;
   catalog_cover_image_url: string | null;
+  catalog_banner_hidden: boolean;
   display_order: number | null;
 };
 
@@ -87,26 +88,53 @@ export async function POST(request: NextRequest) {
           wholesale_tiers?: unknown;
           catalog_cover_image_url?: string | null;
           home_grid_cover_image_url?: string | null;
+          catalog_banner_hidden?: boolean | null;
           display_order?: number | null;
         }[]
       | null = null;
     let schemaHasHomeGrid = true;
+    let schemaHasBannerHidden = true;
 
     const fullSel = await admin.from("category_showcase_settings").select(
-      "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, home_grid_cover_image_url, display_order"
+      "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, home_grid_cover_image_url, catalog_banner_hidden, display_order"
     );
 
     if (!fullSel.error) {
       rows = fullSel.data ?? [];
     } else if (isMissingSchemaColumnError(fullSel.error)) {
-      const legacy = await admin.from("category_showcase_settings").select(
-        "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, display_order"
-      );
-      if (legacy.error) {
-        return NextResponse.json({ error: legacy.error.message }, { status: 500 });
+      if (/catalog_banner_hidden/i.test(fullSel.error.message ?? "")) {
+        schemaHasBannerHidden = false;
+        const withoutHidden = await admin.from("category_showcase_settings").select(
+          "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, home_grid_cover_image_url, display_order"
+        );
+        if (!withoutHidden.error) {
+          rows = withoutHidden.data ?? [];
+        } else if (isMissingSchemaColumnError(withoutHidden.error)) {
+          const legacy = await admin.from("category_showcase_settings").select(
+            "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, display_order"
+          );
+          if (legacy.error) {
+            return NextResponse.json({ error: legacy.error.message }, { status: 500 });
+          }
+          rows = legacy.data ?? [];
+          schemaHasHomeGrid = false;
+        } else {
+          return NextResponse.json(
+            { error: withoutHidden.error.message },
+            { status: 500 }
+          );
+        }
+      } else {
+        const legacy = await admin.from("category_showcase_settings").select(
+          "category_label, video_url, video_poster_url, wholesale_tiers, catalog_cover_image_url, display_order"
+        );
+        if (legacy.error) {
+          return NextResponse.json({ error: legacy.error.message }, { status: 500 });
+        }
+        rows = legacy.data ?? [];
+        schemaHasHomeGrid = false;
+        schemaHasBannerHidden = false;
       }
-      rows = legacy.data ?? [];
-      schemaHasHomeGrid = false;
     } else if (
       /display_order|catalog_cover_image_url/i.test(fullSel.error.message ?? "")
     ) {
@@ -138,6 +166,10 @@ export async function POST(request: NextRequest) {
         catalog_cover_image_url:
           (raw as { catalog_cover_image_url?: string | null })
             .catalog_cover_image_url?.trim() || null,
+        catalog_banner_hidden:
+          schemaHasBannerHidden &&
+          (raw as { catalog_banner_hidden?: boolean | null }).catalog_banner_hidden ===
+            true,
         display_order:
           typeof (raw as { display_order?: number }).display_order === "number"
             ? (raw as { display_order: number }).display_order
@@ -211,6 +243,9 @@ export async function POST(request: NextRequest) {
       };
       if (schemaHasHomeGrid) {
         payload.home_grid_cover_image_url = cur?.home_grid_cover_image_url ?? null;
+      }
+      if (schemaHasBannerHidden) {
+        payload.catalog_banner_hidden = cur?.catalog_banner_hidden === true;
       }
       const { error } = await admin
         .from("category_showcase_settings")

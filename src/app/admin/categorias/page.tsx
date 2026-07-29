@@ -23,6 +23,7 @@ type ShowcaseRow = {
   retail_price_per_piece: number | null;
   home_grid_cover_image_url: string | null;
   catalog_cover_image_url: string | null;
+  catalog_banner_hidden?: boolean;
   display_order: number | null;
 };
 
@@ -85,6 +86,9 @@ export default function AdminCategoriasPage() {
   const [categoryCoverEdits, setCategoryCoverEdits] = useState<
     Record<string, string>
   >({});
+  const [bannerHiddenEdits, setBannerHiddenEdits] = useState<
+    Record<string, boolean>
+  >({});
   const [uploadBusy, setUploadBusy] = useState<Record<string, boolean>>({});
   const [showcaseRows, setShowcaseRows] = useState<ShowcaseRow[]>([]);
   const [reorderBusy, setReorderBusy] = useState(false);
@@ -137,6 +141,7 @@ export default function AdminCategoriasPage() {
       const retailMap: Record<string, string> = {};
       const gridMap: Record<string, string> = {};
       const catCoverMap: Record<string, string> = {};
+      const hiddenMap: Record<string, boolean> = {};
       for (const label of sortedLabels) {
         const cost = costRows.find((r) => r.category_label === label)?.cost_per_piece ?? 0;
         const weight =
@@ -155,6 +160,7 @@ export default function AdminCategoriasPage() {
             : "";
         gridMap[label] = showcase?.home_grid_cover_image_url ?? "";
         catCoverMap[label] = showcase?.catalog_cover_image_url ?? "";
+        hiddenMap[label] = showcase?.catalog_banner_hidden === true;
       }
 
       setCategories(sortedLabels);
@@ -166,6 +172,7 @@ export default function AdminCategoriasPage() {
       setRetailEdits(retailMap);
       setGridCoverEdits(gridMap);
       setCategoryCoverEdits(catCoverMap);
+      setBannerHiddenEdits(hiddenMap);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
     } finally {
@@ -208,6 +215,7 @@ export default function AdminCategoriasPage() {
           (gridCoverEdits[category_label] ?? "").trim() || null,
         catalog_cover_image_url:
           (categoryCoverEdits[category_label] ?? "").trim() || null,
+        catalog_banner_hidden: bannerHiddenEdits[category_label] === true,
         display_order:
           showcaseRows.find((r) => r.category_label === category_label)?.display_order ??
           DISPLAY_ORDER_DEFAULT_SENTINEL,
@@ -333,6 +341,54 @@ export default function AdminCategoriasPage() {
       setError(e instanceof Error ? e.message : "Erro");
     } finally {
       setUploadBusy((b) => ({ ...b, [key]: false }));
+    }
+  }
+
+  async function setBannerHidden(label: string, hidden: boolean) {
+    if (!isOwner) return;
+    const prev = bannerHiddenEdits[label] === true;
+    setBannerHiddenEdits((s) => ({ ...s, [label]: hidden }));
+    setError(null);
+    setOk(null);
+    try {
+      const retailRaw = (retailEdits[label] ?? "").trim();
+      let retail_price_per_piece: number | null = null;
+      if (retailRaw) {
+        const n = Number(retailRaw.replace(",", "."));
+        if (Number.isFinite(n) && n > 0) retail_price_per_piece = n;
+      }
+      const res = await adminFetch("/api/admin/category-showcase", {
+        method: "PUT",
+        body: JSON.stringify({
+          entries: [
+            {
+              category_label: label,
+              video_url: (videoEdits[label] ?? "").trim() || null,
+              video_poster_url: (posterEdits[label] ?? "").trim() || null,
+              wholesale_tiers: parseTierText(tiersEdits[label] ?? ""),
+              retail_price_per_piece,
+              home_grid_cover_image_url:
+                (gridCoverEdits[label] ?? "").trim() || null,
+              catalog_cover_image_url:
+                (categoryCoverEdits[label] ?? "").trim() || null,
+              catalog_banner_hidden: hidden,
+              display_order:
+                showcaseRows.find((r) => r.category_label === label)?.display_order ??
+                DISPLAY_ORDER_DEFAULT_SENTINEL,
+            },
+          ],
+        }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Falha ao guardar");
+      setOk(
+        hidden
+          ? "Banner da página da categoria oculto na loja."
+          : "Banner da página da categoria visível na loja."
+      );
+    } catch (e) {
+      setBannerHiddenEdits((s) => ({ ...s, [label]: prev }));
+      setError(e instanceof Error ? e.message : "Erro");
     }
   }
 
@@ -668,6 +724,25 @@ export default function AdminCategoriasPage() {
                             {busyCat ? "A processar…" : "Remover"}
                           </button>
                         )}
+                        <label className="mt-1 flex cursor-pointer items-start gap-2 text-sm text-stone-700">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 h-4 w-4 rounded border-stone-300 text-stone-900 focus:ring-stone-500"
+                            checked={bannerHiddenEdits[label] === true}
+                            disabled={!isOwner}
+                            onChange={(e) => {
+                              if (!isOwner) return;
+                              void setBannerHidden(label, e.target.checked);
+                            }}
+                          />
+                          <span>
+                            Ocultar banner na loja
+                            <span className="mt-0.5 block text-xs font-normal text-stone-500">
+                              A imagem fica guardada; a página da categoria não mostra a faixa no
+                              topo.
+                            </span>
+                          </span>
+                        </label>
                       </div>
                     </div>
                   </div>
