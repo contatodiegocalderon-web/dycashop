@@ -76,6 +76,8 @@ export function CatalogClient({
     Boolean(categoryFixed?.trim()) && ENABLE_GUIDED_CATEGORY_WIZARD;
 
   const pendingScrollY = useRef<number | null>(null);
+  const catalogAnchorRef = useRef<HTMLDivElement | null>(null);
+  const scrollToCatalogAfterWizard = useRef(false);
   const [sessionReady, setSessionReady] = useState(
     () => !isCatalogBrowseRestorePending()
   );
@@ -233,6 +235,24 @@ export function CatalogClient({
     return () => window.cancelAnimationFrame(id);
   }, [loading, displayedProducts.length]);
 
+  useEffect(() => {
+    if (!scrollToCatalogAfterWizard.current) return;
+    if (!showCatalog || loading) return;
+    // Espera a grelha (ou o estado vazio) para a rolagem bater no print esperado.
+    if (!error && displayedProducts.length === 0) return;
+
+    scrollToCatalogAfterWizard.current = false;
+    const el = catalogAnchorRef.current;
+    if (!el) return;
+
+    const id = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [showCatalog, loading, displayedProducts.length, error]);
+
   function handleWizardComplete(sel: GuidedWizardSelection) {
     setSize(sel.size);
     setColor("");
@@ -249,6 +269,7 @@ export function CatalogClient({
     setWizardGuidedFilter(null);
     setWizardDone(true);
     setWizardImageHint(true);
+    scrollToCatalogAfterWizard.current = true;
   }
 
   const dismissWizardImageHint = useCallback(() => {
@@ -305,6 +326,7 @@ export function CatalogClient({
 
       {showCatalog && (
         <>
+      <div ref={catalogAnchorRef} className="scroll-mt-20">
       <CatalogFilters
         size={size}
         category={categoryFree}
@@ -326,6 +348,7 @@ export function CatalogClient({
         onBrand={handleBrandChange}
         onColor={handleColorChange}
       />
+      </div>
 
       {loading && (
         <p className="text-center text-sm text-stone-400">Carregando catálogo…</p>

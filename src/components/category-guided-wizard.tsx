@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Product, ProductSize } from "@/types";
 import {
   type GuidedWizardSelection,
+  WIZARD_SIZE_ORDER,
   wizardBrandOptions,
   wizardColorOptions,
   wizardSizeOptions,
@@ -143,7 +144,11 @@ export function CategoryGuidedWizard({
     void load();
   }, [load]);
 
-  const sizes = useMemo(() => wizardSizeOptions(products), [products]);
+  const sizes = useMemo(() => {
+    // Passo 1 aparece na hora (como a tabela); após o fetch, só tamanhos com stock.
+    if (loading && products.length === 0) return [...WIZARD_SIZE_ORDER];
+    return wizardSizeOptions(products);
+  }, [loading, products]);
   const colors = useMemo(
     () => (size ? wizardColorOptions(products, size) : []),
     [products, size]
@@ -198,17 +203,7 @@ export function CategoryGuidedWizard({
     }
   }
 
-  if (loading) {
-    return (
-      <section className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-8 ring-1 ring-white/[0.04]">
-        <p className="text-center text-sm text-stone-400">
-          A preparar o assistente de compra…
-        </p>
-      </section>
-    );
-  }
-
-  if (error) {
+  if (error && !loading && products.length === 0) {
     return (
       <div className="rounded-xl border border-red-900/50 bg-red-950/50 px-4 py-3 text-sm text-red-200">
         {error}
@@ -216,7 +211,7 @@ export function CategoryGuidedWizard({
     );
   }
 
-  if (sizes.length === 0) {
+  if (!loading && sizes.length === 0) {
     return (
       <p className="rounded-2xl border border-white/[0.08] bg-zinc-900/40 px-4 py-8 text-center text-sm text-stone-400">
         Nenhum produto disponível nesta categoria no momento.
@@ -232,6 +227,9 @@ export function CategoryGuidedWizard({
       : step === 2
         ? "escolha a(s) cor(es) de sua preferência"
         : "escolha a(s) marca(s)";
+
+  const waitingOptions =
+    loading && step > 1 && (step === 2 ? colors.length === 0 : brands.length === 0);
 
   return (
     <section
@@ -273,6 +271,7 @@ export function CategoryGuidedWizard({
               />
             ))}
           {step === 2 &&
+            !waitingOptions &&
             colors.map((c, i) => (
               <ChoiceChip
                 key={c}
@@ -285,6 +284,7 @@ export function CategoryGuidedWizard({
               />
             ))}
           {step === 3 &&
+            !waitingOptions &&
             brands.map((b, i) => (
               <ChoiceChip
                 key={b}
@@ -298,7 +298,13 @@ export function CategoryGuidedWizard({
             ))}
         </div>
 
-        {step === 2 && colors.length === 0 && (
+        {waitingOptions ? (
+          <p className="mt-6 text-center text-sm text-stone-400">
+            A carregar opções…
+          </p>
+        ) : null}
+
+        {step === 2 && !waitingOptions && colors.length === 0 && (
           <p className="mt-6 text-center text-sm text-stone-500">
             Nenhuma cor disponível para o tamanho {size}.{" "}
             <button
@@ -311,7 +317,7 @@ export function CategoryGuidedWizard({
           </p>
         )}
 
-        {step === 3 && brands.length === 0 && (
+        {step === 3 && !waitingOptions && brands.length === 0 && (
           <p className="mt-6 text-center text-sm text-stone-500">
             Nenhuma marca disponível para esta combinação.{" "}
             <button
@@ -324,7 +330,7 @@ export function CategoryGuidedWizard({
           </p>
         )}
 
-        {step === 2 && colors.length > 0 && (
+        {step === 2 && !waitingOptions && colors.length > 0 && (
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <button
               type="button"
@@ -347,7 +353,7 @@ export function CategoryGuidedWizard({
           </div>
         )}
 
-        {step === 3 && brands.length > 0 && (
+        {step === 3 && !waitingOptions && brands.length > 0 && (
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <button
               type="button"
