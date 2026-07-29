@@ -103,13 +103,33 @@ export function orderItemHasStockConflict(
   conflict: OrderStockConflict | null | undefined
 ): boolean {
   if (!conflict?.items?.length) return false;
+  const itemPid = item.product_id?.trim() || null;
   const brand = String(item.snapshot_brand ?? "").trim();
   const color = String(item.snapshot_color ?? "").trim();
   const size = String(item.snapshot_size ?? "").trim();
+
   return conflict.items.some((c) => {
-    if (c.product_id && item.product_id && c.product_id === item.product_id) {
-      return true;
+    const conflictPid = c.product_id?.trim() || null;
+
+    // Vários ficheiros podem partilhar marca/cor/tamanho — só o product_id
+    // do conflito deve marcar a peça (senão tudo NIKE PRETO G fica «esgotado»).
+    if (itemPid && conflictPid) {
+      return itemPid === conflictPid;
     }
+
+    if (itemPid && !conflictPid) {
+      return false;
+    }
+
+    // Item perdeu o product_id (produto apagado após stock 0): casa por snapshot.
+    if (!itemPid && conflictPid) {
+      return (
+        c.brand.localeCompare(brand, "pt-BR", { sensitivity: "base" }) === 0 &&
+        c.color.localeCompare(color, "pt-BR", { sensitivity: "base" }) === 0 &&
+        c.size.localeCompare(size, "pt-BR", { sensitivity: "base" }) === 0
+      );
+    }
+
     return (
       c.brand.localeCompare(brand, "pt-BR", { sensitivity: "base" }) === 0 &&
       c.color.localeCompare(color, "pt-BR", { sensitivity: "base" }) === 0 &&
