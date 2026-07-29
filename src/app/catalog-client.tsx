@@ -260,6 +260,7 @@ export function CatalogClient({
     setWizardGuidedFilter({ colors: sel.colors, brands: sel.brands });
     setWizardDone(true);
     setWizardImageHint(true);
+    scrollToCatalogAfterWizard.current = true;
   }
 
   function handleWizardViewAll(size: ProductSize) {

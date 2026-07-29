@@ -35,11 +35,11 @@ export function CartOrderSummary({
 
   return (
     <section className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-4 ring-1 ring-white/[0.04]">
-      <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">
+      <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">
         RESUMO DO PEDIDO
       </h2>
 
-      <ul className="mt-3 space-y-1 text-sm text-stone-200">
+      <ul className="mt-3 space-y-1 text-sm font-semibold text-stone-50">
         {categoryTotals.map((row) => (
           <li key={row.label}>
             {row.qty}x {row.label}

@@ -526,7 +526,7 @@ export default function CarrinhoPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <h1 className="text-xl font-bold text-stone-100">Carrinho</h1>
+      <h1 className="text-xl font-bold text-emerald-400">Carrinho</h1>
       <p className="mt-1 text-sm text-stone-400">
         {cartPricing.isWholesaleCart
           ? "Confira as peças, preencha WhatsApp e nome (obrigatórios) e envie o pedido no WhatsApp."
@@ -698,13 +698,12 @@ export default function CarrinhoPage() {
                             </span>
                           )}
                         </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className="text-xs text-stone-400">Qtd</span>
-                          <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-zinc-600 bg-zinc-950 touch-manipulation">
+                        <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+                          <div className="inline-flex h-8 items-center rounded-full border border-white/[0.1] bg-white/[0.03] p-0.5 touch-manipulation">
                             <button
                               type="button"
                               aria-label="Diminuir quantidade"
-                              className="flex min-h-[44px] min-w-[44px] items-center justify-center px-2 text-lg font-semibold text-stone-100 active:bg-zinc-800 disabled:opacity-40"
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-base leading-none text-stone-300 transition hover:bg-white/[0.08] hover:text-white active:bg-white/[0.12] disabled:opacity-35"
                               disabled={busy}
                               onTouchStart={(e) => {
                                 e.preventDefault();
@@ -735,12 +734,12 @@ export default function CarrinhoPage() {
                                 if (!Number.isFinite(n)) return;
                                 setLineQuantity(line.productId, n);
                               }}
-                              className="w-12 border-x border-zinc-600 bg-zinc-950 py-2 text-center text-sm tabular-nums text-stone-100 outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-600/40"
+                              className="h-7 w-8 border-0 bg-transparent p-0 text-center text-sm font-medium tabular-nums text-stone-100 outline-none focus:ring-0"
                             />
                             <button
                               type="button"
                               aria-label="Aumentar quantidade"
-                              className="flex min-h-[44px] min-w-[44px] items-center justify-center px-2 text-lg font-semibold text-stone-100 active:bg-zinc-800 disabled:opacity-40"
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-base leading-none text-stone-300 transition hover:bg-white/[0.08] hover:text-white active:bg-white/[0.12] disabled:opacity-35"
                               disabled={
                                 busy || line.quantity >= line.product.stock
                               }
@@ -761,15 +760,17 @@ export default function CarrinhoPage() {
                               +
                             </button>
                           </div>
-                          <span className="text-xs text-stone-500">
+                          <span className="text-[11px] text-stone-500">
                             máx. {line.product.stock}
                           </span>
                           <button
                             type="button"
                             onClick={() => removeLine(line.productId)}
-                            className="text-xs font-medium text-red-400 hover:underline"
+                            aria-label="Remover do carrinho"
+                            title="Remover"
+                            className="flex h-7 w-7 items-center justify-center rounded-full text-base leading-none text-red-400/90 transition hover:bg-red-500/10 hover:text-red-300"
                           >
-                            Remover
+                            ×
                           </button>
                         </div>
                       </div>
