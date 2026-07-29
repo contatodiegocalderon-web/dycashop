@@ -34,7 +34,7 @@ export function CartOrderSummary({
     totalPieces === 1 ? "1 peça no total" : `${totalPieces} peças no total`;
 
   return (
-    <section className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-4 ring-1 ring-white/[0.04]">
+    <section className="rounded-2xl border border-emerald-400/35 bg-zinc-900/90 p-5 shadow-[0_0_0_1px_rgba(52,211,153,0.12),0_12px_40px_-16px_rgba(16,185,129,0.45)] ring-1 ring-emerald-400/20">
       <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">
         RESUMO DO PEDIDO
       </h2>
