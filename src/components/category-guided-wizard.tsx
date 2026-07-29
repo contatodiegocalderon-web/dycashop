@@ -238,22 +238,28 @@ export function CategoryGuidedWizard({
       className="overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-zinc-900/80 via-zinc-950/90 to-black/60 p-5 ring-1 ring-white/[0.05] sm:p-8"
       aria-label="Assistente de compra"
     >
+      <h2 className="mb-5 text-balance text-center text-2xl font-black uppercase leading-tight tracking-wide text-emerald-300 sm:mb-6 sm:text-3xl">
+        Comece aqui sua separação
+      </h2>
+
       <StepProgress step={step} />
 
       <div key={step} className="animate-guided-step-in">
-        <p className="text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400/90">
-          {step === 1
-            ? "comece aqui sua separação"
-            : step === 2
-              ? "Quase lá"
-              : "Último passo"}
-        </p>
-        <h2 className="mt-3 flex flex-col items-center gap-2 text-balance text-center text-lg font-semibold leading-snug text-stone-50 sm:text-xl">
+        {step > 1 ? (
+          <p className="text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400/90">
+            {step === 2 ? "Quase lá" : "Último passo"}
+          </p>
+        ) : null}
+        <h3
+          className={`flex flex-col items-center gap-2 text-balance text-center text-lg font-semibold leading-snug text-stone-50 sm:text-xl ${
+            step > 1 ? "mt-3" : ""
+          }`}
+        >
           <span className="animate-guided-step-badge rounded-full border border-emerald-300/40 bg-emerald-400/15 px-4 py-1 text-sm font-black uppercase tracking-[0.16em] text-emerald-100 shadow-[0_0_24px_rgba(52,211,153,0.24)] ring-1 ring-emerald-300/20 sm:text-base">
             {stepLabel}
           </span>
           <span>{stepInstruction}</span>
-        </h2>
+        </h3>
 
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           {step === 1 &&
