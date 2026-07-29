@@ -274,8 +274,8 @@ export async function PUT(request: NextRequest) {
     if (error) {
       if (isMissingSchemaColumnError(error) && /catalog_banner_hidden/i.test(error.message)) {
         const withoutHidden = entries.map((entry) => {
-          const rest = { ...entry };
-          delete rest.catalog_banner_hidden;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omit column if schema ainda não tem
+          const { catalog_banner_hidden, ...rest } = entry;
           return rest;
         });
         const retry = await admin
