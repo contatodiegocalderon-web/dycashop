@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CatalogClient } from "@/app/catalog-client";
-import { CategoryShowcaseBanner } from "@/components/category-showcase-banner";
 import {
   getCatalogCategories,
   getCategoryBySlug,
@@ -48,12 +47,11 @@ export default async function CategoriaPage({ params }: Props) {
         </div>
       ) : null}
 
-      <CategoryShowcaseBanner categoryLabel={cat.label} config={showcaseConfig} />
-
       <CatalogClient
         categoryFixed={cat.label}
         categories={categories}
         activeCategorySlug={cat.slug}
+        showcaseConfig={showcaseConfig}
       />
     </div>
   );

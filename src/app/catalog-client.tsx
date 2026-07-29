@@ -17,10 +17,12 @@ import {
   type GuidedWizardSelection,
   type WizardGuidedFilter,
 } from "@/lib/catalog-guided-wizard";
+import type { CategoryShowcaseConfig } from "@/lib/category-showcase";
 import type { Product, ProductSize } from "@/types";
 import { CatalogFilters } from "@/components/catalog-filters";
 import { CatalogSections } from "@/components/catalog-sections";
 import { CategoryGuidedWizard } from "@/components/category-guided-wizard";
+import { CategoryShowcaseBanner } from "@/components/category-showcase-banner";
 import { WizardCatalogHint } from "@/components/wizard-catalog-hint";
 
 function buildQuery(
@@ -54,6 +56,8 @@ type Props = {
   /** Lista para pesquisa / troca rápida de categoria na página da pasta. */
   categories?: CategorySummary[];
   activeCategorySlug?: string;
+  /** Tabela de valores + vídeo (página da categoria). */
+  showcaseConfig?: CategoryShowcaseConfig;
 };
 
 function readRestoreSnapshot(pathname: string): CatalogBrowseSnapshot | null {
@@ -65,6 +69,7 @@ export function CatalogClient({
   categoryFixed,
   categories,
   activeCategorySlug,
+  showcaseConfig,
 }: Props) {
   const pathname = usePathname() ?? "";
   const guidedMode =
@@ -272,18 +277,30 @@ export function CatalogClient({
     }
   }, [color, colorOptions]);
 
+  const wizard =
+    sessionReady && guidedMode && !wizardDone && categoryFixed ? (
+      <CategoryGuidedWizard
+        categoryLabel={categoryFixed}
+        onComplete={handleWizardComplete}
+        onViewAll={handleWizardViewAll}
+      />
+    ) : null;
+
   return (
     <div className="space-y-8">
       {!sessionReady && (
         <p className="text-center text-sm text-stone-400">A retomar a seleção…</p>
       )}
 
-      {sessionReady && guidedMode && !wizardDone && categoryFixed && (
-        <CategoryGuidedWizard
+      {showcaseConfig && categoryFixed ? (
+        <CategoryShowcaseBanner
           categoryLabel={categoryFixed}
-          onComplete={handleWizardComplete}
-          onViewAll={handleWizardViewAll}
+          config={showcaseConfig}
+          afterPricing={wizard}
+          showVideoOnMobile={!showCatalog}
         />
+      ) : (
+        wizard
       )}
 
       {showCatalog && (
