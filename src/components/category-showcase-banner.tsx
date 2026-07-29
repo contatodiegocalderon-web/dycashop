@@ -10,8 +10,7 @@ type Props = {
   categoryLabel: string;
   config: CategoryShowcaseConfig;
   /**
-   * Conteúdo entre a tabela e o vídeo no telemóvel (ex.: assistente).
-   * Em `md+` fica a largura total abaixo da grelha tabela|vídeo.
+   * No telemóvel fica no topo (acima da tabela). Em `md+`, abaixo da grelha.
    */
   afterPricing?: ReactNode;
   /**
@@ -102,7 +101,7 @@ export function CategoryShowcaseBanner({
 
   return (
     <section className="mb-6 flex flex-col gap-3 md:grid md:grid-cols-2 md:items-start">
-      <div className="order-1 rounded-xl border border-white/[0.08] bg-black/25 p-3 md:p-4">
+      <div className="order-2 rounded-xl border border-white/[0.08] bg-black/25 p-3 md:order-1 md:p-4">
         <h2 className="text-base font-semibold text-stone-100">
           Tabela de valores
         </h2>
@@ -151,7 +150,7 @@ export function CategoryShowcaseBanner({
         </div>
       </div>
 
-      {/* Mobile: após o assistente; some quando o catálogo já está filtrado. Desktop: sempre. */}
+      {/* Mobile: após a tabela; some com o catálogo. Desktop: ao lado da tabela. */}
       <div
         className={`order-3 md:order-2 ${showVideoOnMobile ? "" : "hidden md:block"}`}
       >
@@ -159,7 +158,7 @@ export function CategoryShowcaseBanner({
       </div>
 
       {afterPricing ? (
-        <div className="order-2 md:order-3 md:col-span-2">{afterPricing}</div>
+        <div className="order-1 md:order-3 md:col-span-2">{afterPricing}</div>
       ) : null}
     </section>
   );
