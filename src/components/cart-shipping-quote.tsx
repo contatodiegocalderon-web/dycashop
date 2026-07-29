@@ -221,7 +221,7 @@ export function CartShippingQuote({
   if (!cepDigits) {
     return (
       <p className="mt-2 text-xs text-stone-500">
-        Informe o CEP completo para ver PAC e SEDEX estimados.
+        Informe o CEP para ver preço e prazo - PAC e SEDEX
       </p>
     );
   }

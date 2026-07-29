@@ -1,7 +1,20 @@
+import Image from "next/image";
 import Link from "next/link";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
 
 const WA_BASE = "https://wa.me";
+
+const PAYMENT_LOGOS = [
+  { src: "/payment/visa.svg", label: "Visa" },
+  { src: "/payment/mastercard.svg", label: "Mastercard" },
+  { src: "/payment/amex.svg", label: "American Express" },
+  { src: "/payment/diners.svg", label: "Diners Club" },
+  { src: "/payment/elo.svg", label: "Elo" },
+  { src: "/payment/hipercard.svg", label: "Hipercard" },
+  { src: "/payment/discover.svg", label: "Discover" },
+  { src: "/payment/boleto.svg", label: "Boleto" },
+  { src: "/payment/pix.svg", label: "Pix" },
+] as const;
 
 export function SiteFooter() {
   return (
@@ -70,6 +83,44 @@ export function SiteFooter() {
             </Link>
           </div>
         </div>
+
+        <div className="mt-10 border-t border-white/[0.06] pt-8">
+          <p className="text-sm font-medium text-white">Meios de pagamento</p>
+          <ul className="mt-3 flex flex-wrap items-center gap-1">
+            {PAYMENT_LOGOS.map((logo) => (
+              <li key={logo.src}>
+                <Image
+                  src={logo.src}
+                  alt={logo.label}
+                  width={32}
+                  height={20}
+                  className="h-5 w-auto rounded-[2px] object-contain opacity-90"
+                  unoptimized
+                />
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-8 flex justify-center">
+            <Link href="/" className="block" aria-label="DYCASHOP — início">
+              <Image
+                src="/brand-logo.png"
+                alt="DYCASHOP"
+                width={120}
+                height={120}
+                className="h-20 w-20 object-contain sm:h-24 sm:w-24"
+                unoptimized
+              />
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-[#1a1a1a] px-4 py-3">
+        <p className="text-center text-[11px] leading-relaxed text-stone-300 sm:text-xs">
+          Copyright DYCASHOP - 65.888.954/0001-28 - {new Date().getFullYear()}.
+          Todos os direitos reservados.
+        </p>
       </div>
     </footer>
   );

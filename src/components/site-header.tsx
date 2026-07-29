@@ -34,20 +34,19 @@ export function SiteHeader() {
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
         <Link
           href="/"
-          className="group flex items-center gap-3 sm:gap-3.5"
+          className="group flex items-center gap-2.5 sm:gap-3"
           aria-label="DYCASHOP — início"
         >
-          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0a0a0c] ring-1 ring-white/[0.09] shadow-[0_0_0_1px_rgba(212,175,55,0.06)] transition duration-300 group-hover:ring-amber-400/25 group-hover:shadow-[0_0_28px_-10px_rgba(212,175,55,0.35)] sm:h-9 sm:w-9">
-            <Image
-              src="/brand-logo.png"
-              alt=""
-              width={36}
-              height={36}
-              className="object-contain p-[3px]"
-              sizes="(max-width: 640px) 32px, 36px"
-              priority
-            />
-          </span>
+          <Image
+            src="/brand-logo.png"
+            alt=""
+            width={40}
+            height={40}
+            className="h-9 w-9 object-contain transition duration-300 group-hover:brightness-110 sm:h-10 sm:w-10"
+            sizes="(max-width: 640px) 36px, 40px"
+            priority
+            unoptimized
+          />
           <span className="text-[13px] font-semibold uppercase tracking-[0.28em] text-stone-100 transition-colors group-hover:text-white">
             DYCASHOP
           </span>

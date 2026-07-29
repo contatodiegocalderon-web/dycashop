@@ -1,5 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { parseOrderStockConflict } from "@/lib/order-stock-conflict";
+import {
+  parseOrderStockConflict,
+  resolveLiveStockConflict,
+} from "@/lib/order-stock-conflict";
 import type { OrderItemRow, OrderRow } from "@/types";
 
 /** 18 bytes → 36 caracteres hex */
@@ -108,6 +111,26 @@ export async function getOrderReceiptByToken(
     stockConflictRaw = (conflictRow as { stock_conflict?: unknown }).stock_conflict;
   }
 
+  const stockConflict = await resolveLiveStockConflict(admin, stockConflictRaw);
+
+  // Limpa aviso obsoleto na BD se já não há peças realmente esgotadas.
+  const hadConflict = Boolean(parseOrderStockConflict(stockConflictRaw));
+  if (hadConflict && !stockConflict) {
+    await admin
+      .from("orders")
+      .update({ stock_conflict: null })
+      .eq("id", row.id);
+  } else if (
+    stockConflict &&
+    JSON.stringify(parseOrderStockConflict(stockConflictRaw)?.items) !==
+      JSON.stringify(stockConflict.items)
+  ) {
+    await admin
+      .from("orders")
+      .update({ stock_conflict: stockConflict })
+      .eq("id", row.id);
+  }
+
   return {
     order: {
       id: row.id,
@@ -124,7 +147,7 @@ export async function getOrderReceiptByToken(
       sales_channel: (row as { sales_channel?: string | null }).sales_channel ?? null,
       checkout_channel:
         (row as { checkout_channel?: string | null }).checkout_channel ?? null,
-      stock_conflict: parseOrderStockConflict(stockConflictRaw),
+      stock_conflict: stockConflict,
       created_at: row.created_at,
       updated_at: row.updated_at,
     },

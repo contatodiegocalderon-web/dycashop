@@ -202,8 +202,9 @@ type PendingItemRow = {
 };
 
 /**
- * Após confirmar um pedido, marca outros pendentes que já não têm stock para as peças afetadas.
- * Não reserva stock em pendentes — só avisa depois da disputa.
+ * Após confirmar um pedido, marca outros pendentes cujas peças **esgotaram de facto**
+ * (stock pós-confirmação = 0 — a seguir o ficheiro sai do Drive).
+ * Se ainda sobrar stock (ex.: 3→2), não avisa.
  */
 export async function flagPendingOrdersAfterConfirm(
   admin: SupabaseClient,
@@ -214,15 +215,18 @@ export async function flagPendingOrdersAfterConfirm(
     stockAfterByProductId: Map<string, number>;
   }
 ): Promise<number> {
-  const productIds = Array.from(opts.stockAfterByProductId.keys()).filter(Boolean);
-  if (productIds.length === 0) return 0;
+  const soldOutProductIds = Array.from(opts.stockAfterByProductId.entries())
+    .filter(([, stock]) => stock <= 0)
+    .map(([id]) => id)
+    .filter(Boolean);
+  if (soldOutProductIds.length === 0) return 0;
 
   const { data: pendingItems, error: piErr } = await admin
     .from("order_items")
     .select(
       "order_id, product_id, quantity, snapshot_brand, snapshot_color, snapshot_size, orders!inner(id, status)"
     )
-    .in("product_id", productIds)
+    .in("product_id", soldOutProductIds)
     .eq("orders.status", "PENDENTE_PAGAMENTO")
     .neq("order_id", opts.confirmedOrderId);
 
@@ -250,8 +254,9 @@ export async function flagPendingOrdersAfterConfirm(
 
   for (const [key, needed] of Array.from(qtyNeededByOrderProduct.entries())) {
     const [orderId, productId] = key.split(":");
+    // Só peças realmente esgotadas (stock 0 após a confirmação).
     const available = opts.stockAfterByProductId.get(productId) ?? 0;
-    if (needed <= available) continue;
+    if (available > 0) continue;
     const meta = metaByOrderProduct.get(key);
     if (!meta) continue;
     const list = conflictByOrderId.get(orderId) ?? [];
@@ -261,7 +266,7 @@ export async function flagPendingOrdersAfterConfirm(
       color: meta.snapshot_color,
       size: meta.snapshot_size,
       quantity: needed,
-      available,
+      available: 0,
     });
     conflictByOrderId.set(orderId, list);
   }
@@ -286,4 +291,50 @@ export async function flagPendingOrdersAfterConfirm(
   }
 
   return flagged;
+}
+
+/**
+ * Remove do conflito peças que ainda têm stock (avisos antigos / lógica antiga).
+ * Mantém só product_id apagado ou com stock ≤ 0.
+ */
+export async function resolveLiveStockConflict(
+  admin: SupabaseClient,
+  conflict: OrderStockConflict | null | undefined | unknown
+): Promise<OrderStockConflict | null> {
+  const parsed = parseOrderStockConflict(conflict);
+  if (!parsed?.items?.length) return null;
+
+  const pids = Array.from(
+    new Set(
+      parsed.items
+        .map((i) => i.product_id?.trim())
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
+  const stockById = new Map<string, number>();
+  if (pids.length > 0) {
+    const { data } = await admin
+      .from("products")
+      .select("id, stock")
+      .in("id", pids);
+    for (const row of data ?? []) {
+      const id = String((row as { id?: string }).id ?? "").trim();
+      if (!id) continue;
+      stockById.set(id, Number((row as { stock?: number }).stock ?? 0));
+    }
+  }
+
+  const stillSoldOut = parsed.items.filter((item) => {
+    const pid = item.product_id?.trim();
+    if (!pid) return true;
+    if (!stockById.has(pid)) return true;
+    return (stockById.get(pid) ?? 0) <= 0;
+  });
+
+  if (stillSoldOut.length === 0) return null;
+  return {
+    ...parsed,
+    items: stillSoldOut.map((i) => ({ ...i, available: 0 })),
+  };
 }

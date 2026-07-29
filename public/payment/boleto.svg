@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 32" role="img" aria-label="Boleto">
+  <rect width="48" height="32" rx="4" fill="#fff"/>
+  <g fill="#111">
+    <rect x="6" y="8" width="1.4" height="16"/>
+    <rect x="9" y="8" width="2.2" height="16"/>
+    <rect x="13" y="8" width="1.1" height="16"/>
+    <rect x="16" y="8" width="2.8" height="16"/>
+    <rect x="20.5" y="8" width="1.1" height="16"/>
+    <rect x="23.5" y="8" width="1.8" height="16"/>
+    <rect x="27" y="8" width="1.1" height="16"/>
+    <rect x="30" y="8" width="2.4" height="16"/>
+    <rect x="34.2" y="8" width="1.1" height="16"/>
+    <rect x="37" y="8" width="1.5" height="16"/>
+    <rect x="40.5" y="8" width="2.2" height="16"/>
+  </g>
+</svg>

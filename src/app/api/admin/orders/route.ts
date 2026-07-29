@@ -18,6 +18,10 @@ import {
 } from "@/lib/admin-period";
 import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
 import { applyRealAppConfirmedOrdersFilter } from "@/lib/real-app-orders";
+import {
+  parseOrderStockConflict,
+  resolveLiveStockConflict,
+} from "@/lib/order-stock-conflict";
 
 export const runtime = "nodejs";
 
@@ -262,7 +266,27 @@ export async function GET(request: NextRequest) {
     });
     const idsGlobal = needsLegacyRank ? await fetchAllOrderIdsNewestFirst() : [];
     const orders = attachDisplayNumbers(withStaffName, idsGlobal);
-    return NextResponse.json({ orders });
+
+    const ordersWithLiveConflict = await Promise.all(
+      orders.map(async (order) => {
+        const raw = (order as { stock_conflict?: unknown }).stock_conflict;
+        if (!parseOrderStockConflict(raw)) return order;
+        const live = await resolveLiveStockConflict(admin, raw);
+        if (
+          JSON.stringify(parseOrderStockConflict(raw)?.items) ===
+          JSON.stringify(live?.items ?? null)
+        ) {
+          return { ...order, stock_conflict: live };
+        }
+        await admin
+          .from("orders")
+          .update({ stock_conflict: live })
+          .eq("id", order.id);
+        return { ...order, stock_conflict: live };
+      })
+    );
+
+    return NextResponse.json({ orders: ordersWithLiveConflict });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro";
     return NextResponse.json({ error: msg }, { status: 500 });

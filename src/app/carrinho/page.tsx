@@ -13,8 +13,14 @@ import { buildOrderWhatsAppText, waMeUrl } from "@/lib/whatsapp";
 import { CartOrderSummary } from "@/components/cart-order-summary";
 import { CartShippingQuote } from "@/components/cart-shipping-quote";
 import { CartVarejoShippingAddress } from "@/components/cart-varejo-shipping-address";
+import {
+  FieldInvalidMark,
+  FieldRequiredHint,
+  requiredInputClass,
+} from "@/components/checkout-field-error";
 import { ClickableImageThumb } from "@/components/clickable-image-thumb";
 import { computeCartPricing, formatMoneyBrl } from "@/lib/cart-pricing";
+import { normalizeCepDigits } from "@/lib/cart-shipping-weight";
 import type { ShippingAddress } from "@/lib/shipping-address";
 import { totalsByCategoryFromCartLines } from "@/lib/order-category-totals";
 import type { WholesaleTier } from "@/lib/category-showcase";
@@ -116,6 +122,7 @@ export default function CarrinhoPage() {
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress | null>(
     null
   );
+  const [showFieldErrors, setShowFieldErrors] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
@@ -270,13 +277,10 @@ export default function CarrinhoPage() {
   const openSellerModal = useCallback(() => {
     setErr(null);
     if (!lines.length) return;
+    setShowFieldErrors(true);
     const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
-    if (waDigits.length < 10) {
-      setErr("Informe um WhatsApp válido (com DDD, mínimo 10 dígitos).");
-      return;
-    }
-    if (!customerName.trim()) {
-      setErr("Informe o seu nome para enviar o pedido.");
+    const cepOk = (normalizeCepDigits(cep) ?? "").length === 8;
+    if (waDigits.length < 10 || !customerName.trim() || !cepOk) {
       return;
     }
     if (!WHATSAPP_SELLERS.length) {
@@ -288,7 +292,7 @@ export default function CarrinhoPage() {
       return WHATSAPP_SELLERS[0]!.phone;
     });
     setSellerModalOpen(true);
-  }, [lines.length, customerWhatsApp, customerName]);
+  }, [lines.length, customerWhatsApp, customerName, cep]);
 
   const closeSellerModal = useCallback(() => {
     if (!busy) setSellerModalOpen(false);
@@ -305,31 +309,23 @@ export default function CarrinhoPage() {
 
   async function finalizarVarejoCheckout() {
     if (!lines.length) return;
+    setShowFieldErrors(true);
+    setErr(null);
     const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
-    if (waDigits.length < 10) {
-      setErr("Informe um WhatsApp válido (com DDD).");
-      return;
-    }
     const trimmedName = customerName.trim();
-    if (!trimmedName) {
-      setErr("Informe o seu nome para finalizar a compra.");
-      return;
-    }
-    if (!selectedShipping) {
-      setErr("Selecione uma opção de frete (PAC ou SEDEX).");
-      return;
-    }
-    if (!shippingAddress) {
-      setErr("Preencha o endereço de entrega completo.");
-      return;
-    }
-    if (cartPricing.subtotal == null) {
-      setErr("Não foi possível calcular o subtotal. Atualize o carrinho.");
+    const cepOk = (normalizeCepDigits(cep) ?? "").length === 8;
+    if (
+      waDigits.length < 10 ||
+      !trimmedName ||
+      !cepOk ||
+      !selectedShipping ||
+      !shippingAddress ||
+      cartPricing.subtotal == null
+    ) {
       return;
     }
 
     setBusy(true);
-    setErr(null);
     setCartNotice(null);
     try {
       const reconcileResult = await reconcileWithCatalog();
@@ -527,13 +523,6 @@ export default function CarrinhoPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-xl font-bold text-emerald-400">Carrinho</h1>
-      <p className="mt-1 text-sm text-stone-400">
-        {cartPricing.isWholesaleCart
-          ? "Confira as peças, preencha WhatsApp e nome (obrigatórios) e envie o pedido no WhatsApp."
-          : checkoutStep === "review"
-            ? "Confira as peças e inicie a compra quando estiver pronto."
-            : "Preencha WhatsApp, nome, CEP, frete e endereço para finalizar a compra."}
-      </p>
 
       {cartNotice && (
         <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
@@ -836,32 +825,49 @@ export default function CarrinhoPage() {
                 >
                   WhatsApp <span className="text-red-400">*</span>
                 </label>
-                <p className="mt-0.5 text-xs text-stone-500">
-                  Preencha primeiro (obrigatório). Se já comprou connosco, o nome pode ser
-                  preenchido automaticamente.
-                </p>
-                <input
-                  id="checkout-customer-whatsapp"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  value={customerWhatsApp}
-                  onChange={(e) => {
-                    nameManuallyEditedRef.current = false;
-                    const digits = e.target.value.replace(/\D/g, "");
-                    const brDigits = digits.startsWith("55")
-                      ? digits
-                      : `55${digits}`;
-                    const national = brDigits.slice(2, 13);
-                    const ddd = national.slice(0, 2);
-                    const first = national.slice(2, 7);
-                    const second = national.slice(7, 11);
-                    const formatted = `+55 ${ddd}${first ? ` ${first}` : ""}${second ? `-${second}` : ""}`;
-                    setCustomerWhatsApp(formatted.trimEnd());
-                  }}
-                  maxLength={20}
-                  className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
-                  placeholder="+55 11 99999-9999"
+                <div className="relative mt-2">
+                  <input
+                    id="checkout-customer-whatsapp"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    value={customerWhatsApp}
+                    onChange={(e) => {
+                      nameManuallyEditedRef.current = false;
+                      const digits = e.target.value.replace(/\D/g, "");
+                      const brDigits = digits.startsWith("55")
+                        ? digits
+                        : `55${digits}`;
+                      const national = brDigits.slice(2, 13);
+                      const ddd = national.slice(0, 2);
+                      const first = national.slice(2, 7);
+                      const second = national.slice(7, 11);
+                      const formatted = `+55 ${ddd}${first ? ` ${first}` : ""}${second ? `-${second}` : ""}`;
+                      setCustomerWhatsApp(formatted.trimEnd());
+                    }}
+                    maxLength={20}
+                    className={requiredInputClass(
+                      showFieldErrors &&
+                        normalizeCheckoutWaDigits(customerWhatsApp).length < 10
+                    )}
+                    placeholder="+55 11 99999-9999"
+                    aria-invalid={
+                      showFieldErrors &&
+                      normalizeCheckoutWaDigits(customerWhatsApp).length < 10
+                    }
+                  />
+                  <FieldInvalidMark
+                    show={
+                      showFieldErrors &&
+                      normalizeCheckoutWaDigits(customerWhatsApp).length < 10
+                    }
+                  />
+                </div>
+                <FieldRequiredHint
+                  show={
+                    showFieldErrors &&
+                    normalizeCheckoutWaDigits(customerWhatsApp).length < 10
+                  }
                 />
               </div>
 
@@ -872,21 +878,29 @@ export default function CarrinhoPage() {
                 >
                   Seu nome <span className="text-red-400">*</span>
                 </label>
-                <p className="mt-0.5 text-xs text-stone-500">
-                  Obrigatório. Usado para identificar o pedido no painel administrativo.
-                </p>
-                <input
-                  id="checkout-customer-name"
-                  type="text"
-                  autoComplete="name"
-                  value={customerName}
-                  onChange={(e) => {
-                    nameManuallyEditedRef.current = true;
-                    setCustomerName(e.target.value);
-                  }}
-                  maxLength={120}
-                  className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
-                  placeholder="Nome completo"
+                <div className="relative mt-2">
+                  <input
+                    id="checkout-customer-name"
+                    type="text"
+                    autoComplete="name"
+                    value={customerName}
+                    onChange={(e) => {
+                      nameManuallyEditedRef.current = true;
+                      setCustomerName(e.target.value);
+                    }}
+                    maxLength={120}
+                    className={requiredInputClass(
+                      showFieldErrors && !customerName.trim()
+                    )}
+                    placeholder="Nome completo"
+                    aria-invalid={showFieldErrors && !customerName.trim()}
+                  />
+                  <FieldInvalidMark
+                    show={showFieldErrors && !customerName.trim()}
+                  />
+                </div>
+                <FieldRequiredHint
+                  show={showFieldErrors && !customerName.trim()}
                 />
               </div>
 
@@ -895,21 +909,40 @@ export default function CarrinhoPage() {
                   htmlFor="checkout-cep"
                   className="text-sm font-medium text-stone-300"
                 >
-                  CEP para frete
+                  CEP para frete <span className="text-red-400">*</span>
                 </label>
-                <p className="mt-0.5 text-xs text-stone-500">
-                  Calculamos PAC e SEDEX automaticamente com o peso das categorias.
-                </p>
-                <input
-                  id="checkout-cep"
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="postal-code"
-                  value={cep}
-                  onChange={(e) => setCep(e.target.value)}
-                  maxLength={9}
-                  className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm tabular-nums text-stone-100 outline-none focus:ring-2 focus:ring-white/15"
-                  placeholder="00000-000"
+                <div className="relative mt-2">
+                  <input
+                    id="checkout-cep"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="postal-code"
+                    value={cep}
+                    onChange={(e) => setCep(e.target.value)}
+                    maxLength={9}
+                    className={`${requiredInputClass(
+                      showFieldErrors &&
+                        (normalizeCepDigits(cep) ?? "").length !== 8,
+                      "tabular-nums"
+                    )}`}
+                    placeholder="00000-000"
+                    aria-invalid={
+                      showFieldErrors &&
+                      (normalizeCepDigits(cep) ?? "").length !== 8
+                    }
+                  />
+                  <FieldInvalidMark
+                    show={
+                      showFieldErrors &&
+                      (normalizeCepDigits(cep) ?? "").length !== 8
+                    }
+                  />
+                </div>
+                <FieldRequiredHint
+                  show={
+                    showFieldErrors &&
+                    (normalizeCepDigits(cep) ?? "").length !== 8
+                  }
                 />
                 <CartShippingQuote
                   lines={lines}
@@ -918,10 +951,19 @@ export default function CarrinhoPage() {
                   onQuoteChange={setShippingQuote}
                   onSelectionChange={setSelectedShipping}
                 />
-                {isVarejoCheckout && selectedShipping ? (
+                {isVarejoCheckout &&
+                showFieldErrors &&
+                !selectedShipping ? (
+                  <p className="mt-2 text-center text-xs text-red-500" role="alert">
+                    Este campo deve ser preenchido
+                  </p>
+                ) : null}
+                {isVarejoCheckout &&
+                (selectedShipping || showFieldErrors) ? (
                   <CartVarejoShippingAddress
                     cep={cep}
                     customerName={customerName}
+                    showErrors={showFieldErrors}
                     onChange={setShippingAddress}
                   />
                 ) : null}
@@ -931,14 +973,7 @@ export default function CarrinhoPage() {
                 {isVarejoCheckout ? (
                   <button
                     type="button"
-                    disabled={
-                      busy ||
-                      normalizeCheckoutWaDigits(customerWhatsApp).length < 10 ||
-                      !customerName.trim() ||
-                      !selectedShipping ||
-                      !shippingAddress ||
-                      cartPricing.subtotal == null
-                    }
+                    disabled={busy}
                     onClick={() => void finalizarVarejoCheckout()}
                     className="w-full rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
                   >
@@ -947,11 +982,7 @@ export default function CarrinhoPage() {
                 ) : (
                   <button
                     type="button"
-                    disabled={
-                      busy ||
-                      normalizeCheckoutWaDigits(customerWhatsApp).length < 10 ||
-                      !customerName.trim()
-                    }
+                    disabled={busy}
                     onClick={openSellerModal}
                     className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
                   >
