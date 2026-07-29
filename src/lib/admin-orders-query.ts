@@ -230,9 +230,9 @@ export type OrderItemMetricsRow = {
 const ORDER_ITEM_METRICS_SELECT =
   "id, order_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size";
 
-/** Lista admin de pedidos — inclui URLs para miniaturas. */
+/** Lista admin de pedidos — inclui URLs para miniaturas e product_id (selo esgotado). */
 const ORDER_ITEM_ADMIN_SELECT =
-  "id, order_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size, snapshot_image_url, snapshot_drive_file_id";
+  "id, order_id, product_id, quantity, snapshot_category, snapshot_brand, snapshot_color, snapshot_size, snapshot_image_url, snapshot_drive_file_id";
 
 /** Busca itens de um pedido (sem limite prático de linhas por request). */
 async function fetchOrderItemsForSingleOrder(

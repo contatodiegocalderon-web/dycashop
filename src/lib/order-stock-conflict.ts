@@ -92,7 +92,25 @@ export const STOCK_CONFLICT_CLIENT_MESSAGE = MESSAGES.sold_out_other_order.clien
 /** @deprecated Use stockConflictMessage */
 export const STOCK_CONFLICT_ADMIN_MESSAGE = MESSAGES.sold_out_other_order.admin;
 
-/** Indica se um item do pedido está no conflito de stock. */
+function snapshotMatchesConflictItem(
+  item: { snapshot_brand: string; snapshot_color: string; snapshot_size: string },
+  c: Pick<OrderStockConflictItem, "brand" | "color" | "size">
+): boolean {
+  const brand = String(item.snapshot_brand ?? "").trim();
+  const color = String(item.snapshot_color ?? "").trim();
+  const size = String(item.snapshot_size ?? "").trim();
+  return (
+    c.brand.localeCompare(brand, "pt-BR", { sensitivity: "base" }) === 0 &&
+    c.color.localeCompare(color, "pt-BR", { sensitivity: "base" }) === 0 &&
+    c.size.localeCompare(size, "pt-BR", { sensitivity: "base" }) === 0
+  );
+}
+
+/**
+ * Indica se um item do pedido está no conflito de stock.
+ * Com product_id: só casa por id (vários NIKE PRETO G ≠ a mesma peça).
+ * Sem product_id (produto apagado após stock 0): fallback por snapshot.
+ */
 export function orderItemHasStockConflict(
   item: {
     product_id?: string | null;
@@ -104,38 +122,16 @@ export function orderItemHasStockConflict(
 ): boolean {
   if (!conflict?.items?.length) return false;
   const itemPid = item.product_id?.trim() || null;
-  const brand = String(item.snapshot_brand ?? "").trim();
-  const color = String(item.snapshot_color ?? "").trim();
-  const size = String(item.snapshot_size ?? "").trim();
 
-  return conflict.items.some((c) => {
-    const conflictPid = c.product_id?.trim() || null;
-
-    // Vários ficheiros podem partilhar marca/cor/tamanho — só o product_id
-    // do conflito deve marcar a peça (senão tudo NIKE PRETO G fica «esgotado»).
-    if (itemPid && conflictPid) {
-      return itemPid === conflictPid;
-    }
-
-    if (itemPid && !conflictPid) {
-      return false;
-    }
-
-    // Item perdeu o product_id (produto apagado após stock 0): casa por snapshot.
-    if (!itemPid && conflictPid) {
-      return (
-        c.brand.localeCompare(brand, "pt-BR", { sensitivity: "base" }) === 0 &&
-        c.color.localeCompare(color, "pt-BR", { sensitivity: "base" }) === 0 &&
-        c.size.localeCompare(size, "pt-BR", { sensitivity: "base" }) === 0
-      );
-    }
-
-    return (
-      c.brand.localeCompare(brand, "pt-BR", { sensitivity: "base" }) === 0 &&
-      c.color.localeCompare(color, "pt-BR", { sensitivity: "base" }) === 0 &&
-      c.size.localeCompare(size, "pt-BR", { sensitivity: "base" }) === 0
+  if (itemPid) {
+    return conflict.items.some(
+      (c) => (c.product_id?.trim() || null) === itemPid
     );
-  });
+  }
+
+  // Item perdeu o product_id (ON DELETE SET NULL). Sem id, o snapshot é o
+  // único sinal — pode marcar gémeos marca/cor/tamanho se também estiverem nulos.
+  return conflict.items.some((c) => snapshotMatchesConflictItem(item, c));
 }
 
 export function parseOrderStockConflict(raw: unknown): OrderStockConflict | null {
