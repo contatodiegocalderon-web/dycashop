@@ -273,7 +273,11 @@ export async function PUT(request: NextRequest) {
     });
     if (error) {
       if (isMissingSchemaColumnError(error) && /catalog_banner_hidden/i.test(error.message)) {
-        const withoutHidden = entries.map(({ catalog_banner_hidden: _h, ...rest }) => rest);
+        const withoutHidden = entries.map((entry) => {
+          const rest = { ...entry };
+          delete rest.catalog_banner_hidden;
+          return rest;
+        });
         const retry = await admin
           .from("category_showcase_settings")
           .upsert(withoutHidden, { onConflict: "category_label" });
