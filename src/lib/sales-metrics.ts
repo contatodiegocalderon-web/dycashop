@@ -83,6 +83,10 @@ export interface SalesMetricsResult {
   profitByCategory: Record<string, number>;
   novoCount: number;
   antigoCount: number;
+  novoRevenue: number;
+  novoProfit: number;
+  antigoRevenue: number;
+  antigoProfit: number;
 }
 
 export function aggregateSalesMetrics(
@@ -105,6 +109,10 @@ export function aggregateSalesMetrics(
   const categoryBuckets = new Map<string, CategoryBucket>();
   let novoCount = 0;
   let antigoCount = 0;
+  let novoRevenue = 0;
+  let novoProfit = 0;
+  let antigoRevenue = 0;
+  let antigoProfit = 0;
 
   const normalizedCosts: Record<string, number> = {};
   for (const [label, c] of Object.entries(costs)) {
@@ -137,9 +145,6 @@ export function aggregateSalesMetrics(
   for (const o of paidWithSale) {
     const sale = Number(o.sale_amount);
     const items = itemsByOrderId.get(o.id) ?? [];
-
-    if (o.customer_segment === "NOVO") novoCount += 1;
-    else if (o.customer_segment === "ANTIGO") antigoCount += 1;
 
     const orderPieces = items.reduce((s, it) => s + it.quantity, 0) || 1;
     const qtyByCategory: Record<string, number> = {};
@@ -179,7 +184,6 @@ export function aggregateSalesMetrics(
       0
     );
     const orderRevenue = explicitOrderRevenue > 0 ? explicitOrderRevenue : sale;
-    totalRevenue += orderRevenue;
     let orderProfit = 0;
 
     for (const it of items) {
@@ -202,7 +206,19 @@ export function aggregateSalesMetrics(
 
       addCategoryMetric(cat, qty, allocatedRev, allocatedProfit);
     }
+
+    totalRevenue += orderRevenue;
     totalProfit += orderProfit;
+
+    if (o.customer_segment === "NOVO") {
+      novoCount += 1;
+      novoRevenue += orderRevenue;
+      novoProfit += orderProfit;
+    } else if (o.customer_segment === "ANTIGO") {
+      antigoCount += 1;
+      antigoRevenue += orderRevenue;
+      antigoProfit += orderProfit;
+    }
   }
 
   const piecesByCategory: Record<string, number> = {};
@@ -233,5 +249,9 @@ export function aggregateSalesMetrics(
     profitByCategory,
     novoCount,
     antigoCount,
+    novoRevenue,
+    novoProfit,
+    antigoRevenue,
+    antigoProfit,
   };
 }

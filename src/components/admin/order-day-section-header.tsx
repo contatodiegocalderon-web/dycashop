@@ -23,6 +23,16 @@ function StatLine({ label, pair }: { label: string; pair: DayMoneyPair }) {
   );
 }
 
+export function SegmentPeriodStats({ stats }: { stats: OrderDaySectionStats }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 normal-case">
+      <StatLine label="NOVOS" pair={stats.novos} />
+      <StatLine label="ANTIGOS" pair={stats.antigos} />
+      <StatLine label="TOTAL" pair={stats.total} />
+    </div>
+  );
+}
+
 export function OrderDaySectionHeader({
   label,
   stats,
@@ -36,13 +46,7 @@ export function OrderDaySectionHeader({
       style={adminPurpleCardStyle}
     >
       <h2 className="text-lg font-bold uppercase tracking-wide">{label}</h2>
-      {stats ? (
-        <div className="mt-1.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 normal-case">
-          <StatLine label="NOVOS" pair={stats.novos} />
-          <StatLine label="ANTIGOS" pair={stats.antigos} />
-          <StatLine label="TOTAL" pair={stats.total} />
-        </div>
-      ) : null}
+      {stats ? <SegmentPeriodStats stats={stats} /> : null}
     </header>
   );
 }

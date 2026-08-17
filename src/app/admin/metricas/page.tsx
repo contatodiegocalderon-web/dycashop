@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAdminAuth } from "@/contexts/admin-auth";
 
 import { AdminPurpleCard, AdminPurpleStatCard } from "@/components/admin/admin-purple-card";
+import { SegmentPeriodStats } from "@/components/admin/order-day-section-header";
 import { REAL_APP_ORDERS_HELP } from "@/lib/real-app-orders";
 import {
   CategoryPieChart,
@@ -23,6 +24,10 @@ type MetricsPayload = {
   profitByCategory: Record<string, number>;
   novoCount: number;
   antigoCount: number;
+  novoRevenue: number;
+  novoProfit: number;
+  antigoRevenue: number;
+  antigoProfit: number;
 };
 
 type SellerBreakdownRow = {
@@ -441,10 +446,28 @@ export default function AdminMetricasPage() {
               Segmento de cliente
             </h2>
             <p className="mt-1 text-center text-xs text-violet-100/70">
-              Pedidos confirmados (novo vs antigo)
+              Pedidos confirmados (novo vs antigo) · faturamento e lucro no período
             </p>
             {segmentPieData.some((d) => d.value > 0) ? (
-              <SegmentPieChart data={segmentPieData} theme="purple" />
+              <>
+                <SegmentPieChart data={segmentPieData} theme="purple" />
+                <SegmentPeriodStats
+                  stats={{
+                    novos: {
+                      faturamento: metrics.novoRevenue,
+                      lucro: metrics.novoProfit,
+                    },
+                    antigos: {
+                      faturamento: metrics.antigoRevenue,
+                      lucro: metrics.antigoProfit,
+                    },
+                    total: {
+                      faturamento: metrics.totalRevenue,
+                      lucro: metrics.totalProfit,
+                    },
+                  }}
+                />
+              </>
             ) : (
               <p className="py-12 text-center text-sm text-violet-100/60">
                 Sem dados de segmento neste período.
