@@ -17,12 +17,17 @@ import {
   playAdminSaleSound,
   warmAdminSaleSound,
 } from "@/lib/admin-sale-sound";
+import {
+  GESTOR_HOME_PATH,
+  isGestorAdminPathAllowed,
+  type StaffRole,
+} from "@/lib/staff-role";
 
 export const ADMIN_KEY_STORAGE = "admin_api_key";
 
 export type StaffSession = {
   email: string;
-  role: "owner" | "seller";
+  role: StaffRole;
   /** Sessão derivada da chave ADMIN_API_SECRET (sem conta staff_users). */
   fromApiKey?: boolean;
 };
@@ -37,6 +42,7 @@ type AdminAuthContextValue = {
   /** Compat: cabeçalhos JSON (a sessão é o cookie, não chave no storage). */
   adminHeaders: HeadersInit;
   isOwner: boolean;
+  isGestor: boolean;
   pendingOrdersCount: number | null;
 };
 
@@ -51,7 +57,7 @@ export function useAdminAuth(): AdminAuthContextValue {
 }
 
 function AdminChrome({ children }: { children: ReactNode }) {
-  const { logout, session, isOwner, pendingOrdersCount } = useAdminAuth();
+  const { logout, session, isOwner, isGestor, pendingOrdersCount } = useAdminAuth();
   const pathname = usePathname();
 
   const allNav = useMemo(
@@ -71,6 +77,12 @@ function AdminChrome({ children }: { children: ReactNode }) {
           ownerOnly: true,
         },
         {
+          href: "/admin/equipe",
+          label: "Equipe",
+          exact: false,
+          ownerOnly: true,
+        },
+        {
           href: "/admin/configuracao",
           label: "Catálogo & Drive",
           exact: false,
@@ -80,7 +92,13 @@ function AdminChrome({ children }: { children: ReactNode }) {
     []
   );
 
-  const nav = allNav.filter((item) => !item.ownerOnly || isOwner);
+  const nav = isGestor
+    ? allNav.filter(
+        (item) => item.href === "/admin/historico" || item.href === "/admin/metricas"
+      )
+    : allNav.filter((item) => !item.ownerOnly || isOwner);
+
+  const brandHref = isGestor ? GESTOR_HOME_PATH : "/admin";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-stone-100 to-stone-200/80">
@@ -88,7 +106,7 @@ function AdminChrome({ children }: { children: ReactNode }) {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex flex-wrap items-center gap-6">
             <Link
-              href="/admin"
+              href={brandHref}
               className="text-lg font-bold tracking-tight bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent drop-shadow-sm"
             >
               Admin
@@ -121,7 +139,11 @@ function AdminChrome({ children }: { children: ReactNode }) {
             {session && (
               <span className="hidden text-xs text-stone-500 sm:inline">
                 {session.email}
-                {session.fromApiKey ? " · chave API" : ""}
+                {session.fromApiKey
+                  ? " · chave API"
+                  : session.role === "gestor"
+                    ? " · gestor"
+                    : ""}
               </span>
             )}
             <Link
@@ -185,7 +207,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         const j = (await r.json()) as {
           user: {
             email: string;
-            role: "owner" | "seller";
+            role: StaffRole;
             fromApiKey?: boolean;
           } | null;
         };
@@ -248,12 +270,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   }, [refreshSession]);
 
   useEffect(() => {
-    if (!ready || !session) return;
+    if (!ready || !session || session.role === "gestor") return;
     void refreshPendingOrdersCount();
   }, [ready, session, pathname, refreshPendingOrdersCount]);
 
   useEffect(() => {
     if (!ready || !session || pathname === "/admin/login") return;
+    if (session.role === "gestor") return;
 
     if (
       typeof window !== "undefined" &&
@@ -329,6 +352,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const isOwner = session?.role === "owner" || session?.fromApiKey === true;
+  const isGestor = session?.role === "gestor";
 
   const value = useMemo(
     () => ({
@@ -339,6 +363,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       adminFetch,
       adminHeaders,
       isOwner,
+      isGestor,
       pendingOrdersCount,
     }),
     [
@@ -349,6 +374,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       adminFetch,
       adminHeaders,
       isOwner,
+      isGestor,
       pendingOrdersCount,
     ]
   );
@@ -360,8 +386,12 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     if (isLogin) return;
     if (!session) {
       router.replace("/admin/login");
+      return;
     }
-  }, [ready, isLogin, session, router]);
+    if (session.role === "gestor" && !isGestorAdminPathAllowed(pathname)) {
+      router.replace(GESTOR_HOME_PATH);
+    }
+  }, [ready, isLogin, session, router, pathname]);
 
   if (!ready) {
     return (

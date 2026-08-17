@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import type {
   CustomerSegment,
@@ -163,6 +164,7 @@ export default function AdminPedidosClient() {
   );
   const [sellerScope, setSellerScope] = useState<string>("all");
   const [sellerFilterOptions, setSellerFilterOptions] = useState<SellerFilterOption[]>([]);
+  const segmentManuallyEditedRef = useRef(false);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -302,9 +304,47 @@ export default function AdminPedidosClient() {
     setCustomerName(found?.customer_name?.trim() ?? "");
     setCustomerWhatsApp(found?.customer_whatsapp?.trim() ?? "");
     setCustomerSegment("NOVO");
+    segmentManuallyEditedRef.current = false;
     setConfirmOpenId(orderId);
     setError(null);
   }
+
+  useEffect(() => {
+    if (!confirmOpenId) return;
+    const digits = normalizeWhatsappDigits(customerWhatsApp);
+    if (digits.length < 10) return;
+
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const q = new URLSearchParams({
+            whatsapp: digits,
+            excludeOrderId: confirmOpenId,
+          });
+          const res = await adminFetch(
+            `/api/admin/clients/lookup-segment?${q.toString()}`,
+            { signal: ac.signal }
+          );
+          if (!res.ok) return;
+          const j = (await res.json()) as { customerSegment?: CustomerSegment };
+          if (
+            (j.customerSegment === "NOVO" || j.customerSegment === "ANTIGO") &&
+            !segmentManuallyEditedRef.current
+          ) {
+            setCustomerSegment(j.customerSegment);
+          }
+        } catch {
+          /* abort / rede */
+        }
+      })();
+    }, 450);
+
+    return () => {
+      ac.abort();
+      window.clearTimeout(timer);
+    };
+  }, [customerWhatsApp, confirmOpenId, adminFetch]);
 
   async function submitConfirmPayment(orderId: string) {
     setConfirming(orderId);
@@ -865,7 +905,10 @@ export default function AdminPedidosClient() {
                           type="radio"
                           name={`seg-${order.id}`}
                           checked={customerSegment === "NOVO"}
-                          onChange={() => setCustomerSegment("NOVO")}
+                          onChange={() => {
+                            segmentManuallyEditedRef.current = true;
+                            setCustomerSegment("NOVO");
+                          }}
                         />
                         Novo
                       </label>
@@ -874,7 +917,10 @@ export default function AdminPedidosClient() {
                           type="radio"
                           name={`seg-${order.id}`}
                           checked={customerSegment === "ANTIGO"}
-                          onChange={() => setCustomerSegment("ANTIGO")}
+                          onChange={() => {
+                            segmentManuallyEditedRef.current = true;
+                            setCustomerSegment("ANTIGO");
+                          }}
                         />
                         Antigo
                       </label>

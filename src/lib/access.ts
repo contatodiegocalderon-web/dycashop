@@ -1,12 +1,13 @@
 import type { NextRequest } from "next/server";
 import * as jose from "jose";
+import { parseStaffRole, type StaffRole } from "@/lib/staff-role";
 
 export const STAFF_COOKIE = "staff_session";
 
 export type StaffPrincipal = {
   staffId: string;
   email: string;
-  role: "owner" | "seller";
+  role: StaffRole;
 };
 
 export type AuthPrincipal =
@@ -32,7 +33,7 @@ export async function verifyStaffJwt(token: string): Promise<StaffPrincipal | nu
     });
     const sub = typeof payload.sub === "string" ? payload.sub : "";
     const email = typeof payload.email === "string" ? payload.email : "";
-    const role = payload.role === "seller" || payload.role === "owner" ? payload.role : null;
+    const role = parseStaffRole(payload.role);
     if (!sub || !email || !role) return null;
     return { staffId: sub, email, role };
   } catch {

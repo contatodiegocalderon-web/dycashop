@@ -17,6 +17,7 @@ import {
   type OrdersIdListQuery,
 } from "@/lib/admin-orders-query";
 import { applyRealAppConfirmedOrdersWithPeriod } from "@/lib/real-app-orders";
+import { principalSeesAllSellers } from "@/lib/staff-role";
 import {
   aggregateSalesMetrics,
   type OrderItemSaleRow,
@@ -92,9 +93,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const principal = await resolvePrincipal(request);
-    const isOwner =
-      principal?.kind === "api_key" ||
-      (principal?.kind === "staff" && principal.staff.role === "owner");
+    const isOwner = principalSeesAllSellers(principal);
     const sellerId =
       principal?.kind === "staff" && principal.staff.role === "seller"
         ? principal.staff.staffId
@@ -142,7 +141,7 @@ export async function GET(request: NextRequest) {
         principal?.kind === "staff" && principal.staff.role === "owner"
           ? principal.staff.staffId
           : null;
-      if (!ownerStaffIdForScope && principal?.kind === "api_key") {
+      if (!ownerStaffIdForScope) {
         const { data: ownerRow } = await admin
           .from("staff_users")
           .select("id")

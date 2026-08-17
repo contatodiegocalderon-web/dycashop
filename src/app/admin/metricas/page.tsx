@@ -65,8 +65,11 @@ function money(n: number) {
 type SellerFilterOption = { value: string; label: string };
 
 export default function AdminMetricasPage() {
-  const { adminFetch, isOwner, session } = useAdminAuth();
-  const isDiegoOwnerUi = session?.role === "owner" && session?.fromApiKey !== true;
+  const { adminFetch, isOwner, isGestor, session } = useAdminAuth();
+  /** Dono ou gestor (login staff): filtram por vendedor. Sem exclusão de pedidos. */
+  const canFilterAllSellers =
+    (session?.role === "owner" || session?.role === "gestor") &&
+    session?.fromApiKey !== true;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
@@ -104,7 +107,7 @@ export default function AdminMetricasPage() {
         if (dateFrom) q.set("dateFrom", dateFrom);
         if (dateTo) q.set("dateTo", dateTo);
       }
-      if (isDiegoOwnerUi && sellerScope && sellerScope !== "all") {
+      if (canFilterAllSellers && sellerScope && sellerScope !== "all") {
         q.set("sellerScope", sellerScope);
       }
       const mRes = await adminFetch(`/api/admin/metrics?${q.toString()}`);
@@ -186,10 +189,10 @@ export default function AdminMetricasPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch, period, dateFrom, dateTo, isDiegoOwnerUi, sellerScope]);
+  }, [adminFetch, period, dateFrom, dateTo, canFilterAllSellers, sellerScope]);
 
   useEffect(() => {
-    if (!isDiegoOwnerUi) {
+    if (!canFilterAllSellers) {
       setSellerScope("all");
       setSellerFilterOptions([]);
       return;
@@ -225,7 +228,7 @@ export default function AdminMetricasPage() {
     return () => {
       cancelled = true;
     };
-  }, [adminFetch, isDiegoOwnerUi]);
+  }, [adminFetch, canFilterAllSellers]);
 
   useEffect(() => {
     void loadMetrics();
@@ -290,22 +293,29 @@ export default function AdminMetricasPage() {
               {loadMeta.totalPieces} peça(s)
             </p>
           )}
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <Link href="/admin/pedidos" className="font-medium text-violet-800 underline">
-              Pedidos pendentes
-            </Link>
-            <Link href="/admin/clientes" className="font-medium text-violet-800 underline">
-              Clientes registados
-            </Link>
-          </div>
-          {!isOwner && (
+          {!isGestor && (
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <Link href="/admin/pedidos" className="font-medium text-violet-800 underline">
+                Pedidos pendentes
+              </Link>
+              <Link href="/admin/clientes" className="font-medium text-violet-800 underline">
+                Clientes registados
+              </Link>
+            </div>
+          )}
+          {session?.role === "seller" && (
             <p className="mt-2 text-xs text-stone-500">
               Sessão vendedor: {session?.email}. Esta tela mostra apenas suas vendas.
             </p>
           )}
+          {isGestor && (
+            <p className="mt-2 text-xs text-stone-500">
+              Conta de gestor: visualização e filtros. Sem alteração de dados.
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {isDiegoOwnerUi && sellerFilterOptions.length > 0 && (
+          {canFilterAllSellers && sellerFilterOptions.length > 0 && (
             <select
               value={sellerScope}
               onChange={(e) => setSellerScope(e.target.value)}
@@ -502,7 +512,7 @@ export default function AdminMetricasPage() {
         </AdminPurpleCard>
       )}
 
-      {isOwner && sellerBreakdown.length > 0 && (
+      {(isOwner || isGestor) && sellerBreakdown.length > 0 && (
         <AdminPurpleCard className="mb-10 overflow-hidden">
           <div className="border-b border-white/10 px-6 py-4">
             <h2 className="font-bold text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.35)]">

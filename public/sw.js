@@ -1,5 +1,5 @@
 /* Service worker — notificações push com o app fechado / tela bloqueada */
-/* v3: som de dinheiro também com ecrã bloqueado */
+/* v4: som de caixa registradora (gaveta + cha-ching) */
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
 });

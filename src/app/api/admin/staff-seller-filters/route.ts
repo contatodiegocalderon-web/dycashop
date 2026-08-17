@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertOwnerAccess } from "@/lib/admin-auth";
+import { assertAdmin, resolvePrincipal } from "@/lib/admin-auth";
+import { principalSeesAllSellers } from "@/lib/staff-role";
 
 export const runtime = "nodejs";
 
@@ -17,11 +18,19 @@ function nameFromEmail(email: string): string {
 
 /**
  * GET /api/admin/staff-seller-filters
- * Lista dono + vendedores (para filtros no histórico / métricas). Só dono ou chave API.
+ * Lista dono + vendedores (para filtros no histórico / métricas).
+ * Dono, gestor (somente leitura) ou chave API.
  */
 export async function GET(request: NextRequest) {
   try {
-    await assertOwnerAccess(request);
+    await assertAdmin(request);
+    const principal = await resolvePrincipal(request);
+    if (!principalSeesAllSellers(principal)) {
+      return NextResponse.json(
+        { error: "Acesso reservado ao administrador" },
+        { status: 403 }
+      );
+    }
   } catch (e) {
     const status = (e as Error & { status?: number }).status ?? 500;
     return NextResponse.json(

@@ -264,10 +264,11 @@ function AdminModuleCard({
 }
 
 export function AdminHomeCards() {
-  const { isOwner, pendingOrdersCount, adminFetch } = useAdminAuth();
+  const { isOwner, isGestor, pendingOrdersCount, adminFetch } = useAdminAuth();
   const [previews, setPreviews] = useState<HomePreviews | null>(null);
 
   const loadPreviews = useCallback(async () => {
+    if (isGestor) return;
     try {
       const tz = String(new Date().getTimezoneOffset());
       const res = await adminFetch(
@@ -278,13 +279,17 @@ export function AdminHomeCards() {
     } catch {
       /* ignore */
     }
-  }, [adminFetch]);
+  }, [adminFetch, isGestor]);
 
   useEffect(() => {
     void loadPreviews();
   }, [loadPreviews]);
 
-  const visible = cards.filter((c) => !c.ownerOnly || isOwner);
+  const visible = isGestor
+    ? cards.filter(
+        (c) => c.href === "/admin/historico" || c.href === "/admin/metricas"
+      )
+    : cards.filter((c) => !c.ownerOnly || isOwner);
 
   return (
     <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">

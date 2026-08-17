@@ -17,6 +17,7 @@ import {
   type ConfirmedAtFilter,
 } from "@/lib/admin-period";
 import { excludeCrmRemarketingFromOrdersQuery } from "@/lib/crm-legacy-import";
+import { principalSeesAllSellers } from "@/lib/staff-role";
 import { applyRealAppConfirmedOrdersFilter } from "@/lib/real-app-orders";
 import {
   parseOrderStockConflict,
@@ -119,9 +120,7 @@ export async function GET(request: NextRequest) {
       principal?.kind === "staff" && principal.staff.role === "seller"
         ? principal.staff.staffId
         : null;
-    const isOwnerPrincipal =
-      principal?.kind === "api_key" ||
-      (principal?.kind === "staff" && principal.staff.role === "owner");
+    const isOwnerPrincipal = principalSeesAllSellers(principal);
     const rawSellerScope = searchParams.get("sellerScope")?.trim() ?? "";
 
     const admin = createAdminClient();
@@ -147,7 +146,7 @@ export async function GET(request: NextRequest) {
               principal?.kind === "staff" && principal.staff.role === "owner"
                 ? principal.staff.staffId
                 : null;
-            if (!ownerStaffId && principal?.kind === "api_key") {
+            if (!ownerStaffId) {
               const { data: ownerRow } = await admin
                 .from("staff_users")
                 .select("id")

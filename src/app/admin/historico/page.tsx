@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { OrderDaySectionHeader } from "@/components/admin/order-day-section-header";
+import {
+  OrderDaySectionHeader,
+  type OrderDaySectionStats,
+} from "@/components/admin/order-day-section-header";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import { groupOrdersByLocalDay } from "@/lib/order-day-groups";
 import type { OrderItemRow, OrderRow } from "@/types";
@@ -188,17 +191,83 @@ function calculateOrderProfit(order: OrderRow, costs: Record<string, number>): n
   return Number(profit.toFixed(2));
 }
 
+function orderRevenue(order: OrderRow): number {
+  const revenueByCategory = resolveOrderRevenueByCategory(order);
+  const totalValueFromCategories = Object.values(revenueByCategory).reduce(
+    (sum, n) => sum + Number(n || 0),
+    0
+  );
+  return totalValueFromCategories > 0
+    ? Number(totalValueFromCategories.toFixed(2))
+    : displayOrderAmount(order);
+}
+
+function summarizeDayOrders(
+  dayOrders: OrderRow[],
+  categoryCosts: Record<string, number>
+): OrderDaySectionStats {
+  const empty = { faturamento: 0, lucro: 0 };
+  const stats: OrderDaySectionStats = {
+    novos: { ...empty },
+    antigos: { ...empty },
+    total: { ...empty },
+  };
+
+  for (const order of dayOrders) {
+    const faturamento = orderRevenue(order);
+    const lucro = calculateOrderProfit(order, categoryCosts);
+    stats.total.faturamento += faturamento;
+    stats.total.lucro += lucro;
+    if (order.customer_segment === "NOVO") {
+      stats.novos.faturamento += faturamento;
+      stats.novos.lucro += lucro;
+    } else if (order.customer_segment === "ANTIGO") {
+      stats.antigos.faturamento += faturamento;
+      stats.antigos.lucro += lucro;
+    }
+  }
+
+  stats.novos.faturamento = Number(stats.novos.faturamento.toFixed(2));
+  stats.novos.lucro = Number(stats.novos.lucro.toFixed(2));
+  stats.antigos.faturamento = Number(stats.antigos.faturamento.toFixed(2));
+  stats.antigos.lucro = Number(stats.antigos.lucro.toFixed(2));
+  stats.total.faturamento = Number(stats.total.faturamento.toFixed(2));
+  stats.total.lucro = Number(stats.total.lucro.toFixed(2));
+  return stats;
+}
+
 function waLink(raw: string | null | undefined): string | null {
   const digits = String(raw ?? "").replace(/\D/g, "");
   if (digits.length < 10) return null;
   return `https://wa.me/${digits}`;
 }
 
+function CustomerSegmentBadge({
+  segment,
+}: {
+  segment: OrderRow["customer_segment"];
+}) {
+  if (segment !== "NOVO" && segment !== "ANTIGO") return null;
+  const isOld = segment === "ANTIGO";
+  return (
+    <span
+      className={`ml-1.5 inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+        isOld ? "bg-amber-100 text-amber-900" : "bg-sky-100 text-sky-900"
+      }`}
+    >
+      {segment}
+    </span>
+  );
+}
+
 type SellerFilterOption = { value: string; label: string };
 
 export default function AdminHistoricoPage() {
-  const { adminFetch, session } = useAdminAuth();
-  /** Dono com login staff (não sessão derivada só da chave API no browser). */
+  const { adminFetch, session, isGestor } = useAdminAuth();
+  /** Dono ou gestor com login staff (não sessão derivada só da chave API no browser). */
+  const canFilterAllSellers =
+    (session?.role === "owner" || session?.role === "gestor") &&
+    session?.fromApiKey !== true;
   const isDiegoOwnerUi = session?.role === "owner" && session?.fromApiKey !== true;
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [costs, setCosts] = useState<Record<string, number>>({});
@@ -226,7 +295,7 @@ export default function AdminHistoricoPage() {
         if (dateFrom) q.set("dateFrom", dateFrom);
         if (dateTo) q.set("dateTo", dateTo);
       }
-      if (isDiegoOwnerUi && sellerScope && sellerScope !== "all") {
+      if (canFilterAllSellers && sellerScope && sellerScope !== "all") {
         q.set("sellerScope", sellerScope);
       }
       const res = await adminFetch(`/api/admin/orders?${q.toString()}`);
@@ -263,10 +332,10 @@ export default function AdminHistoricoPage() {
     } finally {
       setLoading(false);
     }
-  }, [adminFetch, period, dateFrom, dateTo, isDiegoOwnerUi, sellerScope]);
+  }, [adminFetch, period, dateFrom, dateTo, canFilterAllSellers, sellerScope]);
 
   useEffect(() => {
-    if (!isDiegoOwnerUi) {
+    if (!canFilterAllSellers) {
       setSellerScope("all");
       setSellerFilterOptions([]);
       return;
@@ -302,7 +371,7 @@ export default function AdminHistoricoPage() {
     return () => {
       cancelled = true;
     };
-  }, [adminFetch, isDiegoOwnerUi]);
+  }, [adminFetch, canFilterAllSellers]);
 
   useEffect(() => {
     void fetchOrders();
@@ -359,7 +428,7 @@ export default function AdminHistoricoPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {isDiegoOwnerUi && sellerFilterOptions.length > 0 && (
+          {canFilterAllSellers && sellerFilterOptions.length > 0 && (
             <select
               value={sellerScope}
               onChange={(e) => setSellerScope(e.target.value)}
@@ -408,12 +477,14 @@ export default function AdminHistoricoPage() {
               </label>
             </>
           )}
-          <Link
-            href="/admin/pedidos"
-            className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50"
-          >
-            Voltar para pedidos
-          </Link>
+          {!isGestor && (
+            <Link
+              href="/admin/pedidos"
+              className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50"
+            >
+              Voltar para pedidos
+            </Link>
+          )}
           <button
             type="button"
             onClick={fetchOrders}
@@ -438,20 +509,15 @@ export default function AdminHistoricoPage() {
       <div className="space-y-8">
         {orderDayGroups.map((group) => (
           <section key={group.dayKey}>
-            <OrderDaySectionHeader label={group.label} />
+            <OrderDaySectionHeader
+              label={group.label}
+              stats={summarizeDayOrders(group.orders, costs)}
+            />
             <ul className="mt-4 space-y-4">
               {group.orders.map((order) => {
           const lines = aggregateByCategory(order.order_items ?? []);
           const waHref = waLink(order.customer_whatsapp);
-          const revenueByCategory = resolveOrderRevenueByCategory(order);
-          const totalValueFromCategories = Object.values(revenueByCategory).reduce(
-            (sum, n) => sum + Number(n || 0),
-            0
-          );
-          const totalValue =
-            totalValueFromCategories > 0
-              ? Number(totalValueFromCategories.toFixed(2))
-              : displayOrderAmount(order);
+          const totalValue = orderRevenue(order);
           const profit = calculateOrderProfit(order, costs);
           const expanded = expandedOrders[order.id] === true;
           return (
@@ -470,6 +536,7 @@ export default function AdminHistoricoPage() {
             <p className="mt-2 text-sm text-stone-700">
               <span className="text-stone-500">Cliente: </span>
               {order.customer_name?.trim() || "—"}
+              <CustomerSegmentBadge segment={order.customer_segment} />
             </p>
             <p className="text-sm text-stone-700">
               <span className="text-stone-500">Vendedor: </span>

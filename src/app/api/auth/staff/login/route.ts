@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { STAFF_COOKIE, signStaffJwt } from "@/lib/access";
+import { parseStaffRole } from "@/lib/staff-role";
 import { getClientIp, rateLimitAllow } from "@/lib/rate-limit-ip";
 
 export const runtime = "nodejs";
@@ -70,7 +71,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Credenciais inválidas" }, { status: 401 });
   }
 
-  const role = row.role === "seller" || row.role === "owner" ? row.role : "seller";
+  const role = parseStaffRole(row.role);
+  if (!role) {
+    return NextResponse.json({ error: "Conta com papel inválido" }, { status: 403 });
+  }
   const token = await signStaffJwt({
     staffId: row.id as string,
     email: row.email as string,

@@ -7,6 +7,7 @@ import {
   ADMIN_KEY_STORAGE,
   useAdminAuth,
 } from "@/contexts/admin-auth";
+import { GESTOR_HOME_PATH, isGestorRole } from "@/lib/staff-role";
 
 export default function AdminLoginPage() {
   const { session, refreshSession } = useAdminAuth();
@@ -28,7 +29,7 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     if (session) {
-      router.replace("/admin");
+      router.replace(isGestorRole(session.role) ? GESTOR_HOME_PATH : "/admin");
     }
   }, [session, router]);
 
@@ -78,7 +79,7 @@ export default function AdminLoginPage() {
         throw new Error(data.error ?? "Falha ao entrar");
       }
       await refreshSession();
-      router.replace("/admin");
+      router.replace(isGestorRole(data.role) ? GESTOR_HOME_PATH : "/admin");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro");
     } finally {

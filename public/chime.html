@@ -22,8 +22,8 @@
     <p>💰</p>
     <script>
       (function () {
-        var audio = new Audio("/sounds/sale-cash.wav");
-        audio.volume = 0.9;
+        var audio = new Audio("/sounds/sale-cash.wav?v=2");
+        audio.volume = 0.92;
         var done = false;
         function finish() {
           if (done) return;
@@ -38,7 +38,7 @@
         audio
           .play()
           .then(function () {
-            setTimeout(finish, 1200);
+            setTimeout(finish, 1600);
           })
           .catch(function () {
             setTimeout(finish, 600);

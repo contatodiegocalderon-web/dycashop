@@ -1,6 +1,6 @@
 /** Som de venda / dinheiro no admin. */
 
-const SALE_SOUND_SRC = "/sounds/sale-cash.wav";
+const SALE_SOUND_SRC = "/sounds/sale-cash.wav?v=2";
 
 let sharedAudio: HTMLAudioElement | null = null;
 
