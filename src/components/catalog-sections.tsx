@@ -2,15 +2,20 @@
 
 import type { Product, ProductSize } from "@/types";
 import { ProductCard } from "./product-card";
+import { isKitProduct } from "@/lib/kits-category";
 
 const ORDER: ProductSize[] = ["M", "G", "GG"];
 
 type Props = { products: Product[]; flat?: boolean };
 
 export function CatalogSections({ products, flat }: Props) {
-  if (flat) {
+  const useFlat =
+    flat ||
+    (products.length > 0 && products.every((p) => isKitProduct(p)));
+
+  if (useFlat) {
     return (
-      <div className="grid grid-cols-3 gap-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {products.map((p, idx) => (
           <ProductCard key={p.id} product={p} imagePriority={idx < 8} />
         ))}

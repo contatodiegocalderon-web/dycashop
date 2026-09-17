@@ -1,26 +1,56 @@
 export const KITS_CATEGORY_LABEL = "KITs PRONTOS";
 export const KITS_CATEGORY_SLUG = "kits-prontos";
 
-export function isKitsCategory(label: string | null | undefined): boolean {
-  const s = label?.trim() ?? "";
-  if (!s) return false;
-  const key = s
+function catalogKey(raw: string): string {
+  return raw
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  return key === "kits prontos" || key === "kits-prontos";
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+export function isKitsCategory(label: string | null | undefined): boolean {
+  const key = catalogKey(label ?? "");
+  if (!key) return false;
+  const compact = key.replace(/ /g, "");
+  if (compact === "kitsprontos" || compact === "kitpronto") return true;
+  return /\bkits?\b/.test(key) && /\bprontos?\b/.test(key);
 }
 
 export function isKitsCategorySlug(slug: string | null | undefined): boolean {
-  const s = slug?.trim().toLowerCase() ?? "";
-  return s === KITS_CATEGORY_SLUG;
+  let s = slug?.trim() ?? "";
+  if (!s) return false;
+  try {
+    s = decodeURIComponent(s);
+  } catch {
+    /* keep raw */
+  }
+  const last = s.split("/").filter(Boolean).pop() ?? s;
+  const compact = catalogKey(last).replace(/ /g, "");
+  return compact === "kitsprontos" || compact === "kitpronto";
+}
+
+export function isKitsStorefront(opts: {
+  label?: string | null;
+  slug?: string | null;
+  pathname?: string | null;
+}): boolean {
+  return (
+    isKitsCategory(opts.label) ||
+    isKitsCategorySlug(opts.slug) ||
+    isKitsCategorySlug(opts.pathname)
+  );
 }
 
 export function isKitProduct(p: {
   source?: string | null;
   category?: string | null;
+  unit_price?: number | string | null;
 }): boolean {
-  return p.source === "admin" || isKitsCategory(p.category);
+  if (p.source === "admin") return true;
+  if (isKitsCategory(p.category)) return true;
+  return parseKitUnitPrice(p.unit_price) != null;
 }
 
 export function ensureKitsCategoryLabel(labels: Iterable<string>): string[] {

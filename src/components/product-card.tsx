@@ -28,8 +28,8 @@ export function ProductCard({ product, imagePriority }: Props) {
   };
 
   const imageSrc = product.drive_image_url;
-  const kit = isKitProduct(product);
-  const kitPrice = kit ? parseKitUnitPrice(product.unit_price) : null;
+  const kitPrice = parseKitUnitPrice(product.unit_price);
+  const kit = isKitProduct(product) || kitPrice != null;
   const previewLabel = kit
     ? `${product.brand} ${product.color}`
     : `${product.brand} ${product.color} · ${product.size}`;

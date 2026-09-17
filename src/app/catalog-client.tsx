@@ -18,7 +18,7 @@ import {
   type WizardGuidedFilter,
 } from "@/lib/catalog-guided-wizard";
 import type { CategoryShowcaseConfig } from "@/lib/category-showcase";
-import { isKitsCategory } from "@/lib/kits-category";
+import { isKitsStorefront } from "@/lib/kits-category";
 import type { Product, ProductSize } from "@/types";
 import { CatalogFilters } from "@/components/catalog-filters";
 import { CatalogSections } from "@/components/catalog-sections";
@@ -60,6 +60,8 @@ type Props = {
   activeCategorySlug?: string;
   /** Tabela de valores + vídeo (página da categoria). */
   showcaseConfig?: CategoryShowcaseConfig;
+  /** Vitrine KITs PRONTOS: sem assistente, tabela, vídeo ou filtros. */
+  kitsStorefront?: boolean;
 };
 
 function readRestoreSnapshot(pathname: string): CatalogBrowseSnapshot | null {
@@ -72,9 +74,16 @@ export function CatalogClient({
   categories,
   activeCategorySlug,
   showcaseConfig,
+  kitsStorefront = false,
 }: Props) {
   const pathname = usePathname() ?? "";
-  const kitsMode = isKitsCategory(categoryFixed);
+  const kitsMode =
+    kitsStorefront ||
+    isKitsStorefront({
+      label: categoryFixed,
+      slug: activeCategorySlug,
+      pathname,
+    });
   const guidedMode =
     Boolean(categoryFixed?.trim()) &&
     ENABLE_GUIDED_CATEGORY_WIZARD &&
@@ -100,8 +109,13 @@ export function CatalogClient({
   const [wizardImageHint, setWizardImageHint] = useState(false);
 
   useEffect(() => {
+    const kitsPage = isKitsStorefront({
+      label: categoryFixed,
+      slug: activeCategorySlug,
+      pathname,
+    });
     const snap = readRestoreSnapshot(pathname);
-    if (snap) {
+    if (snap && !kitsPage) {
       setSize(snap.size);
       setCategoryFree(snap.categoryFree);
       setBrand(snap.brand);
@@ -110,10 +124,17 @@ export function CatalogClient({
       setWizardGuidedFilter(snap.wizardGuidedFilter);
       pendingScrollY.current = snap.scrollY;
       if (snap.wizardDone) setLoading(true);
+    } else if (kitsPage) {
+      setSize("");
+      setBrand("");
+      setColor("");
+      setWizardDone(true);
+      setWizardGuidedFilter(null);
+      setWizardImageHint(false);
     }
     clearCatalogBrowseRestore();
     setSessionReady(true);
-  }, [pathname]);
+  }, [pathname, categoryFixed, activeCategorySlug]);
 
   const effectiveCategory = (categoryFixed ?? categoryFree).trim();
   const categoryExact = Boolean(categoryFixed);
@@ -122,13 +143,14 @@ export function CatalogClient({
   const query = useMemo(() => {
     const useApiBrandColor = !wizardGuidedFilter;
     return buildQuery(
-      size,
+      kitsMode ? "" : size,
       effectiveCategory,
-      useApiBrandColor ? brand : "",
-      useApiBrandColor ? color : "",
+      kitsMode || !useApiBrandColor ? "" : brand,
+      kitsMode || !useApiBrandColor ? "" : color,
       categoryExact
     );
   }, [
+    kitsMode,
     size,
     effectiveCategory,
     brand,
@@ -381,7 +403,7 @@ export function CatalogClient({
       )}
 
       <WizardCatalogHint
-        visible={wizardImageHint && showCatalog}
+        visible={wizardImageHint && showCatalog && !kitsMode}
         onDismiss={dismissWizardImageHint}
       />
     </div>

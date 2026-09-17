@@ -7,6 +7,7 @@ import {
   getCategoryBySlug,
 } from "@/lib/catalog-categories";
 import { getCategoryShowcaseConfig } from "@/lib/category-showcase";
+import { isKitsStorefront } from "@/lib/kits-category";
 
 type Props = { params: { slug: string } };
 
@@ -17,6 +18,11 @@ export default async function CategoriaPage({ params }: Props) {
   const categories = await getCatalogCategories();
   const cat = await getCategoryBySlug(params.slug, categories);
   if (!cat) notFound();
+  const kitsStorefront = isKitsStorefront({
+    label: cat.label,
+    slug: cat.slug,
+    pathname: params.slug,
+  });
   const showcaseConfig = await getCategoryShowcaseConfig(cat.label);
   const showCatalogBanner =
     Boolean(showcaseConfig.catalogCoverImageUrl) &&
@@ -51,7 +57,8 @@ export default async function CategoriaPage({ params }: Props) {
         categoryFixed={cat.label}
         categories={categories}
         activeCategorySlug={cat.slug}
-        showcaseConfig={showcaseConfig}
+        showcaseConfig={kitsStorefront ? undefined : showcaseConfig}
+        kitsStorefront={kitsStorefront}
       />
     </div>
   );
