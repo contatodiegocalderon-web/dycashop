@@ -5,6 +5,8 @@ import { useState } from "react";
 import type { Product } from "@/types";
 import { ProductImagePreview, prefetchProductPreview } from "@/components/product-image-preview";
 import { useCart } from "@/providers/cart-provider";
+import { formatMoneyBrl } from "@/lib/cart-pricing";
+import { isKitProduct, parseKitUnitPrice } from "@/lib/kits-category";
 
 type Props = {
   product: Product;
@@ -26,7 +28,11 @@ export function ProductCard({ product, imagePriority }: Props) {
   };
 
   const imageSrc = product.drive_image_url;
-  const previewLabel = `${product.brand} ${product.color} · ${product.size}`;
+  const kit = isKitProduct(product);
+  const kitPrice = kit ? parseKitUnitPrice(product.unit_price) : null;
+  const previewLabel = kit
+    ? `${product.brand} ${product.color}`
+    : `${product.brand} ${product.color} · ${product.size}`;
 
   const warmPreview = () => {
     prefetchProductPreview(imageSrc, product.drive_file_id);
@@ -53,9 +59,11 @@ export function ProductCard({ product, imagePriority }: Props) {
           className="object-cover transition duration-300 group-hover:brightness-110"
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 240px"
         />
-        <span className="absolute left-2 top-2 rounded bg-black/75 px-2 py-1 text-[11px] font-bold uppercase tabular-nums text-white">
-          {product.size}
-        </span>
+        {!kit && (
+          <span className="absolute left-2 top-2 rounded bg-black/75 px-2 py-1 text-[11px] font-bold uppercase tabular-nums text-white">
+            {product.size}
+          </span>
+        )}
       </button>
       <ProductImagePreview
         thumbSrc={imageSrc}
@@ -74,10 +82,18 @@ export function ProductCard({ product, imagePriority }: Props) {
         </p>
 
         <p className="mt-2 text-[13px] text-stone-500">
-          Est.{" "}
-          <span className="font-semibold tabular-nums text-stone-100">
-            {product.stock}
-          </span>
+          {kit ? (
+            <span className="font-semibold tabular-nums text-stone-100">
+              {kitPrice != null ? formatMoneyBrl(kitPrice) : "—"}
+            </span>
+          ) : (
+            <>
+              Est.{" "}
+              <span className="font-semibold tabular-nums text-stone-100">
+                {product.stock}
+              </span>
+            </>
+          )}
           {inCart > 0 && (
             <span className="inline-flex items-center gap-1">
               <span className="text-emerald-500/85">

@@ -34,6 +34,12 @@ export interface Product {
   stock: number;
   sku: string;
   status: ProductStatus;
+  /** `drive` = pasta Google Drive; `admin` = cadastro manual (KITs PRONTOS). */
+  source?: "drive" | "admin";
+  /** Preço unitário de vitrine (kits e outros cadastros manuais). */
+  unit_price?: number | null;
+  /** Peso unitário em gramas (kits). */
+  weight_grams?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -52,6 +58,9 @@ export interface CartLine {
     | "size"
     | "stock"
     | "sku"
+    | "source"
+    | "unit_price"
+    | "weight_grams"
   >;
 }
 

@@ -12,6 +12,7 @@ import {
 } from "@/lib/catalog-categories";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingSchemaColumnError } from "@/lib/schema-errors";
+import { KITS_CATEGORY_LABEL, ensureKitsCategoryLabel } from "@/lib/kits-category";
 
 export const runtime = "nodejs";
 
@@ -38,7 +39,10 @@ async function loadCatalogCategoryLabels(admin: ReturnType<typeof createAdminCli
     offset += PAGE_SIZE;
   }
   if (labels.size === 0) labels.add("Sem categoria");
-  return Array.from(labels).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  labels.add(KITS_CATEGORY_LABEL);
+  return Array.from(ensureKitsCategoryLabel(labels)).sort((a, b) =>
+    a.localeCompare(b, "pt-BR")
+  );
 }
 
 type RowLite = {

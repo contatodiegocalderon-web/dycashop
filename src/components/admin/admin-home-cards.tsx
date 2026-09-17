@@ -31,6 +31,7 @@ const cards: CardDef[] = [
   { href: "/admin/historico", title: "Histórico", ownerOnly: false, preview: "historico" },
   { href: "/admin/metricas", title: "Métricas", ownerOnly: false, preview: "metricas" },
   { href: "/admin/categorias", title: "Categorias", ownerOnly: false, preview: null },
+  { href: "/admin/kits", title: "KITs PRONTOS", ownerOnly: false, preview: null },
   { href: "/admin/clientes", title: "Clientes", ownerOnly: false, preview: null },
   {
     href: "/admin/estoque",

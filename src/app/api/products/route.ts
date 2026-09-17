@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { productPublicImageUrl } from "@/lib/product-image-url";
+import { parseKitUnitPrice, parseKitWeightGrams } from "@/lib/kits-category";
 
 function supabaseAnon() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -84,6 +85,8 @@ export async function GET(request: NextRequest) {
         ...row,
         category: row.category ?? null,
         drive_image_url: productPublicImageUrl(row),
+        unit_price: parseKitUnitPrice(row.unit_price),
+        weight_grams: parseKitWeightGrams(row.weight_grams),
       };
     });
 

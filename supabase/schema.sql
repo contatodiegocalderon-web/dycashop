@@ -21,6 +21,9 @@ create table if not exists public.products (
   stock integer not null default 0 check (stock >= 0),
   sku text not null unique,
   status text not null default 'ATIVO' check (status in ('ATIVO', 'ESGOTADO')),
+  source text not null default 'drive' check (source in ('drive', 'admin')),
+  unit_price numeric(12,2) check (unit_price is null or unit_price >= 0),
+  weight_grams integer check (weight_grams is null or weight_grams > 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -7,6 +7,7 @@ import {
   DISPLAY_ORDER_DEFAULT_SENTINEL,
   sortCategoryLabelsForCatalog,
 } from "@/lib/catalog-categories";
+import { isKitsCategory } from "@/lib/kits-category";
 import type { WholesaleTier } from "@/lib/category-showcase";
 
 type CostRow = {
@@ -201,8 +202,15 @@ export default function AdminCategoriasPage() {
         category_label,
         video_url: (videoEdits[category_label] ?? "").trim() || null,
         video_poster_url: (posterEdits[category_label] ?? "").trim() || null,
-        wholesale_tiers: parseTierText(tiersEdits[category_label] ?? ""),
+        wholesale_tiers: isKitsCategory(category_label)
+          ? showcaseRows.find((r) => r.category_label === category_label)
+              ?.wholesale_tiers?.length
+            ? showcaseRows.find((r) => r.category_label === category_label)!
+                .wholesale_tiers
+            : [{ minQty: 1, maxQty: null, price: 0 }]
+          : parseTierText(tiersEdits[category_label] ?? ""),
         retail_price_per_piece: (() => {
+          if (isKitsCategory(category_label)) return null;
           const raw = (retailEdits[category_label] ?? "").trim();
           if (!raw) return null;
           const n = Number(raw.replace(",", "."));
@@ -505,20 +513,22 @@ export default function AdminCategoriasPage() {
                 </div>
 
                 <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-                  <label className="text-sm text-stone-700">
-                    Preço varejo (R$)
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      disabled={!isOwner}
-                      value={retailEdits[label] ?? ""}
-                      onChange={(e) =>
-                        setRetailEdits((prev) => ({ ...prev, [label]: e.target.value }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 disabled:bg-stone-100"
-                      placeholder="Ex.: 59,90"
-                    />
-                  </label>
+                  {!isKitsCategory(label) && (
+                    <label className="text-sm text-stone-700">
+                      Preço varejo (R$)
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        disabled={!isOwner}
+                        value={retailEdits[label] ?? ""}
+                        onChange={(e) =>
+                          setRetailEdits((prev) => ({ ...prev, [label]: e.target.value }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 disabled:bg-stone-100"
+                        placeholder="Ex.: 59,90"
+                      />
+                    </label>
+                  )}
                   <label className="text-sm text-stone-700">
                     Custo por peça (R$)
                     <input
@@ -546,6 +556,8 @@ export default function AdminCategoriasPage() {
                       placeholder="Ex.: 200 camiseta, 350 bermuda"
                     />
                   </label>
+                  {!isKitsCategory(label) && (
+                    <>
                   <label className="text-sm text-stone-700">
                     URL do vídeo
                     <input
@@ -572,8 +584,11 @@ export default function AdminCategoriasPage() {
                       placeholder="https://..."
                     />
                   </label>
+                    </>
+                  )}
                 </div>
 
+                {!isKitsCategory(label) && (
                 <label className="mt-3 block text-sm text-stone-700">
                   Tabela atacado (uma linha por faixa no formato `min-max=preço` e `min-+=preço`)
                   <textarea
@@ -586,6 +601,7 @@ export default function AdminCategoriasPage() {
                     className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 font-mono text-xs text-stone-900 disabled:bg-stone-100"
                   />
                 </label>
+                )}
               </section>
             ))}
           </div>

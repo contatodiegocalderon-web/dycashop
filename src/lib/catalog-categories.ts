@@ -1,6 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { productPublicImageUrl } from "@/lib/product-image-url";
 import { isMissingSchemaColumnError } from "@/lib/schema-errors";
+import {
+  KITS_CATEGORY_LABEL,
+  isKitsCategory,
+} from "@/lib/kits-category";
 
 export type CategorySummary = {
   slug: string;
@@ -127,6 +131,10 @@ export async function getCatalogCategories(): Promise<CategorySummary[]> {
         ? String(row.category).trim()
         : "Sem categoria";
     countMap.set(label, (countMap.get(label) ?? 0) + 1);
+  }
+
+  if (!Array.from(countMap.keys()).some((label) => isKitsCategory(label))) {
+    countMap.set(KITS_CATEGORY_LABEL, 0);
   }
 
   const labelKeys = Array.from(countMap.keys());

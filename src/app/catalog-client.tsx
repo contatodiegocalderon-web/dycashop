@@ -18,11 +18,13 @@ import {
   type WizardGuidedFilter,
 } from "@/lib/catalog-guided-wizard";
 import type { CategoryShowcaseConfig } from "@/lib/category-showcase";
+import { isKitsCategory } from "@/lib/kits-category";
 import type { Product, ProductSize } from "@/types";
 import { CatalogFilters } from "@/components/catalog-filters";
 import { CatalogSections } from "@/components/catalog-sections";
 import { CategoryGuidedWizard } from "@/components/category-guided-wizard";
 import { CategoryShowcaseBanner } from "@/components/category-showcase-banner";
+import { KitsIntroCard } from "@/components/kits-intro-card";
 import { WizardCatalogHint } from "@/components/wizard-catalog-hint";
 
 function buildQuery(
@@ -72,8 +74,11 @@ export function CatalogClient({
   showcaseConfig,
 }: Props) {
   const pathname = usePathname() ?? "";
+  const kitsMode = isKitsCategory(categoryFixed);
   const guidedMode =
-    Boolean(categoryFixed?.trim()) && ENABLE_GUIDED_CATEGORY_WIZARD;
+    Boolean(categoryFixed?.trim()) &&
+    ENABLE_GUIDED_CATEGORY_WIZARD &&
+    !kitsMode;
 
   const pendingScrollY = useRef<number | null>(null);
   const catalogAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -310,11 +315,12 @@ export function CatalogClient({
 
   return (
     <div className="space-y-8">
+      {kitsMode && sessionReady ? <KitsIntroCard /> : null}
       {!sessionReady && (
         <p className="text-center text-sm text-stone-400">A retomar a seleção…</p>
       )}
 
-      {showcaseConfig && categoryFixed ? (
+      {showcaseConfig && categoryFixed && !kitsMode ? (
         <CategoryShowcaseBanner
           categoryLabel={categoryFixed}
           config={showcaseConfig}
@@ -328,6 +334,7 @@ export function CatalogClient({
       {showCatalog && (
         <>
       <div ref={catalogAnchorRef} className="scroll-mt-20">
+      {!kitsMode && (
       <CatalogFilters
         size={size}
         category={categoryFree}
@@ -349,6 +356,7 @@ export function CatalogClient({
         onBrand={handleBrandChange}
         onColor={handleColorChange}
       />
+      )}
       </div>
 
       {loading && (
@@ -361,11 +369,13 @@ export function CatalogClient({
       )}
       {!loading && !error && displayedProducts.length === 0 && (
         <p className="text-center text-stone-400">
-          Nenhum produto encontrado. Rode a importação do Drive e verifique filtros.
+          {kitsMode
+            ? "Nenhum kit disponível no momento."
+            : "Nenhum produto encontrado. Rode a importação do Drive e verifique filtros."}
         </p>
       )}
       {!loading && !error && displayedProducts.length > 0 && (
-        <CatalogSections products={displayedProducts} />
+        <CatalogSections products={displayedProducts} flat={kitsMode} />
       )}
         </>
       )}

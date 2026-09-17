@@ -121,6 +121,9 @@ export async function POST(request: NextRequest) {
       sku: p.sku,
       original_file_name: p.original_file_name,
       drive_image_url: productPublicImageUrl(p),
+      source: p.source ?? "drive",
+      unit_price: p.unit_price ?? null,
+      weight_grams: p.weight_grams ?? null,
     }));
 
     const categoryLabels = Array.from(

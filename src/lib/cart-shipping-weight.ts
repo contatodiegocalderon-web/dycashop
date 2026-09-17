@@ -25,16 +25,24 @@ export function defaultWeightGramsFromEnv(): number {
   return Number.isFinite(n) && n > 0 ? n : 250;
 }
 
-/** Soma gramas: peso da categoria × quantidade de cada linha. */
+/** Soma gramas: peso da linha (se houver) ou peso da categoria × quantidade. */
 export function totalCartWeightGrams(
-  lines: { category: string; quantity: number }[],
+  lines: {
+    category: string;
+    quantity: number;
+    weightGrams?: number | null;
+  }[],
   weightsByCategory: CategoryWeightMap,
   fallbackGrams = defaultWeightGramsFromEnv()
 ): number {
   let total = 0;
   for (const line of lines) {
     const cat = normalizeCategoryLabel(line.category);
-    const perPiece = weightsByCategory[cat] ?? fallbackGrams;
+    const override = Number(line.weightGrams);
+    const perPiece =
+      Number.isFinite(override) && override > 0
+        ? override
+        : weightsByCategory[cat] ?? fallbackGrams;
     total += Math.max(0, perPiece) * Math.max(0, line.quantity);
   }
   return total;
@@ -44,6 +52,7 @@ export function cartLinesToWeightInput(lines: CartLine[]) {
   return lines.map((l) => ({
     category: normalizeCategoryLabel(l.product.category),
     quantity: l.quantity,
+    weightGrams: l.product.weight_grams ?? null,
   }));
 }
 

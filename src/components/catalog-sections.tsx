@@ -5,9 +5,19 @@ import { ProductCard } from "./product-card";
 
 const ORDER: ProductSize[] = ["M", "G", "GG"];
 
-type Props = { products: Product[] };
+type Props = { products: Product[]; flat?: boolean };
 
-export function CatalogSections({ products }: Props) {
+export function CatalogSections({ products, flat }: Props) {
+  if (flat) {
+    return (
+      <div className="grid grid-cols-3 gap-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        {products.map((p, idx) => (
+          <ProductCard key={p.id} product={p} imagePriority={idx < 8} />
+        ))}
+      </div>
+    );
+  }
+
   const bySize = new Map<ProductSize, Product[]>();
   for (const s of ORDER) bySize.set(s, []);
   for (const p of products) {

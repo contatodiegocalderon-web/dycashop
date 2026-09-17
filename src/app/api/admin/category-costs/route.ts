@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin, assertOwnerAccess } from "@/lib/admin-auth";
 import { defaultWeightGramsFromEnv } from "@/lib/cart-shipping-weight";
 import { isMissingSchemaColumnError } from "@/lib/schema-errors";
+import { KITS_CATEGORY_LABEL, ensureKitsCategoryLabel } from "@/lib/kits-category";
 export const runtime = "nodejs";
 
 /**
@@ -42,10 +43,11 @@ export async function GET(request: NextRequest) {
     if (catalogLabels.size === 0) {
       catalogLabels.add("Sem categoria");
     }
+    catalogLabels.add(KITS_CATEGORY_LABEL);
 
-    const sortedCatalog = Array.from(catalogLabels).sort((a, b) =>
-      a.localeCompare(b, "pt-BR")
-    );
+    const sortedCatalog = Array.from(
+      ensureKitsCategoryLabel(catalogLabels)
+    ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
     const { data: defaults, error: dErr } = await admin
       .from("category_cost_defaults")

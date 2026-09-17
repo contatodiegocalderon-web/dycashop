@@ -9,6 +9,7 @@ import {
   categoryLookupKey,
   resolveDisplayOrderForUpsert,
 } from "@/lib/catalog-categories";
+import { KITS_CATEGORY_LABEL, ensureKitsCategoryLabel } from "@/lib/kits-category";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 
@@ -52,7 +53,10 @@ async function loadCatalogCategoryLabels(admin: ReturnType<typeof createAdminCli
     offset += PAGE_SIZE;
   }
   if (labels.size === 0) labels.add("Sem categoria");
-  return Array.from(labels).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  labels.add(KITS_CATEGORY_LABEL);
+  return Array.from(ensureKitsCategoryLabel(labels)).sort((a, b) =>
+    a.localeCompare(b, "pt-BR")
+  );
 }
 
 async function fetchShowcaseRows(admin: ReturnType<typeof createAdminClient>) {

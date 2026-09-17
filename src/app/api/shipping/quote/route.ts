@@ -20,7 +20,11 @@ import { isMissingSchemaColumnError } from "@/lib/schema-errors";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type QuoteItem = { category: string; quantity: number };
+type QuoteItem = {
+  category: string;
+  quantity: number;
+  weightGrams?: number | null;
+};
 
 function shippingOriginCep(): string | null {
   const raw =
@@ -112,6 +116,10 @@ export async function POST(request: NextRequest) {
       .map((it) => ({
         category: normalizeCategoryLabel(it.category),
         quantity: Math.max(0, Number(it.quantity) || 0),
+        weightGrams: (() => {
+          const g = Number(it.weightGrams);
+          return Number.isFinite(g) && g > 0 ? g : null;
+        })(),
       }))
       .filter((it) => it.quantity > 0);
 

@@ -98,8 +98,20 @@ type PendingItemForRemovedProduct = {
 async function fetchAllProductsMinimal(
   admin: AdminClient,
   columns: string
-): Promise<Array<{ id: string; drive_file_id: string | null; category?: string | null }>> {
-  const out: Array<{ id: string; drive_file_id: string | null; category?: string | null }> = [];
+): Promise<
+  Array<{
+    id: string;
+    drive_file_id: string | null;
+    category?: string | null;
+    source?: string | null;
+  }>
+> {
+  const out: Array<{
+    id: string;
+    drive_file_id: string | null;
+    category?: string | null;
+    source?: string | null;
+  }> = [];
   let offset = 0;
   for (;;) {
     const { data, error } = await admin
@@ -112,6 +124,7 @@ async function fetchAllProductsMinimal(
       id: string;
       drive_file_id: string | null;
       category?: string | null;
+      source?: string | null;
     }>;
     out.push(...rows);
     if (rows.length < PAGE_SIZE) break;
@@ -231,14 +244,23 @@ async function pruneProductsMissingFromDrive(
 ): Promise<{ removed: number; removedDriveFileIds: string[] }> {
   const driveSet = new Set(driveFileIds);
 
-  const products = await fetchAllProductsMinimal(admin, "id, drive_file_id");
+  const products = await fetchAllProductsMinimal(
+    admin,
+    "id, drive_file_id, source"
+  ).catch(() => fetchAllProductsMinimal(admin, "id, drive_file_id"));
 
   const removable: string[] = [];
   const removedDriveFileIds: string[] = [];
   for (const p of products ?? []) {
-    const row = p as { id: string; drive_file_id: string | null };
+    const row = p as {
+      id: string;
+      drive_file_id: string | null;
+      source?: string | null;
+    };
+    if (row.source === "admin") continue;
     const driveId = row.drive_file_id?.trim() ?? "";
-    if (!driveId || driveSet.has(driveId)) continue;
+    if (!driveId || driveId.startsWith("admin-kit-")) continue;
+    if (driveSet.has(driveId)) continue;
     removable.push(row.id);
     removedDriveFileIds.push(driveId);
   }

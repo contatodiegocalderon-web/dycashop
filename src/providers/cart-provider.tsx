@@ -56,6 +56,9 @@ function productToCartProduct(
     size: p.size,
     stock: p.stock,
     sku: p.sku,
+    source: p.source ?? "drive",
+    unit_price: p.unit_price ?? null,
+    weight_grams: p.weight_grams ?? null,
   };
 }
 

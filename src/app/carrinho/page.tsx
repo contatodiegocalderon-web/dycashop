@@ -20,6 +20,7 @@ import {
 } from "@/components/checkout-field-error";
 import { ClickableImageThumb } from "@/components/clickable-image-thumb";
 import { computeCartPricing, formatMoneyBrl } from "@/lib/cart-pricing";
+import { isKitProduct } from "@/lib/kits-category";
 import { normalizeCepDigits } from "@/lib/cart-shipping-weight";
 import type { ShippingAddress } from "@/lib/shipping-address";
 import { totalsByCategoryFromCartLines } from "@/lib/order-category-totals";
@@ -28,13 +29,18 @@ import type { ShippingQuotePayload, ShippingQuoteOption } from "@/lib/shipping-q
 
 const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
 
-function groupBySize(lines: CartLine[]) {
+function splitCartGroups(lines: CartLine[]) {
+  const kits: CartLine[] = [];
   const m = new Map<ProductSize, CartLine[]>();
   for (const s of SIZE_ORDER) m.set(s, []);
   for (const line of lines) {
+    if (isKitProduct(line.product)) {
+      kits.push(line);
+      continue;
+    }
     m.get(line.product.size)?.push(line);
   }
-  return m;
+  return { kits, bySize: m };
 }
 
 function WhatsAppGlyph({ className }: { className?: string }) {
@@ -139,7 +145,18 @@ export default function CarrinhoPage() {
   /** Evita sobrescrever o nome depois de o cliente editar manualmente (ref lida no fim do debounce). */
   const nameManuallyEditedRef = useRef(false);
 
-  const groups = useMemo(() => groupBySize(lines), [lines]);
+  const cartGroups = useMemo(() => splitCartGroups(lines), [lines]);
+  const cartLineSections = useMemo(
+    () => [
+      { key: "kits", title: "KITs PRONTOS", lines: cartGroups.kits },
+      ...SIZE_ORDER.map((size) => ({
+        key: size,
+        title: `Tamanho ${size}`,
+        lines: cartGroups.bySize.get(size) ?? [],
+      })),
+    ],
+    [cartGroups]
+  );
   const [tiersByCategory, setTiersByCategory] = useState<
     Record<string, WholesaleTier[]>
   >({});
@@ -649,16 +666,16 @@ export default function CarrinhoPage() {
         </p>
       ) : (
         <div className="mt-8 space-y-8">
-          {SIZE_ORDER.map((size) => {
-            const g = groups.get(size) ?? [];
+          {cartLineSections.map((section) => {
+            const g = section.lines;
             if (!g.length) return null;
             return (
               <section
-                key={size}
+                key={section.key}
                 className="rounded-2xl border border-white/[0.06] bg-zinc-900/40 p-4 shadow-sm ring-1 ring-white/[0.03]"
               >
                 <h2 className="mb-4 text-lg font-semibold text-stone-100">
-                  Tamanho {size}
+                  {section.title}
                 </h2>
                 <ul className="space-y-4">
                   {g.map((line) => {
@@ -776,7 +793,6 @@ export default function CarrinhoPage() {
               <CartOrderSummary
                 categoryTotals={categoryTotals}
                 pricing={cartPricing}
-                showWholesaleProgress
               />
 
               <div className="space-y-3">
@@ -815,7 +831,6 @@ export default function CarrinhoPage() {
               <CartOrderSummary
                 categoryTotals={categoryTotals}
                 pricing={cartPricing}
-                showWholesaleProgress={false}
               />
 
               <div className="max-w-xs">

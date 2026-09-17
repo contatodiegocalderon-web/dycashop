@@ -1,5 +1,6 @@
 import { CRM_ATACADO_MIN_PIECES } from "@/lib/crm-funnel";
 import type { WholesaleTier } from "@/lib/category-showcase";
+import { isKitProduct, parseKitUnitPrice } from "@/lib/kits-category";
 import type { CartLine } from "@/types";
 
 export const WHOLESALE_CART_MIN_PIECES = CRM_ATACADO_MIN_PIECES;
@@ -78,14 +79,18 @@ export function computeCartPricing(
   tiersByCategory: Record<string, WholesaleTier[]>,
   retailByCategory: Record<string, number | null> = {}
 ): CartPricingSummary {
+  const catalogPieces = lines.reduce((sum, l) => {
+    if (isKitProduct(l.product)) return sum;
+    return sum + Math.max(0, l.quantity);
+  }, 0);
   const totalPieces = lines.reduce(
     (sum, l) => sum + Math.max(0, l.quantity),
     0
   );
-  const isWholesaleCart = totalPieces >= WHOLESALE_CART_MIN_PIECES;
+  const isWholesaleCart = catalogPieces >= WHOLESALE_CART_MIN_PIECES;
   const piecesRemainingForWholesale = Math.max(
     0,
-    WHOLESALE_CART_MIN_PIECES - totalPieces
+    WHOLESALE_CART_MIN_PIECES - catalogPieces
   );
 
   let subtotal = 0;
@@ -93,6 +98,28 @@ export function computeCartPricing(
   let allPriced = lines.length > 0;
 
   const linePricings: CartLinePricing[] = lines.map((line) => {
+    if (isKitProduct(line.product)) {
+      const kitPrice = parseKitUnitPrice(line.product.unit_price);
+      if (kitPrice == null) {
+        allPriced = false;
+        return {
+          productId: line.productId,
+          unitPrice: null,
+          lineTotal: null,
+          isWholesalePrice: false,
+        };
+      }
+      const lineTotal = kitPrice * line.quantity;
+      hasAnyPrice = true;
+      subtotal += lineTotal;
+      return {
+        productId: line.productId,
+        unitPrice: kitPrice,
+        lineTotal,
+        isWholesalePrice: false,
+      };
+    }
+
     if (isWholesaleCart) {
       return {
         productId: line.productId,

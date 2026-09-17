@@ -2,7 +2,6 @@
 
 import {
   formatMoneyBrl,
-  WHOLESALE_CART_MIN_PIECES,
   type CartPricingSummary,
 } from "@/lib/cart-pricing";
 import type { CategoryQtyTotal } from "@/lib/order-category-totals";
@@ -10,26 +9,14 @@ import type { CategoryQtyTotal } from "@/lib/order-category-totals";
 type Props = {
   categoryTotals: CategoryQtyTotal[];
   pricing: CartPricingSummary;
-  /** Barra de progresso só na revisão varejo (etapa 1). */
-  showWholesaleProgress?: boolean;
 };
 
 export function CartOrderSummary({
   categoryTotals,
   pricing,
-  showWholesaleProgress = true,
 }: Props) {
-  const {
-    totalPieces,
-    subtotal,
-    isWholesaleCart,
-    piecesRemainingForWholesale,
-  } = pricing;
+  const { totalPieces, subtotal, isWholesaleCart } = pricing;
 
-  const progressPct = Math.min(
-    100,
-    (totalPieces / WHOLESALE_CART_MIN_PIECES) * 100
-  );
   const pieceLabel =
     totalPieces === 1 ? "1 peça no total" : `${totalPieces} peças no total`;
 
@@ -56,32 +43,6 @@ export function CartOrderSummary({
             {formatMoneyBrl(subtotal)}
           </span>
         </div>
-      )}
-
-      {!isWholesaleCart && showWholesaleProgress && (
-        <>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all duration-300"
-              style={{ width: `${progressPct}%` }}
-              role="progressbar"
-              aria-valuenow={totalPieces}
-              aria-valuemin={0}
-              aria-valuemax={WHOLESALE_CART_MIN_PIECES}
-              aria-label={`Faltam ${piecesRemainingForWholesale} peça(s) para o desconto de atacado`}
-            />
-          </div>
-
-          <p className="mt-3 text-sm leading-relaxed text-stone-400">
-            Adicione mais{" "}
-            <strong className="font-semibold text-stone-200">
-              {piecesRemainingForWholesale}{" "}
-              {piecesRemainingForWholesale === 1 ? "peça" : "peças"}
-            </strong>{" "}
-            para conseguir o desconto de atacado em todos os produtos da loja{" "}
-            <strong className="font-semibold text-stone-200">DYCASHOP</strong>.
-          </p>
-        </>
       )}
     </section>
   );
