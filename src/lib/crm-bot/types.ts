@@ -20,6 +20,8 @@ export type CrmBotRecipientStatus = "pending" | "sent" | "failed" | "skipped";
 export type CrmBotRecipientInput = {
   customer_whatsapp: string;
   customer_name: string | null;
+  /** Ex.: "10 bermudas" — preenchido na etapa 1 quando há itens. */
+  order_summary?: string | null;
 };
 
 export type CrmBotScheduleConfig = {

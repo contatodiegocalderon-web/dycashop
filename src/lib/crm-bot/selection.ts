@@ -3,6 +3,7 @@ import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 export type BotSelectedLead = {
   customer_whatsapp: string;
   customer_name: string | null;
+  order_summary?: string | null;
 };
 
 export function botLeadKey(wa: string): string {

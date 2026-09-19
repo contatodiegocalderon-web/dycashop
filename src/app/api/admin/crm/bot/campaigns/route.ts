@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     let recipients: Array<{
       customer_whatsapp: string;
       customer_name: string | null;
+      order_summary?: string | null;
     }>;
     let funnelTab: CrmBotFunnelTab;
     let volumeTier: string;
@@ -48,7 +49,11 @@ export async function POST(request: NextRequest) {
     if (Array.isArray(rawRecipients) && rawRecipients.length > 0) {
       const deduped = new Map<
         string,
-        { customer_whatsapp: string; customer_name: string | null }
+        {
+          customer_whatsapp: string;
+          customer_name: string | null;
+          order_summary?: string | null;
+        }
       >();
       for (const row of rawRecipients) {
         if (!row || typeof row !== "object") continue;
@@ -61,7 +66,16 @@ export async function POST(request: NextRequest) {
           "string"
             ? (row as { customer_name: string }).customer_name.trim() || null
             : null;
-        deduped.set(wa, { customer_whatsapp: wa, customer_name: name });
+        const orderSummaryRaw = (row as { order_summary?: unknown }).order_summary;
+        const order_summary =
+          typeof orderSummaryRaw === "string" && orderSummaryRaw.trim()
+            ? orderSummaryRaw.trim()
+            : null;
+        deduped.set(wa, {
+          customer_whatsapp: wa,
+          customer_name: name,
+          order_summary,
+        });
       }
       recipients = Array.from(deduped.values());
       funnelTab = "manual";

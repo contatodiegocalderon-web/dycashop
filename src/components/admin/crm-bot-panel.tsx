@@ -80,7 +80,7 @@ export function CrmBotPanel({
   const [loading, setLoading] = useState(false);
 
   const [referenceMessage, setReferenceMessage] = useState(
-    "Vi que você deixou itens no carrinho. Posso te ajudar a finalizar?"
+    "Vi que você fez um pedido de {pedido}. Posso saber o que te impediu de finalizar?"
   );
   const selectedCount = selectedLeads.length;
   const [secondsPerPerson, setSecondsPerPerson] = useState(10);
@@ -441,6 +441,9 @@ export function CrmBotPanel({
                 className="rounded-xl border border-stone-300 px-3 py-2 text-sm"
                 placeholder="Texto base — o bot cria variações humanizadas"
               />
+              <span className="font-normal text-stone-500">
+                Use {"{pedido}"} para citar o que o lead montou (ex.: 10 bermudas).
+              </span>
             </label>
 
             <label className="flex flex-col gap-1 text-xs font-medium text-stone-600">

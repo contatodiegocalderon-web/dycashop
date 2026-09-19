@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import type { AbandonedOrderRow } from "@/app/api/admin/abandoned-carts/route";
-import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
+import { totalsByCategoryFromOrderItems, formatOrderItemsPhrase } from "@/lib/order-category-totals";
+import { abandonedCartRecoveryMessage } from "@/lib/crm-reactivation";
 import { SITE_VAREJO_SELLER } from "@/lib/crm-legacy-import";
 
 function waDisplay(digits: string) {
@@ -19,17 +20,10 @@ function waLink(digits: string, text?: string) {
 }
 
 function recoveryMessage(order: AbandonedOrderRow): string {
-  const first = order.customer_name?.trim().split(/\s+/)[0];
-  const hi = first ? `Olá ${first}!` : "Olá!";
-  if (order.requested_seller_name?.trim() === SITE_VAREJO_SELLER) {
-    return `${hi} Vi que você deixou itens no carrinho do site. Posso ajudar a finalizar?`;
-  }
-  const cats = totalsByCategoryFromOrderItems(order.order_items);
-  const summary = cats.map((c) => `x${c.qty} ${c.label}`).join("\n");
-
-  return summary
-    ? `${hi}\n\nVi que você deixou itens no carrinho:\n${summary}\n\nPosso ajudar a finalizar?`
-    : `${hi} Vi que você deixou itens no carrinho. Posso ajudar a finalizar?`;
+  return abandonedCartRecoveryMessage(
+    order.customer_name,
+    formatOrderItemsPhrase(order.order_items)
+  );
 }
 
 function formatCategoryLines(order: AbandonedOrderRow): string[] {

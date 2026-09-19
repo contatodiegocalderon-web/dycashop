@@ -21,6 +21,7 @@ import {
   normalizeWhatsappDigits,
   lookupWhatsappMapValue,
 } from "@/lib/whatsapp-normalize";
+import { formatOrderItemsPhrase } from "@/lib/order-category-totals";
 
 export type LoadRecipientsOpts = {
   request: NextRequest;
@@ -56,10 +57,18 @@ export async function loadCampaignRecipients(
   const principal = await resolvePrincipal(opts.request);
   const map = new Map<string, CrmBotRecipientInput>();
 
-  function add(wa: string, name: string | null) {
+  function add(
+    wa: string,
+    name: string | null,
+    orderSummary?: string | null
+  ) {
     const d = normalizeWhatsappDigits(wa);
     if (d.length < 10 || map.has(d)) return;
-    map.set(d, { customer_whatsapp: d, customer_name: name });
+    map.set(d, {
+      customer_whatsapp: d,
+      customer_name: name,
+      order_summary: orderSummary?.trim() || null,
+    });
   }
 
   const profileFilter = opts.profileFilter;
@@ -74,7 +83,7 @@ export async function loadCampaignRecipients(
     let q: any = admin
       .from("orders")
       .select(
-        "id, customer_whatsapp, customer_name, requested_seller_name, created_at, order_items(quantity)"
+        "id, customer_whatsapp, customer_name, requested_seller_name, created_at, order_items(quantity, snapshot_category)"
       )
       .not("customer_whatsapp", "is", null)
       .order("created_at", { ascending: false })
@@ -109,7 +118,10 @@ export async function loadCampaignRecipients(
         customer_whatsapp: string;
         customer_name: string | null;
         created_at: string;
-        order_items?: Array<{ quantity: number }> | null;
+        order_items?: Array<{
+          quantity: number;
+          snapshot_category?: string | null;
+        }> | null;
       };
       const wa = normalizeWhatsappDigits(o.customer_whatsapp);
       if (wa.length < 10) continue;
@@ -135,7 +147,11 @@ export async function loadCampaignRecipients(
       const tier = volumeTierFromPieces(pieces);
       if (opts.volumeTier !== "all" && tier !== opts.volumeTier) continue;
 
-      add(wa, o.customer_name);
+      add(
+        wa,
+        o.customer_name,
+        isOpen ? null : formatOrderItemsPhrase(o.order_items)
+      );
     }
   } else {
     const recency =

@@ -37,6 +37,7 @@ import {
   buildWhatsappLookup,
 } from "@/lib/whatsapp-normalize";
 import { SITE_VAREJO_SELLER } from "@/lib/crm-legacy-import";
+import { formatOrderItemsPhrase } from "@/lib/order-category-totals";
 
 export const runtime = "nodejs";
 
@@ -276,7 +277,9 @@ export async function GET(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let cq: any = admin
       .from("orders")
-      .select("id, customer_whatsapp, customer_name, requested_seller_name, created_at")
+      .select(
+        "id, customer_whatsapp, customer_name, requested_seller_name, created_at, order_items(quantity, snapshot_category)"
+      )
       .eq("status", "CANCELADO")
       .not("customer_whatsapp", "is", null)
       .order("created_at", { ascending: false })
@@ -298,6 +301,7 @@ export async function GET(request: NextRequest) {
         created_at: string;
         customer_name: string | null;
         requested_seller_name: string | null;
+        order_phrase: string;
       }
     >();
     for (const raw of cancelled ?? []) {
@@ -306,6 +310,10 @@ export async function GET(request: NextRequest) {
         customer_name: string | null;
         requested_seller_name: string | null;
         created_at: string;
+        order_items?: Array<{
+          quantity: number;
+          snapshot_category?: string | null;
+        }> | null;
       };
       const wa = normalizeWhatsappDigits(o.customer_whatsapp);
       if (wa.length < 10 || hiddenSet.has(wa)) continue;
@@ -324,6 +332,7 @@ export async function GET(request: NextRequest) {
           created_at: o.created_at,
           customer_name: o.customer_name,
           requested_seller_name: o.requested_seller_name,
+          order_phrase: formatOrderItemsPhrase(o.order_items),
         });
       }
     }
@@ -390,7 +399,11 @@ export async function GET(request: NextRequest) {
         campaign,
         cycle_anchor: row.created_at,
         days: calendarDaysSince(row.created_at, now),
-        message: reactivationWhatsAppMessage(campaign, row.customer_name),
+        message: reactivationWhatsAppMessage(
+          campaign,
+          row.customer_name,
+          row.order_phrase
+        ),
         staff_id,
         seller_name,
         sortAt: row.created_at,

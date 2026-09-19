@@ -18,6 +18,24 @@ function firstName(name: string | null): string | null {
   return n && n.length >= 2 ? n : null;
 }
 
+function applyOrderSummary(
+  text: string,
+  summary: string | null | undefined
+): string {
+  const phrase = summary?.trim() ?? "";
+  if (/\{pedido\}/i.test(text)) {
+    return text.replace(/\{pedido\}/gi, phrase || "alguns itens");
+  }
+  if (!phrase) return text;
+  if (/itens no carrinho/i.test(text)) {
+    return text.replace(/itens no carrinho/gi, `um pedido de ${phrase}`);
+  }
+  if (/um pedido(?! de )/i.test(text)) {
+    return text.replace(/um pedido(?! de )/i, `um pedido de ${phrase}`);
+  }
+  return text;
+}
+
 /** Variações locais (sem API externa) — tom humano e único por destinatário. */
 export function buildMessageVariations(
   reference: string,
@@ -45,10 +63,11 @@ export function buildMessageVariations(
 
   return recipients.map((r, i) => {
     const fn = firstName(r.customer_name);
-    const tpl = templates[i % templates.length] ?? base;
-    if (!fn) return tpl;
-    if (tpl.toLowerCase().includes(fn.toLowerCase())) return tpl;
-    return tpl.replace(/^(Olá|Oi|E aí|Opa|Fala)!/i, `$1 ${fn}!`);
+    let tpl = templates[i % templates.length] ?? base;
+    if (fn && !tpl.toLowerCase().includes(fn.toLowerCase())) {
+      tpl = tpl.replace(/^(Olá|Oi|E aí|Opa|Fala)!/i, `$1 ${fn}!`);
+    }
+    return applyOrderSummary(tpl, r.order_summary);
   });
 }
 

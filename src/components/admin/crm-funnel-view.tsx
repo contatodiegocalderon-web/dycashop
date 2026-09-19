@@ -28,7 +28,8 @@ import {
   volumeTierLabel,
 } from "@/lib/crm-funnel";
 import { SITE_VAREJO_SELLER } from "@/lib/crm-legacy-import";
-import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
+import { totalsByCategoryFromOrderItems, formatOrderItemsPhrase } from "@/lib/order-category-totals";
+import { abandonedCartRecoveryMessage } from "@/lib/crm-reactivation";
 import type { ClientRecencyStatus } from "@/lib/client-recency";
 
 export type CrmClientRow = {
@@ -163,16 +164,25 @@ function money(n: number) {
 }
 
 function recoveryMessage(order: AbandonedOrderRow): string {
-  const first = order.customer_name?.trim().split(/\s+/)[0];
-  const hi = first ? `Olá ${first}!` : "Olá!";
-  if (order.requested_seller_name?.trim() === SITE_VAREJO_SELLER) {
-    return `${hi} Vi que você deixou itens no carrinho do site. Posso ajudar a finalizar?`;
-  }
-  const cats = totalsByCategoryFromOrderItems(order.order_items);
-  const summary = cats.map((c) => `x${c.qty} ${c.label}`).join("\n");
-  return summary
-    ? `${hi}\n\nVi que você deixou itens no carrinho:\n${summary}\n\nPosso ajudar a finalizar?`
-    : `${hi} Vi que você deixou itens no carrinho. Posso ajudar a finalizar?`;
+  return abandonedCartRecoveryMessage(
+    order.customer_name,
+    formatOrderItemsPhrase(order.order_items)
+  );
+}
+
+function botLeadFromPipelineItem(item: {
+  customer_whatsapp: string;
+  customer_name: string | null;
+  order_items?: AbandonedOrderRow["order_items"];
+}): BotSelectedLead {
+  const summary = Array.isArray(item.order_items)
+    ? formatOrderItemsPhrase(item.order_items)
+    : "";
+  return {
+    customer_whatsapp: item.customer_whatsapp,
+    customer_name: item.customer_name,
+    order_summary: summary || null,
+  };
 }
 
 function PipelineColumn({
@@ -303,10 +313,9 @@ function VolumePipeline<
     <PipelineBoard>
       {tiers.map(({ tier, accent }) => {
         const list = items.filter((i) => i.volume_tier === tier);
-        const columnLeads: BotSelectedLead[] = list.map((item) => ({
-          customer_whatsapp: item.customer_whatsapp,
-          customer_name: item.customer_name,
-        }));
+        const columnLeads: BotSelectedLead[] = list.map((item) =>
+          botLeadFromPipelineItem(item)
+        );
         return (
           <PipelineColumn
             key={tier}
@@ -324,10 +333,7 @@ function VolumePipeline<
                 "order_id" in item && typeof item.order_id === "string"
                   ? item.order_id
                   : item.customer_whatsapp;
-              const lead: BotSelectedLead = {
-                customer_whatsapp: item.customer_whatsapp,
-                customer_name: item.customer_name,
-              };
+              const lead: BotSelectedLead = botLeadFromPipelineItem(item);
               const selected =
                 !!selectedWa?.has(botLeadKey(item.customer_whatsapp));
               return (

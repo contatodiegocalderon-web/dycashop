@@ -73,17 +73,26 @@ export function firstNameFromCustomer(
   return n || "";
 }
 
+function abandonedOrderMention(orderPhrase: string | null | undefined): string {
+  const phrase = orderPhrase?.trim();
+  return phrase
+    ? `Vi que você fez um pedido de ${phrase}`
+    : "Vi que você chegou a montar um pedido com a gente";
+}
+
 export function reactivationWhatsAppMessage(
   campaign: ReactivationCampaign,
-  customerName: string | null | undefined
+  customerName: string | null | undefined,
+  orderPhrase?: string | null
 ): string {
   const nome = firstNameFromCustomer(customerName);
   const hi = nome ? `Olá ${nome}!` : "Olá!";
+  const sawOrder = abandonedOrderMention(orderPhrase);
   switch (campaign) {
     case "abandon_new":
-      return `${hi} Tudo bem? Vi que você chegou a montar um pedido com a gente e ainda não fechou. Pode me contar o motivo? Estou à disposição pra te ajudar a vir pro time.`;
+      return `${hi} Tudo bem? ${sawOrder} e ainda não fechou. Posso saber o que te impediu de finalizar? Estou à disposição pra te ajudar a vir pro time.`;
     case "abandon_repeat":
-      return `${hi} Tudo bem? Vi que você deixou um pedido no carrinho. Consigo fazer um preço top pra você nessa — me chama que a gente fecha.`;
+      return `${hi} Tudo bem? ${sawOrder} e deixou no carrinho. Consigo fazer um preço top pra você nessa — me chama que a gente fecha.`;
     case "day20":
       return `${hi} Tudo bem? Passando pra saber se o pedido chegou tudo certo e como estão as vendas. Qualquer coisa estou aqui.`;
     case "day45":
@@ -91,6 +100,20 @@ export function reactivationWhatsAppMessage(
     case "day60":
       return `${hi} Tudo bem? Vi que já faz um tempo que você comprou com a gente. Fechamos parceria com uma fábrica nova e agora consigo fazer um preço mais barato que qualquer outro fornecedor. Bora repor?`;
   }
+}
+
+/** Mensagem ao abrir WhatsApp no card da etapa 1 (carrinho abandonado). */
+export function abandonedCartRecoveryMessage(
+  customerName: string | null | undefined,
+  orderPhrase: string | null | undefined
+): string {
+  const nome = firstNameFromCustomer(customerName);
+  const hi = nome ? `Olá ${nome}!` : "Olá!";
+  const phrase = orderPhrase?.trim();
+  if (phrase) {
+    return `${hi} Vi que você fez um pedido de ${phrase}. Posso saber o que te impediu de finalizar?`;
+  }
+  return `${hi} Vi que você fez um pedido com a gente e ainda não fechou. Posso saber o que te impediu de finalizar?`;
 }
 
 export const CAMPAIGN_META: Record<
@@ -101,13 +124,13 @@ export const CAMPAIGN_META: Record<
     stage: "Etapa 1",
     title: "Nunca comprou",
     stageNum: 1,
-    hint: "Perguntar o motivo e chamar pro time",
+    hint: "Citar o pedido e perguntar o motivo",
   },
   abandon_repeat: {
     stage: "Etapa 1",
     title: "Já é cliente",
     stageNum: 1,
-    hint: "Oferecer preço top no carrinho",
+    hint: "Citar o pedido e oferecer preço top",
   },
   day20: {
     stage: "Etapa 3",
