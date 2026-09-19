@@ -72,11 +72,18 @@ export function sellerFollowUpKey(
 }
 
 export function followUpWhatsAppMessage(
-  customerName: string | null | undefined
+  customerName: string | null | undefined,
+  profile?: BusinessProfile | null
 ): string {
   const nome = customerName?.trim() ? customerName.trim().split(/\s+/)[0] : "";
   const hi = nome ? `Olá ${nome}!` : "Olá!";
-  return `${hi} Tudo bem? Já faz alguns dias desde sua última compra conosco — como estão indo as vendas? Queremos entender melhor para preparar a próxima oferta para você.`;
+  if (profile === "lojista") {
+    return `${hi} Tudo bem? Já faz alguns dias desde a última compra. Passando pra conferir se chegou tudo certo na loja. Estou à disposição.`;
+  }
+  if (profile === "revendedor") {
+    return `${hi} Tudo bem? Já faz alguns dias desde a última compra. Passando pra conferir se chegou tudo certo pra você revender. Estou à disposição.`;
+  }
+  return `${hi} Tudo bem? Já faz alguns dias desde a última compra. Passando pra conferir se chegou tudo certo. Estou à disposição.`;
 }
 
 export function isBusinessProfile(v: string | null | undefined): v is BusinessProfile {

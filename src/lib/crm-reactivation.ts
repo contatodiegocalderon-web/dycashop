@@ -1,5 +1,7 @@
 /** Fila diária de reativação (tarefas de WhatsApp por etapa). */
 
+import type { BusinessProfile } from "@/lib/client-follow-up";
+
 export const REACTIVATION_STAGE5_BATCH = 5;
 
 export type ReactivationCampaign =
@@ -80,40 +82,95 @@ function abandonedOrderMention(orderPhrase: string | null | undefined): string {
     : "Vi que você chegou a montar um pedido com a gente";
 }
 
+type MessageChannel = "lojista" | "revendedor" | "varejo";
+
+export function messageChannelFromProfile(
+  profile: BusinessProfile | null | undefined
+): MessageChannel {
+  if (profile === "lojista") return "lojista";
+  if (profile === "revendedor") return "revendedor";
+  return "varejo";
+}
+
+function campaignBody(
+  campaign: ReactivationCampaign,
+  channel: MessageChannel,
+  sawOrder: string
+): string {
+  switch (campaign) {
+    case "abandon_new":
+      if (channel === "lojista") {
+        return `${sawOrder} e ainda não fechou. Se faltar alguma informação pra loja finalizar, estou à disposição.`;
+      }
+      if (channel === "revendedor") {
+        return `${sawOrder} e ainda não fechou. Se quiser, te ajudo a fechar com uma condição boa pra revenda.`;
+      }
+      return `${sawOrder} e ainda não fechou. Se quiser, te ajudo a finalizar.`;
+    case "abandon_repeat":
+      if (channel === "lojista") {
+        return `${sawOrder} e ficou pendente. Consigo uma condição especial pra reposição da loja. Estou à disposição.`;
+      }
+      if (channel === "revendedor") {
+        return `${sawOrder} e ficou pendente. Consigo um preço top pra você nessa. Estou à disposição.`;
+      }
+      return `${sawOrder} e ficou pendente. Consigo um preço melhor pra você nessa. Estou à disposição.`;
+    case "day20":
+      if (channel === "lojista") {
+        return `Passando pra conferir se o pedido chegou certinho na loja. Qualquer coisa estou por aqui.`;
+      }
+      if (channel === "revendedor") {
+        return `Passando pra conferir se o pedido chegou certinho pra você revender. Qualquer coisa estou por aqui.`;
+      }
+      return `Passando pra conferir se o pedido chegou certinho. Qualquer coisa estou por aqui.`;
+    case "day45":
+      if (channel === "lojista") {
+        return `Consigo uma condição especial pra reposição da loja. Estou à disposição pra te passar os valores.`;
+      }
+      if (channel === "revendedor") {
+        return `Consigo um preço top pra você girar mais nessa. Estou à disposição pra te passar as condições.`;
+      }
+      return `Chegou coisa nova e consigo um preço melhor pra você. Estou à disposição.`;
+    case "day60":
+      if (channel === "lojista") {
+        return `Vi que já faz um tempo que você comprou com a gente. Fechamos parceria com uma fábrica nova e a condição pra loja ficou mais competitiva. Estou à disposição.`;
+      }
+      if (channel === "revendedor") {
+        return `Vi que já faz um tempo que você comprou com a gente. Fechamos parceria com uma fábrica nova e agora o preço pra revenda ficou mais competitivo. Estou à disposição.`;
+      }
+      return `Vi que já faz um tempo que você comprou com a gente. Tem coleção nova e consigo um preço mais em conta. Estou à disposição.`;
+  }
+}
+
 export function reactivationWhatsAppMessage(
   campaign: ReactivationCampaign,
   customerName: string | null | undefined,
-  orderPhrase?: string | null
+  orderPhrase?: string | null,
+  profile?: BusinessProfile | null
 ): string {
   const nome = firstNameFromCustomer(customerName);
   const hi = nome ? `Olá ${nome}!` : "Olá!";
   const sawOrder = abandonedOrderMention(orderPhrase);
-  switch (campaign) {
-    case "abandon_new":
-      return `${hi} Tudo bem? ${sawOrder} e ainda não fechou. Posso saber o que te impediu de finalizar? Estou à disposição pra te ajudar a vir pro time.`;
-    case "abandon_repeat":
-      return `${hi} Tudo bem? ${sawOrder} e deixou no carrinho. Consigo fazer um preço top pra você nessa — me chama que a gente fecha.`;
-    case "day20":
-      return `${hi} Tudo bem? Passando pra saber se o pedido chegou tudo certo e como estão as vendas. Qualquer coisa estou aqui.`;
-    case "day45":
-      return `${hi} Tudo bem? Consigo fazer um preço top pra você aproveitar e dar uma alavancada nas vendas. Me chama que eu te passo as condições.`;
-    case "day60":
-      return `${hi} Tudo bem? Vi que já faz um tempo que você comprou com a gente. Fechamos parceria com uma fábrica nova e agora consigo fazer um preço mais barato que qualquer outro fornecedor. Bora repor?`;
-  }
+  const body = campaignBody(
+    campaign,
+    messageChannelFromProfile(profile),
+    sawOrder
+  );
+  return `${hi} Tudo bem? ${body}`;
 }
 
 /** Mensagem ao abrir WhatsApp no card da etapa 1 (carrinho abandonado). */
 export function abandonedCartRecoveryMessage(
   customerName: string | null | undefined,
-  orderPhrase: string | null | undefined
+  orderPhrase: string | null | undefined,
+  profile?: BusinessProfile | null,
+  hasPaidBefore?: boolean
 ): string {
-  const nome = firstNameFromCustomer(customerName);
-  const hi = nome ? `Olá ${nome}!` : "Olá!";
-  const phrase = orderPhrase?.trim();
-  if (phrase) {
-    return `${hi} Vi que você fez um pedido de ${phrase}. Posso saber o que te impediu de finalizar?`;
-  }
-  return `${hi} Vi que você fez um pedido com a gente e ainda não fechou. Posso saber o que te impediu de finalizar?`;
+  return reactivationWhatsAppMessage(
+    hasPaidBefore ? "abandon_repeat" : "abandon_new",
+    customerName,
+    orderPhrase,
+    profile
+  );
 }
 
 export const CAMPAIGN_META: Record<
@@ -136,19 +193,19 @@ export const CAMPAIGN_META: Record<
     stage: "Etapa 3",
     title: "Pós-compra",
     stageNum: 3,
-    hint: "Chegou certo? Como estão as vendas?",
+    hint: "Conferir se chegou, no tom do perfil",
   },
   day45: {
     stage: "Etapa 4",
     title: "Reativação",
     stageNum: 4,
-    hint: "Preço top pra alavancar vendas",
+    hint: "Oferecer condição, sem fechamento forçado",
   },
   day60: {
     stage: "Etapa 5",
     title: "Inativo",
     stageNum: 5,
-    hint: "Parceria nova · preço mais barato",
+    hint: "Parceria nova · tom do perfil",
   },
 };
 

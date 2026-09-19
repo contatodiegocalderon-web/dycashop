@@ -6,6 +6,7 @@ import { applyCrmSellerOrderScope } from "@/lib/crm-seller-order-filter";
 import { applyPendingOrdersSellerScope } from "@/lib/crm-pending-seller-filter";
 import {
   fetchAllCrmPaidOrders,
+  fetchCrmProfilesByWhatsapp,
   type CrmPaidOrdersListQuery,
 } from "@/lib/admin-orders-query";
 import {
@@ -35,9 +36,11 @@ import {
   normalizeWhatsappDigits,
   whatsappMatchesLookup,
   buildWhatsappLookup,
+  lookupWhatsappMapValue,
 } from "@/lib/whatsapp-normalize";
 import { SITE_VAREJO_SELLER } from "@/lib/crm-legacy-import";
 import { formatOrderItemsPhrase } from "@/lib/order-category-totals";
+import type { BusinessProfile } from "@/lib/client-follow-up";
 
 export const runtime = "nodejs";
 
@@ -342,6 +345,22 @@ export async function GET(request: NextRequest) {
       ...Array.from(abandonedLatest.keys()),
     ]);
     const done = await loadCompletions(admin, Array.from(waForDone));
+    const profileMap = await fetchCrmProfilesByWhatsapp(
+      admin,
+      expandWhatsappQueryKeys(Array.from(waForDone))
+    );
+
+    function profileFor(
+      wa: string,
+      requestedSeller?: string | null
+    ): BusinessProfile | null {
+      if (requestedSeller?.trim() === SITE_VAREJO_SELLER) return "uso_proprio";
+      const raw = lookupWhatsappMapValue(wa, profileMap)?.business_profile;
+      if (raw === "lojista" || raw === "revendedor" || raw === "uso_proprio") {
+        return raw;
+      }
+      return null;
+    }
 
     const due: DueTask[] = [];
     const now = new Date();
@@ -366,7 +385,12 @@ export async function GET(request: NextRequest) {
         campaign,
         cycle_anchor: cycle,
         days,
-        message: reactivationWhatsAppMessage(campaign, agg.name),
+        message: reactivationWhatsAppMessage(
+          campaign,
+          agg.name,
+          null,
+          profileFor(wa)
+        ),
         staff_id,
         seller_name,
         sortAt: agg.last_at,
@@ -402,7 +426,8 @@ export async function GET(request: NextRequest) {
         message: reactivationWhatsAppMessage(
           campaign,
           row.customer_name,
-          row.order_phrase
+          row.order_phrase,
+          profileFor(wa, row.requested_seller_name)
         ),
         staff_id,
         seller_name,

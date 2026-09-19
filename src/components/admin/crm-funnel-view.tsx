@@ -18,10 +18,7 @@ import {
 } from "@/lib/crm-bot/selection";
 import type { BusinessProfile } from "@/lib/client-follow-up";
 import {
-  CRM_ABANDONED_FOLLOW_UP_MAX,
   CRM_COLUMN_PREVIEW,
-  followUpAlertClass,
-  nextFollowUpLabel,
   type CrmFunnelTab,
   type CrmProfileFilter,
   type CrmVolumeTier,
@@ -166,7 +163,9 @@ function money(n: number) {
 function recoveryMessage(order: AbandonedOrderRow): string {
   return abandonedCartRecoveryMessage(
     order.customer_name,
-    formatOrderItemsPhrase(order.order_items)
+    formatOrderItemsPhrase(order.order_items),
+    order.business_profile,
+    order.has_paid_before || !!order.business_profile
   );
 }
 
@@ -786,7 +785,6 @@ export function CrmFunnelView({
   const [queueTotal, setQueueTotal] = useState(0);
   const [queueStage5Waiting, setQueueStage5Waiting] = useState(0);
   const [doneBusy, setDoneBusy] = useState<string | null>(null);
-  const [followUpBusy, setFollowUpBusy] = useState<string | null>(null);
   const [hideConfirm, setHideConfirm] = useState<{
     wa: string;
     name: string | null;
@@ -1000,43 +998,13 @@ export function CrmFunnelView({
         throw new Error(data.error ?? data.hint ?? "Falha ao confirmar");
       }
       await loadQueue();
+      if (task.campaign === "abandon_new" || task.campaign === "abandon_repeat") {
+        await loadAbandoned();
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao confirmar");
     } finally {
       setDoneBusy(null);
-    }
-  }
-
-  async function registerFollowUp(wa: string) {
-    setFollowUpBusy(wa);
-    try {
-      const res = await adminFetch("/api/admin/abandoned-carts/follow-up", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customer_whatsapp: wa }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? data.hint ?? "Falha no follow-up");
-      if (data.discarded) {
-        setAbandoned((prev) => prev.filter((o) => o.customer_whatsapp !== wa));
-      } else {
-        setAbandoned((prev) =>
-          prev.map((o) =>
-            o.customer_whatsapp === wa
-              ? {
-                  ...o,
-                  follow_up_count: data.follow_up_count,
-                  follow_up_remaining: data.follow_up_remaining,
-                }
-              : o
-          )
-        );
-      }
-      void loadStats();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro no follow-up");
-    } finally {
-      setFollowUpBusy(null);
     }
   }
 
@@ -1053,9 +1021,8 @@ export function CrmFunnelView({
     window.open(waLink(wa, msg), "_blank", "noopener,noreferrer");
   }
 
-  const pendingFollowUps = abandoned.filter(
-    (o) => o.follow_up_count < CRM_ABANDONED_FOLLOW_UP_MAX
-  ).length;
+  const openTaskFollowUps = abandoned.filter((o) => !o.follow_up_done).length;
+  const doneTaskFollowUps = abandoned.length - openTaskFollowUps;
 
   function tabCount(tab: CrmFunnelTab): number | null {
     if (tab === "hoje") return queueTotal;
@@ -1341,11 +1308,19 @@ export function CrmFunnelView({
 
       {activeTab === "abandonados" && (
         <div>
-          {pendingFollowUps > 0 && !botSelectMode && (
-            <p className="mb-4 text-sm">
-              <span className="font-semibold text-violet-800">
-                {pendingFollowUps} aguardando follow-up.
+          {abandoned.length > 0 && !botSelectMode && (
+            <p className="mb-4 text-sm text-stone-600">
+              Follow-up nas{" "}
+              <span className="font-semibold text-stone-800">Tarefas</span>
+              {": "}
+              <span className="font-semibold text-amber-800">
+                {openTaskFollowUps} em aberto
               </span>
+              {" · "}
+              <span className="font-semibold text-emerald-800">
+                {doneTaskFollowUps} feito{doneTaskFollowUps === 1 ? "" : "s"}
+              </span>
+              .
             </p>
           )}
           <VolumePipeline
@@ -1359,7 +1334,6 @@ export function CrmFunnelView({
               const lines = totalsByCategoryFromOrderItems(
                 order.order_items
               ).map((c) => `x${c.qty} ${c.label.toUpperCase()}`);
-              const alert = nextFollowUpLabel(order.follow_up_count);
               const isSelected = selectedWa.has(
                 botLeadKey(order.customer_whatsapp)
               );
@@ -1393,41 +1367,26 @@ export function CrmFunnelView({
                       : lines
                   }
                   extra={
-                    alert ? (
-                      <p
-                        className={`mt-2 rounded-lg border px-2 py-1 text-[10px] font-semibold ${followUpAlertClass(order.follow_up_count)}`}
-                      >
-                        {alert} · {order.follow_up_count}/
-                        {CRM_ABANDONED_FOLLOW_UP_MAX} feitos
-                      </p>
-                    ) : null
+                    <p
+                      className={`mt-2 rounded-lg border px-2 py-1 text-[10px] font-semibold ${
+                        order.follow_up_done
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                          : "border-amber-200 bg-amber-50 text-amber-950"
+                      }`}
+                    >
+                      Tarefas · {order.follow_up_done ? "feito" : "em aberto"}
+                    </p>
                   }
                   actions={
-                    <>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void trackWhatsAppClick(order.customer_whatsapp, msg)
-                        }
-                        className="rounded-md bg-[#25D366] px-3 py-1.5 text-[11px] font-semibold text-white"
-                      >
-                        WhatsApp
-                      </button>
-                      {order.follow_up_count < CRM_ABANDONED_FOLLOW_UP_MAX && (
-                        <button
-                          type="button"
-                          disabled={followUpBusy === order.customer_whatsapp}
-                          onClick={() =>
-                            void registerFollowUp(order.customer_whatsapp)
-                          }
-                          className="rounded-md border border-violet-300 bg-violet-50 px-3 py-1.5 text-[11px] font-semibold text-violet-900 disabled:opacity-50"
-                        >
-                          {followUpBusy === order.customer_whatsapp
-                            ? "…"
-                            : "Follow-up"}
-                        </button>
-                      )}
-                    </>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void trackWhatsAppClick(order.customer_whatsapp, msg)
+                      }
+                      className="rounded-md bg-[#25D366] px-3 py-1.5 text-[11px] font-semibold text-white"
+                    >
+                      WhatsApp
+                    </button>
                   }
                 />
               );

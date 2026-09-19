@@ -27,6 +27,10 @@ import {
   whatsappDedupeKeys,
 } from "@/lib/whatsapp-normalize";
 import {
+  isReactivationCampaign,
+  reactivationTaskKey,
+} from "@/lib/crm-reactivation";
+import {
   botDispatchCountForWhatsapp,
   fetchBotDispatchCountsByWhatsapp,
 } from "@/lib/crm-bot/dispatch-counts";
@@ -55,6 +59,8 @@ export type AbandonedOrderRow = {
   has_open_order: boolean;
   /** Quantas vezes já recebeu disparo do bot (status sent). */
   bot_dispatch_count: number;
+  /** Follow-up da etapa 1 marcado como Enviado na tela Tarefas. */
+  follow_up_done: boolean;
 };
 
 type RawCancelledOrder = {
@@ -235,11 +241,13 @@ export async function GET(request: NextRequest) {
         cancelled_order_count: count,
         has_open_order: hasOpenOrderFlag(wa, openOrderLookup),
         bot_dispatch_count: 0,
+        follow_up_done: false,
       });
     }
 
     const clickMap = new Map<string, number>();
     const followMap = new Map<string, number>();
+    const doneTaskKeys = new Set<string>();
     const dispatchCounts = await fetchBotDispatchCountsByWhatsapp(admin);
 
     if (waForMeta.size > 0) {
@@ -267,6 +275,38 @@ export async function GET(request: NextRequest) {
           followMap.set(key, count);
         }
       }
+
+      const IN_CHUNK = 150;
+      for (let i = 0; i < waList.length; i += IN_CHUNK) {
+        const chunk = waList.slice(i, i + IN_CHUNK);
+        const { data: taskRows, error: taskErr } = await admin
+          .from("crm_reactivation_tasks")
+          .select("whatsapp_digits, campaign, cycle_anchor")
+          .in("whatsapp_digits", chunk)
+          .in("campaign", ["abandon_new", "abandon_repeat"]);
+        if (taskErr) {
+          const missing = /does not exist|schema cache|relation/i.test(
+            taskErr.message
+          );
+          if (missing) break;
+          throw new Error(taskErr.message);
+        }
+        for (const raw of taskRows ?? []) {
+          const r = raw as {
+            whatsapp_digits: string;
+            campaign: string;
+            cycle_anchor: string;
+          };
+          if (!isReactivationCampaign(r.campaign)) continue;
+          const wa = normalizeWhatsappDigits(r.whatsapp_digits);
+          doneTaskKeys.add(reactivationTaskKey(wa, r.campaign, r.cycle_anchor));
+          for (const key of whatsappDedupeKeys(wa)) {
+            doneTaskKeys.add(
+              reactivationTaskKey(key, r.campaign, r.cycle_anchor)
+            );
+          }
+        }
+      }
     }
 
     for (const cart of carts) {
@@ -280,6 +320,11 @@ export async function GET(request: NextRequest) {
         cart.customer_whatsapp,
         dispatchCounts
       );
+      const wa = cart.customer_whatsapp;
+      const cycle = cart.created_at;
+      cart.follow_up_done =
+        doneTaskKeys.has(reactivationTaskKey(wa, "abandon_new", cycle)) ||
+        doneTaskKeys.has(reactivationTaskKey(wa, "abandon_repeat", cycle));
     }
 
     const sorted = sortLeadsRepeatBuyersFirst(carts);

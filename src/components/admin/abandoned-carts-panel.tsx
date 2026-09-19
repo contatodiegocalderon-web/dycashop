@@ -22,7 +22,9 @@ function waLink(digits: string, text?: string) {
 function recoveryMessage(order: AbandonedOrderRow): string {
   return abandonedCartRecoveryMessage(
     order.customer_name,
-    formatOrderItemsPhrase(order.order_items)
+    formatOrderItemsPhrase(order.order_items),
+    order.business_profile,
+    order.has_paid_before || !!order.business_profile
   );
 }
 
