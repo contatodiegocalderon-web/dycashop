@@ -5,6 +5,12 @@ import { applyPaidOrderStockAndDrive } from "@/lib/apply-paid-order-stock";
 import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
 import { notifyAdminsVarejoPaid } from "@/lib/admin-push";
 import { settleAbandonedAfterPaidOrder } from "@/lib/crm-abandoned-query";
+import {
+  clearVarejoDriveSyncFailed,
+  hasVarejoStockApplied,
+  withVarejoDriveSync,
+  withVarejoStockApplied,
+} from "@/lib/varejo-drive-sync";
 
 export const runtime = "nodejs";
 
