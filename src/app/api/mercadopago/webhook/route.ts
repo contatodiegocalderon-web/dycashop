@@ -4,12 +4,7 @@ import { getMercadoPagoPayment } from "@/lib/mercadopago";
 import { applyPaidOrderStockAndDrive } from "@/lib/apply-paid-order-stock";
 import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
 import { notifyAdminsVarejoPaid } from "@/lib/admin-push";
-import {
-  clearVarejoDriveSyncFailed,
-  hasVarejoStockApplied,
-  withVarejoDriveSync,
-  withVarejoStockApplied,
-} from "@/lib/varejo-drive-sync";
+import { settleAbandonedAfterPaidOrder } from "@/lib/crm-abandoned-query";
 
 export const runtime = "nodejs";
 
@@ -129,7 +124,7 @@ export async function POST(request: NextRequest) {
 
     const { data: order, error: oErr } = await admin
       .from("orders")
-      .select("id, status, display_number, sale_amount_by_category, mp_payment_id")
+      .select("id, status, display_number, sale_amount_by_category, mp_payment_id, customer_whatsapp")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -248,6 +243,17 @@ export async function POST(request: NextRequest) {
     if (uErr) {
       console.error("[mp-webhook] order update after stock:", uErr.message);
       return NextResponse.json({ error: uErr.message }, { status: 500 });
+    }
+
+    const wa = String(
+      (order as { customer_whatsapp?: string | null }).customer_whatsapp ?? ""
+    ).trim();
+    if (wa) {
+      try {
+        await settleAbandonedAfterPaidOrder(admin, wa, orderId);
+      } catch (histErr) {
+        console.error("[mp-webhook] settle abandoned after paid:", histErr);
+      }
     }
 
     void notifyAdminsVarejoPaid({

@@ -12,7 +12,7 @@ import {
 } from "@/lib/order-drive-retry";
 import { flagPendingOrdersAfterConfirm } from "@/lib/order-stock-conflict";
 import { upsertAutoBusinessProfileOnConfirm } from "@/lib/crm-auto-profile";
-import { clearAbandonedCrmHistory, purgeCancelledOrdersOnConfirm } from "@/lib/crm-abandoned-query";
+import { settleAbandonedAfterPaidOrder } from "@/lib/crm-abandoned-query";
 import type { CustomerSegment } from "@/types";
 
 export const runtime = "nodejs";
@@ -426,15 +426,13 @@ export async function POST(
     }
 
     try {
-      await clearAbandonedCrmHistory(admin, bodyParsed.customerWhatsApp);
+      await settleAbandonedAfterPaidOrder(
+        admin,
+        bodyParsed.customerWhatsApp,
+        orderId
+      );
     } catch (histErr) {
-      console.error("[confirm] clear abandoned history:", histErr);
-    }
-
-    try {
-      await purgeCancelledOrdersOnConfirm(admin, bodyParsed.customerWhatsApp);
-    } catch (purgeErr) {
-      console.error("[confirm] purge cancelled orders:", purgeErr);
+      console.error("[confirm] settle abandoned after paid:", histErr);
     }
 
     const stockAfterByProductId = new Map<string, number>();
