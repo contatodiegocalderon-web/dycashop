@@ -7,6 +7,7 @@ export const CRM_COLUMN_PREVIEW = 8;
 export type CrmVolumeTier = "atacado" | "varejo";
 
 export type CrmFunnelTab =
+  | "hoje"
   | "abandonados"
   | "em_aberto"
   | "pos_30"

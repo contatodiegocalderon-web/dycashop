@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import type { AbandonedOrderRow } from "@/app/api/admin/abandoned-carts/route";
 import type { OpenOrderRow } from "@/app/api/admin/crm/open-orders/route";
+import type { ReactivationQueueGroup } from "@/app/api/admin/clients/reactivation-queue/route";
+import { CAMPAIGN_META, type ReactivationCampaign } from "@/lib/crm-reactivation";
 import { ClientProfileBadge } from "@/components/client-profile-badge";
 import { ClientsBrazilMapPanel } from "@/components/admin/clients-brazil-map-panel";
 import { CrmBotPanel } from "@/components/admin/crm-bot-panel";
@@ -74,6 +76,15 @@ const TAB_META: Record<
     colorBorder: string;
   }
 > = {
+  hoje: {
+    step: "Hoje",
+    title: "Tarefas",
+    accent: "border-t-violet-500",
+    color: "bg-violet-600",
+    colorActive: "bg-violet-700",
+    colorMuted: "text-violet-800",
+    colorBorder: "border-violet-300",
+  },
   abandonados: {
     step: "Etapa 1",
     title: "Abandonados",
@@ -533,6 +544,69 @@ function ClientCard({
   );
 }
 
+const CAMPAIGN_CHIP: Record<ReactivationCampaign, string> = {
+  abandon_new: "bg-amber-100 text-amber-950",
+  abandon_repeat: "bg-orange-100 text-orange-950",
+  day20: "bg-emerald-100 text-emerald-950",
+  day45: "bg-orange-100 text-orange-950",
+  day60: "bg-rose-100 text-rose-950",
+};
+
+function DailyTaskCard({
+  task,
+  busy,
+  onWhatsApp,
+  onDone,
+}: {
+  task: ReactivationQueueGroup["tasks"][number];
+  busy: boolean;
+  onWhatsApp: () => void;
+  onDone: () => void;
+}) {
+  const meta = CAMPAIGN_META[task.campaign];
+  return (
+    <article className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${CAMPAIGN_CHIP[task.campaign]}`}
+        >
+          {meta.stage} · {meta.title}
+        </span>
+        <span className="text-[11px] font-medium text-stone-500">
+          {task.days} {task.days === 1 ? "dia" : "dias"}
+        </span>
+      </div>
+      <p className="mt-2 text-base font-semibold leading-snug text-stone-900">
+        {task.customer_name?.trim() || "Sem nome"}
+      </p>
+      <p className="text-xs text-stone-500">{waDisplay(task.customer_whatsapp)}</p>
+      <p className="mt-2 text-[11px] leading-relaxed text-stone-600">
+        {meta.hint}
+      </p>
+      <p className="mt-2 line-clamp-3 rounded-xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-700">
+        {task.message}
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onWhatsApp}
+          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#25D366] px-3 text-sm font-bold text-white active:bg-[#1da851]"
+        >
+          WhatsApp
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onDone}
+          className="inline-flex min-h-11 items-center justify-center rounded-xl border border-stone-300 bg-stone-900 px-3 text-sm font-bold text-white disabled:opacity-50"
+        >
+          {busy ? "…" : "Enviado"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function RepeatBuyerBadge() {
   return (
     <span
@@ -693,7 +767,7 @@ export function CrmFunnelView({
   importControls,
 }: Props) {
   const { adminFetch } = useAdminAuth();
-  const [activeTab, setActiveTab] = useState<CrmFunnelTab>("abandonados");
+  const [activeTab, setActiveTab] = useState<CrmFunnelTab>("hoje");
   const [profileFilter, setProfileFilter] = useState<CrmProfileFilter>("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -702,6 +776,10 @@ export function CrmFunnelView({
   const [abandoned, setAbandoned] = useState<AbandonedOrderRow[]>([]);
   const [openOrders, setOpenOrders] = useState<OpenOrderRow[]>([]);
   const [clients, setClients] = useState<CrmClientRow[]>([]);
+  const [queueGroups, setQueueGroups] = useState<ReactivationQueueGroup[]>([]);
+  const [queueTotal, setQueueTotal] = useState(0);
+  const [queueStage5Waiting, setQueueStage5Waiting] = useState(0);
+  const [doneBusy, setDoneBusy] = useState<string | null>(null);
   const [followUpBusy, setFollowUpBusy] = useState<string | null>(null);
   const [hideConfirm, setHideConfirm] = useState<{
     wa: string;
@@ -730,7 +808,7 @@ export function CrmFunnelView({
 
   const startBotSelection = useCallback(() => {
     setBotSelectMode(true);
-    if (activeTab === "mapa") setActiveTab("abandonados");
+    if (activeTab === "mapa" || activeTab === "hoje") setActiveTab("abandonados");
   }, [activeTab]);
 
   const closeBotSelection = useCallback(() => {
@@ -798,6 +876,27 @@ export function CrmFunnelView({
     setStats((prev) => (prev ? { ...prev, em_aberto: rows.length } : prev));
   }, [adminFetch, filterQuery]);
 
+  const loadQueue = useCallback(async () => {
+    const q = new URLSearchParams();
+    if (isOwner && sellerScope && sellerScope !== "all") {
+      q.set("sellerScope", sellerScope);
+    }
+    const qs = q.toString();
+    const res = await adminFetch(
+      `/api/admin/clients/reactivation-queue${qs ? `?${qs}` : ""}`
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(
+        [data.error, data.hint].filter(Boolean).join(" — ") ||
+          "Falha ao carregar tarefas"
+      );
+    }
+    setQueueGroups((data.groups ?? []) as ReactivationQueueGroup[]);
+    setQueueTotal(Number(data.total) || 0);
+    setQueueStage5Waiting(Number(data.stage5_waiting) || 0);
+  }, [adminFetch, isOwner, sellerScope]);
+
   const loadClients = useCallback(async () => {
     const q = filterQuery();
     if (recencyForTab) q.set("recency", recencyForTab);
@@ -820,7 +919,8 @@ export function CrmFunnelView({
     setLoading(true);
     setError(null);
     try {
-      if (activeTab === "abandonados") await loadAbandoned();
+      if (activeTab === "hoje") await loadQueue();
+      else if (activeTab === "abandonados") await loadAbandoned();
       else if (activeTab === "em_aberto") await loadOpen();
       else if (activeTab === "mapa") {
         /* map panel loads itself */
@@ -830,7 +930,7 @@ export function CrmFunnelView({
     } finally {
       setLoading(false);
     }
-  }, [activeTab, loadAbandoned, loadOpen, loadClients]);
+  }, [activeTab, loadQueue, loadAbandoned, loadOpen, loadClients]);
 
   const onBotCampaignCompleted = useCallback(() => {
     void load();
@@ -870,6 +970,34 @@ export function CrmFunnelView({
       setError(e instanceof Error ? e.message : "Erro ao remover");
     } finally {
       setHideBusy(false);
+    }
+  }
+
+  async function confirmQueueTask(
+    task: ReactivationQueueGroup["tasks"][number]
+  ) {
+    const key = `${task.customer_whatsapp}|${task.campaign}|${task.cycle_anchor}`;
+    setDoneBusy(key);
+    try {
+      const res = await adminFetch("/api/admin/clients/reactivation-queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_whatsapp: task.customer_whatsapp,
+          campaign: task.campaign,
+          cycle_anchor: task.cycle_anchor,
+          staff_id: task.staff_id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? data.hint ?? "Falha ao confirmar");
+      }
+      await loadQueue();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao confirmar");
+    } finally {
+      setDoneBusy(null);
     }
   }
 
@@ -924,24 +1052,27 @@ export function CrmFunnelView({
   ).length;
 
   function tabCount(tab: CrmFunnelTab): number | null {
+    if (tab === "hoje") return queueTotal;
     const key = TAB_META[tab].statKey;
     if (!key || !stats) return null;
     return stats[key];
   }
 
   const showFilters = activeTab !== "mapa";
+  const isToday = activeTab === "hoje";
 
   return (
     <div>
       <div
         role="tablist"
-        className="mb-5 flex flex-wrap gap-2"
+        className="mb-4 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         aria-label="Etapas do funil CRM"
       >
         {(Object.keys(TAB_META) as CrmFunnelTab[]).map((tab) => {
           const meta = TAB_META[tab];
           const count = tabCount(tab);
           const active = activeTab === tab;
+          const isPrimary = tab === "hoje";
           return (
             <button
               key={tab}
@@ -949,29 +1080,33 @@ export function CrmFunnelView({
               role="tab"
               aria-selected={active}
               onClick={() => setActiveTab(tab)}
-              className={`min-w-[140px] rounded-xl border-2 px-4 py-3 text-left transition ${
-                active
-                  ? `${meta.colorActive} border-transparent text-white shadow-md`
-                  : `${meta.colorBorder} border bg-white hover:brightness-[0.98]`
+              className={`shrink-0 rounded-full px-3 py-2 text-left transition ${
+                isPrimary
+                  ? active
+                    ? "bg-stone-900 text-white shadow-sm"
+                    : "border border-stone-300 bg-white text-stone-800"
+                  : active
+                    ? `${meta.colorActive} text-white shadow-sm`
+                    : "border border-stone-200 bg-white text-stone-700"
               }`}
             >
               <span
                 className={`block text-[10px] font-semibold uppercase tracking-wider ${
-                  active ? "text-white/80" : meta.colorMuted
+                  active
+                    ? "text-white/80"
+                    : isPrimary
+                      ? "text-stone-500"
+                      : meta.colorMuted
                 }`}
               >
                 {meta.step}
               </span>
               <span className="mt-0.5 flex items-baseline gap-1.5 text-sm font-bold">
-                <span className={active ? "text-white" : meta.colorMuted}>
-                  {meta.title}
-                </span>
+                <span>{meta.title}</span>
                 {count !== null && tab !== "mapa" ? (
                   <span
                     className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                      active
-                        ? "bg-white/20 text-white"
-                        : `${meta.color} text-white`
+                      active ? "bg-white/20 text-white" : "bg-stone-100 text-stone-700"
                     }`}
                   >
                     {count.toLocaleString("pt-BR")}
@@ -984,16 +1119,16 @@ export function CrmFunnelView({
       </div>
 
       {showFilters && (
-        <div className="mb-6 flex flex-wrap items-end gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+        <div className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-stone-200 bg-white p-3 shadow-sm sm:p-4">
           {isOwner && sellerFilterOptions.length > 0 && (
-            <div className="flex min-w-[160px] flex-col gap-1">
+            <div className="flex min-w-[160px] flex-1 flex-col gap-1">
               <label className="text-xs font-medium text-stone-600">
                 Vendedor
               </label>
               <select
                 value={sellerScope}
                 onChange={(e) => onSellerScopeChange(e.target.value)}
-                className="rounded-xl border border-stone-300 px-3 py-2 text-sm"
+                className="min-h-11 rounded-xl border border-stone-300 px-3 py-2 text-sm"
               >
                 {sellerFilterOptions.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -1003,23 +1138,25 @@ export function CrmFunnelView({
               </select>
             </div>
           )}
-          <div className="flex min-w-[160px] flex-col gap-1">
-            <label className="text-xs font-medium text-stone-600">Perfil</label>
-            <select
-              value={profileFilter}
-              onChange={(e) =>
-                setProfileFilter(e.target.value as CrmProfileFilter)
-              }
-              className="rounded-xl border border-stone-300 px-3 py-2 text-sm"
-            >
-              {PROFILE_FILTER_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {importControls}
+          {!isToday ? (
+            <div className="flex min-w-[160px] flex-1 flex-col gap-1">
+              <label className="text-xs font-medium text-stone-600">Perfil</label>
+              <select
+                value={profileFilter}
+                onChange={(e) =>
+                  setProfileFilter(e.target.value as CrmProfileFilter)
+                }
+                className="min-h-11 rounded-xl border border-stone-300 px-3 py-2 text-sm"
+              >
+                {PROFILE_FILTER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {!isToday ? importControls : null}
           <button
             type="button"
             onClick={() => {
@@ -1027,17 +1164,19 @@ export function CrmFunnelView({
               void loadStats();
             }}
             disabled={loading}
-            className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-stone-50 disabled:opacity-50"
+            className="min-h-11 rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-stone-50 disabled:opacity-50"
           >
             {loading ? "A carregar…" : "Atualizar"}
           </button>
-          <button
-            type="button"
-            onClick={() => setBotOpen(true)}
-            className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-violet-700"
-          >
-            Ligar bot
-          </button>
+          {!isToday ? (
+            <button
+              type="button"
+              onClick={() => setBotOpen(true)}
+              className="min-h-11 rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-violet-700"
+            >
+              Ligar bot
+            </button>
+          ) : null}
         </div>
       )}
 
@@ -1077,6 +1216,111 @@ export function CrmFunnelView({
       {error && (
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}
+        </div>
+      )}
+
+      {activeTab === "hoje" && (
+        <div>
+          <div className="mb-4 rounded-2xl border border-stone-200 bg-stone-900 px-4 py-4 text-white">
+            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">
+              Fila de hoje
+            </p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">
+              {queueTotal.toLocaleString("pt-BR")}{" "}
+              <span className="text-base font-semibold text-white/70">
+                {queueTotal === 1 ? "lead" : "leads"}
+              </span>
+            </p>
+            <p className="mt-1 text-sm text-white/70">
+              Envie a mensagem e toque em Enviado. O lead sai da fila.
+              {queueStage5Waiting > 0
+                ? ` Etapa 5: +${queueStage5Waiting.toLocaleString("pt-BR")} na espera (entra de 5 em 5).`
+                : ""}
+            </p>
+          </div>
+          {loading && queueGroups.length === 0 ? (
+            <p className="text-sm text-stone-500">A carregar tarefas…</p>
+          ) : queueTotal === 0 ? (
+            <div className="rounded-2xl border border-dashed border-stone-300 bg-white px-4 py-10 text-center">
+              <p className="font-semibold text-stone-800">Nada pendente agora</p>
+              <p className="mt-1 text-sm text-stone-500">
+                Os leads entram sozinhos no prazo de cada fase. Volta amanhã.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {queueGroups.map((g) => {
+                const byCampaign: Partial<
+                  Record<ReactivationCampaign, typeof g.tasks>
+                > = {};
+                for (const task of g.tasks) {
+                  const list = byCampaign[task.campaign] ?? [];
+                  list.push(task);
+                  byCampaign[task.campaign] = list;
+                }
+                const order: ReactivationCampaign[] = [
+                  "abandon_new",
+                  "abandon_repeat",
+                  "day20",
+                  "day45",
+                  "day60",
+                ];
+                return (
+                <section key={g.staff_key}>
+                  <header className="sticky top-[52px] z-10 -mx-1 mb-3 flex items-center justify-between gap-2 rounded-xl bg-stone-100/95 px-2 py-2 backdrop-blur">
+                    <h2 className="text-sm font-bold text-stone-900">
+                      {g.seller_name}
+                    </h2>
+                    <p className="text-xs font-medium text-stone-500">
+                      {g.tasks.length}{" "}
+                      {g.tasks.length === 1 ? "tarefa" : "tarefas"}
+                      {g.stage5_waiting > 0
+                        ? ` · +${g.stage5_waiting} etapa 5`
+                        : ""}
+                    </p>
+                  </header>
+                  <div className="space-y-5">
+                    {order.map((campaign) => {
+                      const list = byCampaign[campaign];
+                      if (!list?.length) return null;
+                      const meta = CAMPAIGN_META[campaign];
+                      return (
+                        <div key={campaign}>
+                          <p className="mb-2 px-1 text-[11px] font-bold uppercase tracking-wide text-stone-500">
+                            {meta.stage} · {meta.title} ({list.length})
+                          </p>
+                          <div className="grid gap-3">
+                            {list.map((task) => {
+                              const busyKey = `${task.customer_whatsapp}|${task.campaign}|${task.cycle_anchor}`;
+                              return (
+                                <DailyTaskCard
+                                  key={busyKey}
+                                  task={task}
+                                  busy={doneBusy === busyKey}
+                                  onWhatsApp={() =>
+                                    window.open(
+                                      waLink(
+                                        task.customer_whatsapp,
+                                        task.message
+                                      ),
+                                      "_blank",
+                                      "noopener,noreferrer"
+                                    )
+                                  }
+                                  onDone={() => void confirmQueueTask(task)}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

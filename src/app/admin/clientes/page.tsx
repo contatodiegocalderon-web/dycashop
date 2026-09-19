@@ -157,19 +157,18 @@ export default function AdminClientesPage() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-white [text-shadow:1px_0_0_rgb(124_58_237),-1px_0_0_rgb(124_58_237),0_1px_0_rgb(124_58_237),0_-1px_0_rgb(124_58_237)]">
-          CRM — Clientes
+    <div className="mx-auto max-w-6xl px-3 py-5 sm:px-4 sm:py-8">
+      <div className="mb-5">
+        <h1 className="text-xl font-bold tracking-tight text-stone-900 sm:text-2xl">
+          Reativação
         </h1>
-        <p className="mt-2 max-w-3xl text-sm text-stone-600">
-          Funil de vendas: carrinhos abandonados e pedidos em aberto (atacado 5+ peças /
-          varejo), depois clientes confirmados por recência (&lt;30d, 30–59d, 60+d) com
-          perfil lojista, revendedor ou uso próprio.
+        <p className="mt-1 max-w-2xl text-sm text-stone-600">
+          Tarefas do dia: abrir o WhatsApp, enviar a mensagem da fase e marcar como
+          feito. Sem disparo em massa — um lead de cada vez.
         </p>
         <Link
           href="/admin/metricas"
-          className="mt-4 inline-block text-sm font-medium text-violet-800 underline hover:text-violet-900"
+          className="mt-3 inline-block text-sm font-medium text-violet-800 underline hover:text-violet-900"
         >
           ← Métricas
         </Link>
