@@ -163,6 +163,19 @@ function sellerLabelForPaid(
   return ownerName;
 }
 
+function profileFor(
+  wa: string,
+  profileMap: Awaited<ReturnType<typeof fetchCrmProfilesByWhatsapp>>,
+  requestedSeller?: string | null
+): BusinessProfile | null {
+  if (requestedSeller?.trim() === SITE_VAREJO_SELLER) return "uso_proprio";
+  const raw = lookupWhatsappMapValue(wa, profileMap)?.business_profile;
+  if (raw === "lojista" || raw === "revendedor" || raw === "uso_proprio") {
+    return raw;
+  }
+  return null;
+}
+
 /**
  * GET /api/admin/clients/reactivation-queue
  * Tarefas do dia, agrupadas por vendedor.
@@ -350,18 +363,6 @@ export async function GET(request: NextRequest) {
       expandWhatsappQueryKeys(Array.from(waForDone))
     );
 
-    function profileFor(
-      wa: string,
-      requestedSeller?: string | null
-    ): BusinessProfile | null {
-      if (requestedSeller?.trim() === SITE_VAREJO_SELLER) return "uso_proprio";
-      const raw = lookupWhatsappMapValue(wa, profileMap)?.business_profile;
-      if (raw === "lojista" || raw === "revendedor" || raw === "uso_proprio") {
-        return raw;
-      }
-      return null;
-    }
-
     const due: DueTask[] = [];
     const now = new Date();
 
@@ -389,7 +390,7 @@ export async function GET(request: NextRequest) {
           campaign,
           agg.name,
           null,
-          profileFor(wa)
+          profileFor(wa, profileMap)
         ),
         staff_id,
         seller_name,
@@ -427,7 +428,7 @@ export async function GET(request: NextRequest) {
           campaign,
           row.customer_name,
           row.order_phrase,
-          profileFor(wa, row.requested_seller_name)
+          profileFor(wa, profileMap, row.requested_seller_name)
         ),
         staff_id,
         seller_name,

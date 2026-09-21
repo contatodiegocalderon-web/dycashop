@@ -99,6 +99,10 @@ export function CartShippingQuote({
   const [quote, setQuote] = useState<ShippingQuotePayload | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const requestSeq = useRef(0);
+  const onQuoteChangeRef = useRef(onQuoteChange);
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onQuoteChangeRef.current = onQuoteChange;
+  onSelectionChangeRef.current = onSelectionChange;
 
   const cepDigits = useMemo(() => normalizeCepDigits(cep), [cep]);
   const itemsKey = useMemo(
@@ -118,8 +122,8 @@ export function CartShippingQuote({
   );
 
   useEffect(() => {
-    onQuoteChange?.(quote);
-  }, [quote, onQuoteChange]);
+    onQuoteChangeRef.current?.(quote);
+  }, [quote]);
 
   useEffect(() => {
     if (!cepDigits || weightItems.length === 0) {
@@ -206,7 +210,7 @@ export function CartShippingQuote({
 
   useEffect(() => {
     if (!selectedCode) {
-      onSelectionChange?.(null);
+      onSelectionChangeRef.current?.(null);
       return;
     }
     const opt =
@@ -215,8 +219,8 @@ export function CartShippingQuote({
         : sedex?.code === selectedCode
           ? sedex
           : null;
-    onSelectionChange?.(opt);
-  }, [selectedCode, pac, sedex, onSelectionChange]);
+    onSelectionChangeRef.current?.(opt);
+  }, [selectedCode, pac, sedex]);
 
   if (!cepDigits) {
     return (

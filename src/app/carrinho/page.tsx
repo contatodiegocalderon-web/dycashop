@@ -217,7 +217,7 @@ export default function CarrinhoPage() {
       map.set(row.productId, row);
     }
     return map;
-  }, [cartPricing.lines]);
+  }, [cartPricing]);
 
   const isVarejoReview =
     !cartPricing.isWholesaleCart && checkoutStep === "review";
