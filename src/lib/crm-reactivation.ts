@@ -109,13 +109,7 @@ function campaignBody(
       }
       return `${sawOrder} e ficou pendente. Consigo um preço melhor pra você nessa. Estou à disposição.`;
     case "day20":
-      if (channel === "lojista") {
-        return `Passando pra conferir se o pedido chegou certinho na loja. Qualquer coisa estou por aqui.`;
-      }
-      if (channel === "revendedor") {
-        return `Passando pra conferir se o pedido chegou certinho pra você revender. Qualquer coisa estou por aqui.`;
-      }
-      return `Passando pra conferir se o pedido chegou certinho. Qualquer coisa estou por aqui.`;
+      return `Passando pra conferir se o pedido chegou certinho. Como estão as vendas? Qualquer coisa estou por aqui.`;
     case "day45":
       if (channel === "lojista") {
         return `Consigo uma condição especial pra reposição da loja. Estou à disposição pra te passar os valores.`;
@@ -149,7 +143,11 @@ export function reactivationWhatsAppMessage(
     messageChannelFromProfile(profile),
     sawOrder
   );
-  return `${hi} Tudo bem? ${body}`;
+  const text = `${hi} Tudo bem? ${body}`;
+  if (campaign === "day60") {
+    return `${text}\n\n@dyfontecamisetas`;
+  }
+  return text;
 }
 
 /** Mensagem ao abrir WhatsApp no card da etapa 1 (carrinho abandonado). */
@@ -187,7 +185,7 @@ export const CAMPAIGN_META: Record<
     stage: "Etapa 3",
     title: "Pós-compra",
     stageNum: 3,
-    hint: "Conferir se chegou, no tom do perfil",
+    hint: "Conferir se chegou e perguntar das vendas",
   },
   day45: {
     stage: "Etapa 4",
