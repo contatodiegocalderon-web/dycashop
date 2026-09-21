@@ -99,10 +99,7 @@ function campaignBody(
 ): string {
   switch (campaign) {
     case "abandon_new":
-      if (channel === "lojista" || channel === "revendedor") {
-        return `${sawOrder} e ainda não fechou. Se faltar alguma informação ou dúvida pra finalizar, estou à disposição. Nessa primeira compra a gente manda uma peça a mais de brinde — queremos vocês no nosso time.`;
-      }
-      return `${sawOrder} e ainda não fechou. Se quiser, te ajudo a finalizar.`;
+      return `${sawOrder} e ainda não fechou. Se faltar alguma informação ou dúvida pra finalizar, estou à disposição. Nessa primeira compra a gente manda uma peça a mais de brinde — queremos vocês no nosso time.`;
     case "abandon_repeat":
       if (channel === "lojista") {
         return `${sawOrder} e ficou pendente. Consigo uma condição especial pra reposição da loja. Estou à disposição.`;
@@ -178,7 +175,7 @@ export const CAMPAIGN_META: Record<
     stage: "Etapa 1",
     title: "Nunca comprou",
     stageNum: 1,
-    hint: "Citar o pedido e, no atacado, o brinde da 1.ª compra",
+    hint: "Citar o pedido e o brinde da 1.ª compra",
   },
   abandon_repeat: {
     stage: "Etapa 1",
