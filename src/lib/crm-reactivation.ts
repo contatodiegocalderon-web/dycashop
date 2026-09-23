@@ -13,6 +13,8 @@ export type ReactivationCampaign =
 
 export const ABANDON_NEW_AFTER_DAYS = 5;
 export const ABANDON_REPEAT_AFTER_DAYS = 7;
+/** Etapa 1: leads com 60+ dias saem da fila — o pedido já ficou velho demais. */
+export const ABANDON_UNTIL_DAYS = 60;
 export const STAGE3_AFTER_DAYS = 20;
 export const STAGE3_UNTIL_DAYS = 30;
 export const STAGE4_AFTER_DAYS = 45;
@@ -62,6 +64,7 @@ export function isAbandonedDue(
 ): boolean {
   const days = calendarDaysSince(createdAt, now);
   if (!Number.isFinite(days)) return false;
+  if (days >= ABANDON_UNTIL_DAYS) return false;
   const need = hasPaidBefore
     ? ABANDON_REPEAT_AFTER_DAYS
     : ABANDON_NEW_AFTER_DAYS;

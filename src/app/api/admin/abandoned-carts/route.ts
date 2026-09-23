@@ -220,8 +220,7 @@ export async function GET(request: NextRequest) {
 
       const items = latest.order_items ?? [];
       const total_pieces = totalPiecesFromItems(items);
-      const has_paid_before =
-        whatsappMatchesLookup(wa, registeredWa) || !!business_profile;
+      const has_paid_before = whatsappMatchesLookup(wa, registeredWa);
 
       waForMeta.add(wa);
       carts.push({

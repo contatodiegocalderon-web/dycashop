@@ -165,7 +165,7 @@ function recoveryMessage(order: AbandonedOrderRow): string {
     order.customer_name,
     formatOrderItemsPhrase(order.order_items),
     order.business_profile,
-    order.has_paid_before || !!order.business_profile
+    order.has_paid_before
   );
 }
 
@@ -588,7 +588,7 @@ function DailyTaskCard({
       <p className="mt-2 text-[11px] leading-relaxed text-stone-600">
         {meta.hint}
       </p>
-      <p className="mt-2 line-clamp-3 rounded-xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-700">
+      <p className="mt-2 whitespace-pre-wrap rounded-xl bg-stone-50 px-3 py-2 text-[12px] leading-relaxed text-stone-700">
         {task.message}
       </p>
       <div className="mt-3 grid grid-cols-2 gap-2">
@@ -1346,7 +1346,7 @@ export function CrmFunnelView({
                   seller={order.requested_seller_name}
                   createdAt={order.created_at}
                   profile={order.business_profile}
-                  hasPaidBefore={order.has_paid_before || !!order.business_profile}
+                  hasPaidBefore={order.has_paid_before}
                   selectionMode={botSelectMode}
                   selected={isSelected}
                   cancelledOrderCount={order.cancelled_order_count}

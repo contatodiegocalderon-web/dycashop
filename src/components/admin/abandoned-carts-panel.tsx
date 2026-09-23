@@ -24,7 +24,7 @@ function recoveryMessage(order: AbandonedOrderRow): string {
     order.customer_name,
     formatOrderItemsPhrase(order.order_items),
     order.business_profile,
-    order.has_paid_before || !!order.business_profile
+    order.has_paid_before
   );
 }
 

@@ -29,6 +29,7 @@ import {
   reactivationWhatsAppMessage,
   selectQueueTasks,
   sortTasksForDisplay,
+  ABANDON_UNTIL_DAYS,
   type ReactivationCampaign,
 } from "@/lib/crm-reactivation";
 import {
@@ -202,6 +203,10 @@ export async function GET(request: NextRequest) {
       (principal?.kind === "staff" && principal.staff.role === "owner");
     const rawSellerScope =
       request.nextUrl.searchParams.get("sellerScope")?.trim() ?? "all";
+    const now = new Date();
+    const abandonSinceIso = new Date(
+      now.getTime() - ABANDON_UNTIL_DAYS * 24 * 60 * 60 * 1000
+    ).toISOString();
 
     const admin = createAdminClient();
     const ownerStaffId = await resolveOwnerStaffId(admin, principal);
@@ -298,6 +303,7 @@ export async function GET(request: NextRequest) {
       )
       .eq("status", "CANCELADO")
       .not("customer_whatsapp", "is", null)
+      .gte("created_at", abandonSinceIso)
       .order("created_at", { ascending: false })
       .limit(2000);
 
@@ -364,7 +370,6 @@ export async function GET(request: NextRequest) {
     );
 
     const due: DueTask[] = [];
-    const now = new Date();
 
     for (const [wa, agg] of Object.entries(lastPaidByWa)) {
       const days = calendarDaysSince(agg.last_at, now);
