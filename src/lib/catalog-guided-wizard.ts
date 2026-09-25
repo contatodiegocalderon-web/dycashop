@@ -2,9 +2,10 @@ import type { Product, ProductSize } from "@/types";
 
 /**
  * Assistente em 3 passos na página `/categoria/[slug]`.
- * Para voltar ao comportamento anterior: defina `false` e faça deploy.
+ * Desativado: catálogo aparece logo abaixo da tabela/vídeo.
+ * Para reativar: defina `true` e faça deploy.
  */
-export const ENABLE_GUIDED_CATEGORY_WIZARD = true;
+export const ENABLE_GUIDED_CATEGORY_WIZARD = false;
 
 export const WIZARD_SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
 
@@ -77,5 +78,22 @@ export function filterProductsByWizardSelection(
     const c = p.color?.trim() ?? "";
     const b = p.brand?.trim() ?? "";
     return colorSet.has(c) && brandSet.has(b);
+  });
+}
+
+/** Filtro de catálogo: arrays vazios = “todas”. */
+export function filterProductsBySelections(
+  products: Product[],
+  colors: string[],
+  brands: string[]
+): Product[] {
+  const colorSet = new Set(colors.map((c) => c.trim()).filter(Boolean));
+  const brandSet = new Set(brands.map((b) => b.trim()).filter(Boolean));
+  return products.filter((p) => {
+    const c = p.color?.trim() ?? "";
+    const b = p.brand?.trim() ?? "";
+    if (colorSet.size > 0 && !colorSet.has(c)) return false;
+    if (brandSet.size > 0 && !brandSet.has(b)) return false;
+    return true;
   });
 }

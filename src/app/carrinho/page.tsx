@@ -831,6 +831,9 @@ export default function CarrinhoPage() {
               <CartOrderSummary
                 categoryTotals={categoryTotals}
                 pricing={cartPricing}
+                shippingPrice={
+                  isVarejoCheckout ? selectedShipping?.price ?? null : null
+                }
               />
 
               <div className="max-w-xs">
@@ -986,14 +989,20 @@ export default function CarrinhoPage() {
 
               <div className={isVarejoCheckout ? "space-y-3" : "flex flex-wrap gap-3"}>
                 {isVarejoCheckout ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void finalizarVarejoCheckout()}
-                    className="w-full rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
-                  >
-                    {busy ? "A processar…" : "Finalizar compra"}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void finalizarVarejoCheckout()}
+                      className="w-full rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                    >
+                      {busy ? "A processar…" : "Finalizar compra"}
+                    </button>
+                    <p className="text-center text-sm leading-relaxed text-stone-400">
+                      Ao finalizar o pedido nossa equipe enviará as atualizações
+                      do pedido pelo Whatsapp indicado
+                    </p>
+                  </>
                 ) : (
                   <button
                     type="button"

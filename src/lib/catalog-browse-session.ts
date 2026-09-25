@@ -6,8 +6,8 @@ export type CatalogBrowseSnapshot = {
   search: string;
   scrollY: number;
   size: "" | ProductSize;
-  brand: string;
-  color: string;
+  brands: string[];
+  colors: string[];
   categoryFree: string;
   wizardDone: boolean;
   wizardGuidedFilter: WizardGuidedFilter | null;
@@ -16,14 +16,61 @@ export type CatalogBrowseSnapshot = {
 const SNAPSHOT_KEY = "dycashop.catalogBrowseSnapshot";
 const RESTORE_KEY = "dycashop.catalogBrowseRestore";
 
+function asStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .filter((v): v is string => typeof v === "string")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
+function normalizeSnapshot(raw: unknown): CatalogBrowseSnapshot | null {
+  if (!raw || typeof raw !== "object") return null;
+  const parsed = raw as Record<string, unknown>;
+  if (typeof parsed.pathname !== "string" || !parsed.pathname) return null;
+
+  const brands =
+    "brands" in parsed
+      ? asStringList(parsed.brands)
+      : asStringList(parsed.brand);
+  const colors =
+    "colors" in parsed
+      ? asStringList(parsed.colors)
+      : asStringList(parsed.color);
+
+  return {
+    pathname: parsed.pathname,
+    search: typeof parsed.search === "string" ? parsed.search : "",
+    scrollY:
+      typeof parsed.scrollY === "number" && Number.isFinite(parsed.scrollY)
+        ? Math.max(0, parsed.scrollY)
+        : 0,
+    size:
+      parsed.size === "M" || parsed.size === "G" || parsed.size === "GG"
+        ? parsed.size
+        : "",
+    brands,
+    colors,
+    categoryFree:
+      typeof parsed.categoryFree === "string" ? parsed.categoryFree : "",
+    wizardDone: Boolean(parsed.wizardDone),
+    wizardGuidedFilter:
+      parsed.wizardGuidedFilter &&
+      typeof parsed.wizardGuidedFilter === "object"
+        ? (parsed.wizardGuidedFilter as WizardGuidedFilter)
+        : null,
+  };
+}
+
 function readSnapshotRaw(): CatalogBrowseSnapshot | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = sessionStorage.getItem(SNAPSHOT_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as CatalogBrowseSnapshot;
-    if (!parsed?.pathname) return null;
-    return parsed;
+    return normalizeSnapshot(JSON.parse(raw));
   } catch {
     return null;
   }

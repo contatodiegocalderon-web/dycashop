@@ -13,6 +13,7 @@ import {
 } from "@/lib/catalog-browse-session";
 import {
   ENABLE_GUIDED_CATEGORY_WIZARD,
+  filterProductsBySelections,
   filterProductsByWizardSelection,
   type GuidedWizardSelection,
   type WizardGuidedFilter,
@@ -30,8 +31,6 @@ import { WizardCatalogHint } from "@/components/wizard-catalog-hint";
 function buildQuery(
   size: "" | ProductSize,
   category: string,
-  brand: string,
-  color: string,
   categoryExact: boolean
 ) {
   const p = new URLSearchParams();
@@ -39,14 +38,6 @@ function buildQuery(
   if (category.trim()) {
     p.set("category", category.trim());
     if (categoryExact) p.set("categoryMatch", "exact");
-  }
-  if (brand.trim()) {
-    p.set("brand", brand.trim());
-    p.set("brandExact", "1");
-  }
-  if (color.trim()) {
-    p.set("color", color.trim());
-    p.set("colorExact", "1");
   }
   const q = p.toString();
   return q ? `?${q}` : "";
@@ -101,8 +92,8 @@ export function CatalogClient({
   const [error, setError] = useState<string | null>(null);
   const [size, setSize] = useState<"" | ProductSize>("");
   const [categoryFree, setCategoryFree] = useState("");
-  const [brand, setBrand] = useState("");
-  const [color, setColor] = useState("");
+  const [brands, setBrands] = useState<string[]>([]);
+  const [colors, setColors] = useState<string[]>([]);
   const [wizardDone, setWizardDone] = useState(!guidedMode);
   const [wizardGuidedFilter, setWizardGuidedFilter] =
     useState<WizardGuidedFilter | null>(null);
@@ -118,16 +109,16 @@ export function CatalogClient({
     if (snap && !kitsPage) {
       setSize(snap.size);
       setCategoryFree(snap.categoryFree);
-      setBrand(snap.brand);
-      setColor(snap.color);
+      setBrands(snap.brands);
+      setColors(snap.colors);
       setWizardDone(snap.wizardDone);
       setWizardGuidedFilter(snap.wizardGuidedFilter);
       pendingScrollY.current = snap.scrollY;
       if (snap.wizardDone) setLoading(true);
     } else if (kitsPage) {
       setSize("");
-      setBrand("");
-      setColor("");
+      setBrands([]);
+      setColors([]);
       setWizardDone(true);
       setWizardGuidedFilter(null);
       setWizardImageHint(false);
@@ -140,35 +131,30 @@ export function CatalogClient({
   const categoryExact = Boolean(categoryFixed);
   const showCatalog = sessionReady && (!guidedMode || wizardDone);
 
-  const query = useMemo(() => {
-    const useApiBrandColor = !wizardGuidedFilter;
-    return buildQuery(
-      kitsMode ? "" : size,
-      effectiveCategory,
-      kitsMode || !useApiBrandColor ? "" : brand,
-      kitsMode || !useApiBrandColor ? "" : color,
-      categoryExact
-    );
-  }, [
-    kitsMode,
-    size,
-    effectiveCategory,
-    brand,
-    color,
-    categoryExact,
-    wizardGuidedFilter,
-  ]);
+  const query = useMemo(
+    () =>
+      buildQuery(
+        kitsMode ? "" : size,
+        effectiveCategory,
+        categoryExact
+      ),
+    [kitsMode, size, effectiveCategory, categoryExact]
+  );
 
   const brandOptions = useMemo(() => {
     const s = new Set<string>();
     for (const p of products) {
+      if (colors.length > 0) {
+        const c = p.color?.trim() ?? "";
+        if (!colors.includes(c)) continue;
+      }
       const b = p.brand?.trim();
       if (b) s.add(b);
     }
     return Array.from(s).sort((a, b) =>
       a.localeCompare(b, "pt", { sensitivity: "base" })
     );
-  }, [products]);
+  }, [products, colors]);
 
   const colorOptions = useMemo(() => {
     const s = new Set<string>();
@@ -182,9 +168,11 @@ export function CatalogClient({
   }, [products]);
 
   const displayedProducts = useMemo(() => {
-    if (!wizardGuidedFilter) return products;
-    return filterProductsByWizardSelection(products, wizardGuidedFilter);
-  }, [products, wizardGuidedFilter]);
+    if (wizardGuidedFilter) {
+      return filterProductsByWizardSelection(products, wizardGuidedFilter);
+    }
+    return filterProductsBySelections(products, colors, brands);
+  }, [products, wizardGuidedFilter, colors, brands]);
 
   const load = useCallback(async () => {
     if (!showCatalog) return;
@@ -215,8 +203,8 @@ export function CatalogClient({
       search: window.location.search,
       scrollY: window.scrollY,
       size,
-      brand,
-      color,
+      brands,
+      colors,
       categoryFree,
       wizardDone,
       wizardGuidedFilter,
@@ -225,8 +213,8 @@ export function CatalogClient({
     sessionReady,
     pathname,
     size,
-    brand,
-    color,
+    brands,
+    colors,
     categoryFree,
     wizardDone,
     wizardGuidedFilter,
@@ -282,18 +270,18 @@ export function CatalogClient({
 
   function handleWizardComplete(sel: GuidedWizardSelection) {
     setSize(sel.size);
-    setColor("");
-    setBrand("");
+    setColors([]);
+    setBrands([]);
     setWizardGuidedFilter({ colors: sel.colors, brands: sel.brands });
     setWizardDone(true);
     setWizardImageHint(true);
     scrollToCatalogAfterWizard.current = true;
   }
 
-  function handleWizardViewAll(size: ProductSize) {
-    setSize(size);
-    setColor("");
-    setBrand("");
+  function handleWizardViewAll(nextSize: ProductSize) {
+    setSize(nextSize);
+    setColors([]);
+    setBrands([]);
     setWizardGuidedFilter(null);
     setWizardDone(true);
     setWizardImageHint(true);
@@ -304,27 +292,41 @@ export function CatalogClient({
     setWizardImageHint(false);
   }, []);
 
-  function handleBrandChange(v: string) {
+  function handleBrandsChange(v: string[]) {
     setWizardGuidedFilter(null);
-    setBrand(v);
+    setBrands(v);
   }
 
-  function handleColorChange(v: string) {
+  function handleColorsChange(v: string[]) {
     setWizardGuidedFilter(null);
-    setColor(v);
+    setColors(v);
+    // Remove marcas que deixaram de existir para as cores escolhidas.
+    if (v.length > 0) {
+      setBrands((prev) => {
+        if (prev.length === 0) return prev;
+        const allowed = new Set<string>();
+        for (const p of products) {
+          const c = p.color?.trim() ?? "";
+          if (!v.includes(c)) continue;
+          const b = p.brand?.trim();
+          if (b) allowed.add(b);
+        }
+        return prev.filter((b) => allowed.has(b));
+      });
+    }
   }
 
   useEffect(() => {
-    if (brand && brandOptions.length > 0 && !brandOptions.includes(brand)) {
-      setBrand("");
-    }
-  }, [brand, brandOptions]);
+    if (brands.length === 0 || brandOptions.length === 0) return;
+    const next = brands.filter((b) => brandOptions.includes(b));
+    if (next.length !== brands.length) setBrands(next);
+  }, [brands, brandOptions]);
 
   useEffect(() => {
-    if (color && colorOptions.length > 0 && !colorOptions.includes(color)) {
-      setColor("");
-    }
-  }, [color, colorOptions]);
+    if (colors.length === 0 || colorOptions.length === 0) return;
+    const next = colors.filter((c) => colorOptions.includes(c));
+    if (next.length !== colors.length) setColors(next);
+  }, [colors, colorOptions]);
 
   const wizard =
     sessionReady && guidedMode && !wizardDone && categoryFixed ? (
@@ -347,7 +349,7 @@ export function CatalogClient({
           categoryLabel={categoryFixed}
           config={showcaseConfig}
           afterPricing={wizard}
-          showVideoOnMobile={!showCatalog}
+          showVideoOnMobile
         />
       ) : (
         wizard
@@ -360,8 +362,8 @@ export function CatalogClient({
       <CatalogFilters
         size={size}
         category={categoryFree}
-        brand={brand}
-        color={color}
+        brands={brands}
+        colors={colors}
         brandOptions={brandOptions}
         colorOptions={colorOptions}
         showCategoryFilter={!categoryFixed}
@@ -375,8 +377,8 @@ export function CatalogClient({
           setSize(v);
         }}
         onCategory={setCategoryFree}
-        onBrand={handleBrandChange}
-        onColor={handleColorChange}
+        onBrands={handleBrandsChange}
+        onColors={handleColorsChange}
       />
       )}
       </div>
