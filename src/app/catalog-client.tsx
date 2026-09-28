@@ -20,7 +20,7 @@ import {
 } from "@/lib/catalog-guided-wizard";
 import type { CategoryShowcaseConfig } from "@/lib/category-showcase";
 import { isKitsStorefront } from "@/lib/kits-category";
-import { jeansCatalogSize, presentCatalogProducts } from "@/lib/jeans-size";
+import { jeansCatalogSize } from "@/lib/jeans-size";
 import { orderedProductSizes } from "@/lib/product-sizes";
 import type { Product, ProductSize } from "@/types";
 import { CatalogFilters } from "@/components/catalog-filters";
@@ -172,10 +172,10 @@ export function CatalogClient({
   }, [productsInSize]);
 
   const displayedProducts = useMemo(() => {
-    const filtered = wizardGuidedFilter
-      ? filterProductsByWizardSelection(productsInSize, wizardGuidedFilter)
-      : filterProductsBySelections(productsInSize, colors, brands);
-    return presentCatalogProducts(filtered);
+    if (wizardGuidedFilter) {
+      return filterProductsByWizardSelection(productsInSize, wizardGuidedFilter);
+    }
+    return filterProductsBySelections(productsInSize, colors, brands);
   }, [productsInSize, wizardGuidedFilter, colors, brands]);
 
   useEffect(() => {

@@ -13,7 +13,6 @@ import {
 import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
 import { orderItemHasStockConflict } from "@/lib/order-stock-conflict";
 import { orderItemImageUrl } from "@/lib/order-item-image-url";
-import { jeansCatalogSize } from "@/lib/jeans-size";
 import { orderedProductSizes } from "@/lib/product-sizes";
 import type { OrderItemRow, OrderStatus } from "@/types";
 
@@ -29,8 +28,7 @@ export const fetchCache = "force-no-store";
 function groupItems(items: OrderItemRow[]) {
   const m = new Map<string, OrderItemRow[]>();
   for (const it of items) {
-    const raw = it.snapshot_size?.trim() || "—";
-    const sz = jeansCatalogSize(it.snapshot_category, raw);
+    const sz = it.snapshot_size?.trim() || "—";
     const list = m.get(sz) ?? [];
     list.push(it);
     m.set(sz, list);

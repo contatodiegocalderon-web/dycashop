@@ -1,9 +1,19 @@
 "use client";
 
 import type { Product } from "@/types";
-import { orderedProductSizes } from "@/lib/product-sizes";
+import { jeansCatalogSize } from "@/lib/jeans-size";
+import { compareProductSizes, orderedProductSizes } from "@/lib/product-sizes";
 import { ProductCard } from "./product-card";
 import { isKitProduct } from "@/lib/kits-category";
+
+function productsInNavGroup(list: Product[]): Product[] {
+  return list.slice().sort((a, b) => {
+    const aNumber = /^\d+$/.test(a.size.trim());
+    const bNumber = /^\d+$/.test(b.size.trim());
+    if (aNumber !== bNumber) return aNumber ? -1 : 1;
+    return compareProductSizes(a.size, b.size);
+  });
+}
 
 type Props = { products: Product[]; flat?: boolean };
 
@@ -24,16 +34,17 @@ export function CatalogSections({ products, flat }: Props) {
 
   const bySize = new Map<string, Product[]>();
   for (const p of products) {
-    const list = bySize.get(p.size) ?? [];
+    const group = jeansCatalogSize(p.category, p.size);
+    const list = bySize.get(group) ?? [];
     list.push(p);
-    bySize.set(p.size, list);
+    bySize.set(group, list);
   }
   const sizes = orderedProductSizes(Array.from(bySize.keys()));
 
   return (
     <div className="space-y-8">
       {sizes.map((size) => {
-        const list = bySize.get(size) ?? [];
+        const list = productsInNavGroup(bySize.get(size) ?? []);
         if (!list.length) return null;
         return (
           <section key={size} id={`size-${size}`} className="scroll-mt-20">

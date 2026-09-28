@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCatalogReturnUrl, markCatalogBrowseRestore } from "@/lib/catalog-return-url";
 import { CART_STORAGE_KEY, useCart } from "@/providers/cart-provider";
-import { jeansCatalogSize } from "@/lib/jeans-size";
 import { orderedProductSizes } from "@/lib/product-sizes";
 import type { CartLine } from "@/types";
 import type { WhatsAppSeller } from "@/lib/sellers";
@@ -37,10 +36,9 @@ function splitCartGroups(lines: CartLine[]) {
       kits.push(line);
       continue;
     }
-    const size = jeansCatalogSize(line.product.category, line.product.size);
-    const list = m.get(size) ?? [];
+    const list = m.get(line.product.size) ?? [];
     list.push(line);
-    m.set(size, list);
+    m.set(line.product.size, list);
   }
   return { kits, bySize: m };
 }

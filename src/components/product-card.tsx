@@ -2,14 +2,14 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import type { CatalogDisplayProduct } from "@/lib/jeans-size";
+import type { Product } from "@/types";
 import { ProductImagePreview, prefetchProductPreview } from "@/components/product-image-preview";
 import { useCart } from "@/providers/cart-provider";
 import { formatMoneyBrl } from "@/lib/cart-pricing";
 import { isKitProduct, parseKitUnitPrice } from "@/lib/kits-category";
 
 type Props = {
-  product: CatalogDisplayProduct;
+  product: Product;
   /** Primeiras imagens visíveis: carrega antes para melhor LCP. */
   imagePriority?: boolean;
 };
@@ -17,39 +17,14 @@ type Props = {
 export function ProductCard({ product, imagePriority }: Props) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const { addProduct, lines, removeLine } = useCart();
-  const members = product.catalogStockMembers;
-  const inCart = members
-    ? members.reduce((sum, member) => {
-        const qty = lines.find((l) => l.productId === member.id)?.quantity ?? 0;
-        return sum + qty;
-      }, 0)
-    : (lines.find((l) => l.productId === product.id)?.quantity ?? 0);
-  const stockTotal = members
-    ? members.reduce((sum, member) => sum + Math.max(0, member.stock), 0)
-    : product.stock;
-  const available = Math.max(0, stockTotal - inCart);
+  const line = lines.find((l) => l.productId === product.id);
+  const inCart = line?.quantity ?? 0;
+  const available = Math.max(0, product.stock - inCart);
   const canAdd = available > 0;
   const removeFromCart = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!members) {
-      removeLine(product.id);
-      return;
-    }
-    for (let i = 0; i < members.length; i++) {
-      removeLine(members[i]!.id);
-    }
-  };
-  const addOne = () => {
-    if (!members) {
-      addProduct(product, 1);
-      return;
-    }
-    const target = members.find((member) => {
-      const qty = lines.find((l) => l.productId === member.id)?.quantity ?? 0;
-      return qty < member.stock;
-    });
-    if (target) addProduct(target, 1);
+    removeLine(product.id);
   };
 
   const imageSrc = product.drive_image_url;
@@ -116,7 +91,7 @@ export function ProductCard({ product, imagePriority }: Props) {
             <>
               Est.{" "}
               <span className="font-semibold tabular-nums text-stone-100">
-                {stockTotal}
+                {product.stock}
               </span>
             </>
           )}
@@ -148,7 +123,7 @@ export function ProductCard({ product, imagePriority }: Props) {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              if (canAdd) addOne();
+              if (canAdd) addProduct(product, 1);
             }}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/[0.14] bg-zinc-600 text-[2rem] font-bold leading-none text-white shadow-md shadow-black/35 transition hover:bg-zinc-500 hover:border-white/25 active:scale-[0.96] sm:h-12 sm:w-12 sm:text-3xl disabled:cursor-not-allowed disabled:opacity-40"
           >

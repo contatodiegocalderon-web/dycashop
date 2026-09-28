@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 import { useAdminAuth } from "@/contexts/admin-auth";
-import { jeansCatalogSize } from "@/lib/jeans-size";
 import { orderedProductSizes } from "@/lib/product-sizes";
 import type {
   CustomerSegment,
@@ -31,8 +30,7 @@ function adminThumbSrc(it: OrderItemRow): string {
 function groupItems(items: OrderItemRow[]) {
   const m = new Map<string, OrderItemRow[]>();
   for (const it of items) {
-    const raw = it.snapshot_size?.trim() || "—";
-    const sz = jeansCatalogSize(it.snapshot_category, raw);
+    const sz = it.snapshot_size?.trim() || "—";
     const list = m.get(sz) ?? [];
     list.push(it);
     m.set(sz, list);

@@ -1,4 +1,3 @@
-import { jeansCatalogSize } from "@/lib/jeans-size";
 import { compareProductSizes } from "@/lib/product-sizes";
 
 export type ProductStockRow = {
@@ -65,7 +64,7 @@ export function aggregateStockInventory(
 
   for (const p of products) {
     const cat = categoryLabel(p.category);
-    const size = jeansCatalogSize(cat, normalizeSize(p.size));
+    const size = normalizeSize(p.size);
     const stock = Math.max(0, Number(p.stock) || 0);
 
     if (p.updated_at) {
