@@ -17,7 +17,7 @@ create table if not exists public.products (
   category text,
   brand text not null,
   color text not null,
-  size text not null check (size in ('M', 'G', 'GG')),
+  size text not null,
   stock integer not null default 0 check (stock >= 0),
   sku text not null unique,
   status text not null default 'ATIVO' check (status in ('ATIVO', 'ESGOTADO')),

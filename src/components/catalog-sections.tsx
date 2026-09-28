@@ -1,10 +1,9 @@
 "use client";
 
-import type { Product, ProductSize } from "@/types";
+import type { Product } from "@/types";
+import { orderedProductSizes } from "@/lib/product-sizes";
 import { ProductCard } from "./product-card";
 import { isKitProduct } from "@/lib/kits-category";
-
-const ORDER: ProductSize[] = ["M", "G", "GG"];
 
 type Props = { products: Product[]; flat?: boolean };
 
@@ -23,15 +22,17 @@ export function CatalogSections({ products, flat }: Props) {
     );
   }
 
-  const bySize = new Map<ProductSize, Product[]>();
-  for (const s of ORDER) bySize.set(s, []);
+  const bySize = new Map<string, Product[]>();
   for (const p of products) {
-    bySize.get(p.size)?.push(p);
+    const list = bySize.get(p.size) ?? [];
+    list.push(p);
+    bySize.set(p.size, list);
   }
+  const sizes = orderedProductSizes(Array.from(bySize.keys()));
 
   return (
     <div className="space-y-8">
-      {ORDER.map((size) => {
+      {sizes.map((size) => {
         const list = bySize.get(size) ?? [];
         if (!list.length) return null;
         return (

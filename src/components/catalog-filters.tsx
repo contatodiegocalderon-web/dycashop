@@ -27,13 +27,13 @@ type Props = {
     categories: CategorySummary[];
     currentSlug: string;
   };
+  /** Tamanhos presentes no catálogo atual. */
+  sizeOptions?: string[];
   onSize: (v: "" | ProductSize) => void;
   onCategory: (v: string) => void;
   onBrands: (v: string[]) => void;
   onColors: (v: string[]) => void;
 };
-
-const sizes: ProductSize[] = ["M", "G", "GG"];
 
 function toggleInList(list: string[], value: string): string[] {
   return list.includes(value)
@@ -178,6 +178,7 @@ export function CatalogFilters({
   colorOptions,
   showCategoryFilter = true,
   categoryNavigation,
+  sizeOptions = ["M", "G", "GG"],
   onSize,
   onCategory,
   onBrands,
@@ -238,7 +239,7 @@ export function CatalogFilters({
           >
             Todos
           </button>
-          {sizes.map((s) => (
+          {sizeOptions.map((s) => (
             <button
               key={s}
               type="button"

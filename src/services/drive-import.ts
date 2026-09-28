@@ -9,12 +9,11 @@ import {
   parseProductFileName,
   stripImageExtension,
 } from "@/lib/parse-filename";
-
-const SIZE_FOLDER_MAP: Record<string, ProductSize> = {
-  m: "M",
-  g: "G",
-  gg: "GG",
-};
+import {
+  parseSizeFolder,
+  parseSizeStockGrid,
+  variantDriveFileId,
+} from "@/lib/size-stock-name";
 
 type DriveListOptions = {
   supportsAllDrives: true;
@@ -61,8 +60,7 @@ function getDriveListOptionsFromEnv(): DriveListOptions {
 }
 
 function sizeFromFolderName(name: string): ProductSize | null {
-  const key = name.trim().toLowerCase();
-  return SIZE_FOLDER_MAP[key] ?? null;
+  return parseSizeFolder(name)?.size ?? null;
 }
 
 /**
@@ -145,42 +143,115 @@ async function listImageFiles(
   return out;
 }
 
+function pushProductRow(
+  rows: DriveImportRow[],
+  file: { id: string; name: string; modifiedTime?: string | null },
+  opts: {
+    driveFileId: string;
+    size: ProductSize;
+    category: string | null;
+    brand: string;
+    color: string;
+    stock: number;
+    originalFileName: string;
+  }
+): void {
+  const status = opts.stock <= 0 ? "ESGOTADO" : "ATIVO";
+  rows.push({
+    drive_file_id: opts.driveFileId,
+    drive_modified_at: file.modifiedTime ?? new Date().toISOString(),
+    drive_image_url: driveThumbnailUrl(file.id, 640),
+    original_file_name: opts.originalFileName,
+    category: opts.category,
+    brand: opts.brand,
+    color: opts.color,
+    size: opts.size,
+    stock: opts.stock,
+    sku: buildSku(opts.driveFileId, opts.size, opts.brand, opts.color),
+    status,
+  });
+}
+
 async function pushRowsFromImageFolder(
   drive: drive_v3.Drive,
   folderId: string,
   size: ProductSize,
   category: string | null,
   listOptions: DriveListOptions,
-  rows: DriveImportRow[]
+  rows: DriveImportRow[],
+  folderStock: number | null
 ): Promise<void> {
   const files = await listImageFiles(drive, folderId, listOptions);
   const defaultStock = defaultInitialStockFromEnv();
+  const numericSize = /^\d+$/.test(size);
 
   for (const file of files) {
+    if (parseSizeStockGrid(file.name)) continue;
+
     const parsed = parseProductFileName(file.name);
-    if (!parsed) {
-      continue;
+    const brand = parsed?.brand ?? (numericSize ? category?.trim() || "MODELO" : "");
+    const color = parsed?.color ?? "";
+    if (!brand) continue;
+
+    const initial =
+      folderStock ??
+      parsed?.initialStockFromFilename ??
+      defaultStock;
+    pushProductRow(rows, file, {
+      driveFileId: file.id,
+      size,
+      category,
+      brand,
+      color,
+      stock: initial,
+      originalFileName: stripImageExtension(file.name),
+    });
+  }
+}
+
+/**
+ * Foto única com vários tamanhos no nome (`38-4/40-5` ou `NIKE PRETO 38-4/40-5`).
+ * Cada tamanho vira uma linha, todas com a mesma imagem.
+ */
+async function pushRowsFromSizeGridFiles(
+  drive: drive_v3.Drive,
+  folderId: string,
+  category: string | null,
+  listOptions: DriveListOptions,
+  rows: DriveImportRow[]
+): Promise<void> {
+  const files = await listImageFiles(drive, folderId, listOptions);
+  const fallbackBrand = category?.trim() || "MODELO";
+
+  for (const file of files) {
+    const grid = parseSizeStockGrid(file.name);
+    if (!grid) continue;
+
+    let brand = fallbackBrand;
+    let color = "";
+    if (grid.labelPrefix) {
+      const parsed = parseProductFileName(grid.labelPrefix);
+      if (parsed) {
+        brand = parsed.brand;
+        color = parsed.color;
+      } else {
+        brand = grid.labelPrefix;
+      }
     }
 
-    const initial = parsed.initialStockFromFilename ?? defaultStock;
-    const sku = buildSku(file.id, size, parsed.brand, parsed.color);
-    const status = initial <= 0 ? "ESGOTADO" : "ATIVO";
-    const modifiedIso =
-      file.modifiedTime ?? new Date().toISOString();
-
-    rows.push({
-      drive_file_id: file.id,
-      drive_modified_at: modifiedIso,
-      drive_image_url: driveThumbnailUrl(file.id, 640),
-      original_file_name: stripImageExtension(file.name),
-      category,
-      brand: parsed.brand,
-      color: parsed.color,
-      size,
-      stock: initial,
-      sku,
-      status,
-    });
+    const originalFileName = stripImageExtension(file.name);
+    for (const cell of grid.cells) {
+      if (cell.stock <= 0) continue;
+      pushProductRow(rows, file, {
+        driveFileId: variantDriveFileId(file.id, cell.size),
+        size: cell.size,
+        category,
+        brand,
+        color,
+        stock: cell.stock,
+        originalFileName,
+      });
+    }
   }
 }
 
@@ -195,9 +266,13 @@ function dedupeDriveRows(rows: DriveImportRow[]): DriveImportRow[] {
 
 /**
  * Pasta principal do catálogo (ID/link configurado) → cada subpasta **é uma categoria**
- * (ex.: BERMUDAS ELASTANO, CAMISETAS STREETWEAR). Dentro de cada uma: pastas **M**, **G**, **GG** com as fotos.
+ * (ex.: BERMUDAS ELASTANO, CAMISETAS STREETWEAR). Dentro de cada uma: pastas **M**, **G**, **GG**
+ * ou numeradas (`38`, `38-4`) com as fotos.
  *
- * Exceção rara: se na raiz só existirem M, G e GG (sem nomes de categoria), importa com `category` null.
+ * Calça e tênis: a foto fica direto na categoria e o nome lista os tamanhos
+ * (`38-4/40-5/42-4`). Cada tamanho vira um produto com a mesma imagem.
+ *
+ * Exceção rara: se na raiz só existirem pastas de tamanho, importa com `category` null.
  */
 export async function fetchDriveProductRows(
   rootFolderId: string
@@ -212,15 +287,16 @@ export async function fetchDriveProductRows(
 
   if (isSizeOnlyAtRoot(topFolders)) {
     for (const folder of topFolders) {
-      const size = sizeFromFolderName(folder.name);
-      if (!size) continue;
+      const parsedFolder = parseSizeFolder(folder.name);
+      if (!parsedFolder) continue;
       await pushRowsFromImageFolder(
         drive,
         folder.id,
-        size,
+        parsedFolder.size,
         null,
         listOptions,
-        rows
+        rows,
+        parsedFolder.stock
       );
     }
     return dedupeDriveRows(rows);
@@ -234,18 +310,27 @@ export async function fetchDriveProductRows(
     const sizeFolders = await listFolders(drive, catFolder.id, listOptions);
 
     for (const sf of sizeFolders) {
-      const size = sizeFromFolderName(sf.name);
-      if (!size) continue;
+      const parsedFolder = parseSizeFolder(sf.name);
+      if (!parsedFolder) continue;
 
       await pushRowsFromImageFolder(
         drive,
         sf.id,
-        size,
+        parsedFolder.size,
         categoryLabel,
         listOptions,
-        rows
+        rows,
+        parsedFolder.stock
       );
     }
+
+    await pushRowsFromSizeGridFiles(
+      drive,
+      catFolder.id,
+      categoryLabel,
+      listOptions,
+      rows
+    );
   }
 
   return dedupeDriveRows(rows);

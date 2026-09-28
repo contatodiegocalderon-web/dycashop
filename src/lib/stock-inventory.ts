@@ -1,6 +1,5 @@
-import type { ProductSize } from "@/types";
-
-const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
+import { jeansCatalogSize } from "@/lib/jeans-size";
+import { compareProductSizes } from "@/lib/product-sizes";
 
 export type ProductStockRow = {
   category: string | null;
@@ -66,7 +65,7 @@ export function aggregateStockInventory(
 
   for (const p of products) {
     const cat = categoryLabel(p.category);
-    const size = normalizeSize(p.size);
+    const size = jeansCatalogSize(cat, normalizeSize(p.size));
     const stock = Math.max(0, Number(p.stock) || 0);
 
     if (p.updated_at) {
@@ -97,14 +96,7 @@ export function aggregateStockInventory(
 
   const categories: CategoryStockSummary[] = Array.from(byCategory.entries())
     .map(([category, agg]) => {
-      const sizeKeys = Array.from(agg.bySize.keys()).sort((a, b) => {
-        const ia = SIZE_ORDER.indexOf(a as ProductSize);
-        const ib = SIZE_ORDER.indexOf(b as ProductSize);
-        if (ia >= 0 && ib >= 0) return ia - ib;
-        if (ia >= 0) return -1;
-        if (ib >= 0) return 1;
-        return a.localeCompare(b, "pt-BR");
-      });
+      const sizeKeys = Array.from(agg.bySize.keys()).sort(compareProductSizes);
       const bySize: StockBySizeRow[] = sizeKeys.map((size) => {
         const s = agg.bySize.get(size)!;
         return {

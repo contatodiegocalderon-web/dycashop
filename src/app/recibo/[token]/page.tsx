@@ -13,7 +13,9 @@ import {
 import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
 import { orderItemHasStockConflict } from "@/lib/order-stock-conflict";
 import { orderItemImageUrl } from "@/lib/order-item-image-url";
-import type { OrderItemRow, OrderStatus, ProductSize } from "@/types";
+import { jeansCatalogSize } from "@/lib/jeans-size";
+import { orderedProductSizes } from "@/lib/product-sizes";
+import type { OrderItemRow, OrderStatus } from "@/types";
 
 type Props = {
   params: { token: string };
@@ -24,14 +26,14 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
-
 function groupItems(items: OrderItemRow[]) {
-  const m = new Map<ProductSize, OrderItemRow[]>();
-  for (const s of SIZE_ORDER) m.set(s, []);
+  const m = new Map<string, OrderItemRow[]>();
   for (const it of items) {
-    const sz = it.snapshot_size as ProductSize;
-    if (m.has(sz)) m.get(sz)!.push(it);
+    const raw = it.snapshot_size?.trim() || "—";
+    const sz = jeansCatalogSize(it.snapshot_category, raw);
+    const list = m.get(sz) ?? [];
+    list.push(it);
+    m.set(sz, list);
   }
   return m;
 }
@@ -186,7 +188,7 @@ export default async function ReciboPage({ params, searchParams }: Props) {
           <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
             Detalhe por produto
           </p>
-          {SIZE_ORDER.map((size) => {
+          {orderedProductSizes(Array.from(bySize.keys())).map((size) => {
             const list = bySize.get(size) ?? [];
             if (!list.length) return null;
             return (

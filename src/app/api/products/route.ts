@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         .order("id", { ascending: true })
         .range(offset, offset + PAGE_SIZE - 1);
 
-      if (size && ["M", "G", "GG"].includes(size)) {
+      if (size && /^[A-Za-z0-9]{1,8}$/.test(size)) {
         q = q.eq("size", size);
       }
       if (brand?.trim()) {

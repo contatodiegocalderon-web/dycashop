@@ -5,7 +5,9 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCatalogReturnUrl, markCatalogBrowseRestore } from "@/lib/catalog-return-url";
 import { CART_STORAGE_KEY, useCart } from "@/providers/cart-provider";
-import type { CartLine, ProductSize } from "@/types";
+import { jeansCatalogSize } from "@/lib/jeans-size";
+import { orderedProductSizes } from "@/lib/product-sizes";
+import type { CartLine } from "@/types";
 import type { WhatsAppSeller } from "@/lib/sellers";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
 import { normalizeCheckoutWaDigits } from "@/lib/abandoned-checkout";
@@ -27,18 +29,18 @@ import { totalsByCategoryFromCartLines } from "@/lib/order-category-totals";
 import type { WholesaleTier } from "@/lib/category-showcase";
 import type { ShippingQuotePayload, ShippingQuoteOption } from "@/lib/shipping-quote-types";
 
-const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
-
 function splitCartGroups(lines: CartLine[]) {
   const kits: CartLine[] = [];
-  const m = new Map<ProductSize, CartLine[]>();
-  for (const s of SIZE_ORDER) m.set(s, []);
+  const m = new Map<string, CartLine[]>();
   for (const line of lines) {
     if (isKitProduct(line.product)) {
       kits.push(line);
       continue;
     }
-    m.get(line.product.size)?.push(line);
+    const size = jeansCatalogSize(line.product.category, line.product.size);
+    const list = m.get(size) ?? [];
+    list.push(line);
+    m.set(size, list);
   }
   return { kits, bySize: m };
 }
@@ -149,7 +151,7 @@ export default function CarrinhoPage() {
   const cartLineSections = useMemo(
     () => [
       { key: "kits", title: "KITs PRONTOS", lines: cartGroups.kits },
-      ...SIZE_ORDER.map((size) => ({
+      ...orderedProductSizes(Array.from(cartGroups.bySize.keys())).map((size) => ({
         key: size,
         title: `Tamanho ${size}`,
         lines: cartGroups.bySize.get(size) ?? [],

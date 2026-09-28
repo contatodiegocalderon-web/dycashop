@@ -20,6 +20,8 @@ import {
 } from "@/lib/catalog-guided-wizard";
 import type { CategoryShowcaseConfig } from "@/lib/category-showcase";
 import { isKitsStorefront } from "@/lib/kits-category";
+import { jeansCatalogSize, presentCatalogProducts } from "@/lib/jeans-size";
+import { orderedProductSizes } from "@/lib/product-sizes";
 import type { Product, ProductSize } from "@/types";
 import { CatalogFilters } from "@/components/catalog-filters";
 import { CatalogSections } from "@/components/catalog-sections";
@@ -28,13 +30,8 @@ import { CategoryShowcaseBanner } from "@/components/category-showcase-banner";
 import { KitsIntroCard } from "@/components/kits-intro-card";
 import { WizardCatalogHint } from "@/components/wizard-catalog-hint";
 
-function buildQuery(
-  size: "" | ProductSize,
-  category: string,
-  categoryExact: boolean
-) {
+function buildQuery(category: string, categoryExact: boolean) {
   const p = new URLSearchParams();
-  if (size) p.set("size", size);
   if (category.trim()) {
     p.set("category", category.trim());
     if (categoryExact) p.set("categoryMatch", "exact");
@@ -132,18 +129,25 @@ export function CatalogClient({
   const showCatalog = sessionReady && (!guidedMode || wizardDone);
 
   const query = useMemo(
-    () =>
-      buildQuery(
-        kitsMode ? "" : size,
-        effectiveCategory,
-        categoryExact
-      ),
-    [kitsMode, size, effectiveCategory, categoryExact]
+    () => buildQuery(effectiveCategory, categoryExact),
+    [effectiveCategory, categoryExact]
   );
+
+  const sizeOptions = useMemo(() => {
+    if (products.length === 0) return ["M", "G", "GG"];
+    return orderedProductSizes(
+      products.map((p) => jeansCatalogSize(p.category, p.size))
+    );
+  }, [products]);
+
+  const productsInSize = useMemo(() => {
+    if (!size || kitsMode) return products;
+    return products.filter((p) => jeansCatalogSize(p.category, p.size) === size);
+  }, [products, size, kitsMode]);
 
   const brandOptions = useMemo(() => {
     const s = new Set<string>();
-    for (const p of products) {
+    for (const p of productsInSize) {
       if (colors.length > 0) {
         const c = p.color?.trim() ?? "";
         if (!colors.includes(c)) continue;
@@ -154,25 +158,37 @@ export function CatalogClient({
     return Array.from(s).sort((a, b) =>
       a.localeCompare(b, "pt", { sensitivity: "base" })
     );
-  }, [products, colors]);
+  }, [productsInSize, colors]);
 
   const colorOptions = useMemo(() => {
     const s = new Set<string>();
-    for (const p of products) {
+    for (const p of productsInSize) {
       const c = p.color?.trim();
       if (c) s.add(c);
     }
     return Array.from(s).sort((a, b) =>
       a.localeCompare(b, "pt", { sensitivity: "base" })
     );
-  }, [products]);
+  }, [productsInSize]);
 
   const displayedProducts = useMemo(() => {
-    if (wizardGuidedFilter) {
-      return filterProductsByWizardSelection(products, wizardGuidedFilter);
+    const filtered = wizardGuidedFilter
+      ? filterProductsByWizardSelection(productsInSize, wizardGuidedFilter)
+      : filterProductsBySelections(productsInSize, colors, brands);
+    return presentCatalogProducts(filtered);
+  }, [productsInSize, wizardGuidedFilter, colors, brands]);
+
+  useEffect(() => {
+    if (!size || products.length === 0) return;
+    const stillThere = products.some(
+      (p) => jeansCatalogSize(p.category, p.size) === size
+    );
+    if (stillThere) return;
+    const asJeans = jeansCatalogSize("JEANS", size);
+    if (asJeans !== size && products.some((p) => jeansCatalogSize(p.category, p.size) === asJeans)) {
+      setSize(asJeans);
     }
-    return filterProductsBySelections(products, colors, brands);
-  }, [products, wizardGuidedFilter, colors, brands]);
+  }, [products, size]);
 
   const load = useCallback(async () => {
     if (!showCatalog) return;
@@ -305,7 +321,7 @@ export function CatalogClient({
       setBrands((prev) => {
         if (prev.length === 0) return prev;
         const allowed = new Set<string>();
-        for (const p of products) {
+        for (const p of productsInSize) {
           const c = p.color?.trim() ?? "";
           if (!v.includes(c)) continue;
           const b = p.brand?.trim();
@@ -366,6 +382,7 @@ export function CatalogClient({
         colors={colors}
         brandOptions={brandOptions}
         colorOptions={colorOptions}
+        sizeOptions={sizeOptions}
         showCategoryFilter={!categoryFixed}
         categoryNavigation={
           categoryFixed && categories?.length && activeCategorySlug

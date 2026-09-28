@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 import { useAdminAuth } from "@/contexts/admin-auth";
+import { jeansCatalogSize } from "@/lib/jeans-size";
+import { orderedProductSizes } from "@/lib/product-sizes";
 import type {
   CustomerSegment,
   OrderItemRow,
   OrderRow,
-  ProductSize,
 } from "@/types";
 import { StockConflictNotice } from "@/components/stock-conflict-notice";
 import { orderItemImageUrl } from "@/lib/order-item-image-url";
@@ -19,8 +20,6 @@ import {
 
 type SellerFilterOption = { value: string; label: string };
 
-const SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
-
 /** Placeholder 1×1 transparente — evita `<img src="">` quando falta ficheiro no snapshot. */
 const EMPTY_IMG =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E";
@@ -30,11 +29,13 @@ function adminThumbSrc(it: OrderItemRow): string {
 }
 
 function groupItems(items: OrderItemRow[]) {
-  const m = new Map<ProductSize, OrderItemRow[]>();
-  for (const s of SIZE_ORDER) m.set(s, []);
+  const m = new Map<string, OrderItemRow[]>();
   for (const it of items) {
-    const sz = it.snapshot_size as ProductSize;
-    if (m.has(sz)) m.get(sz)!.push(it);
+    const raw = it.snapshot_size?.trim() || "—";
+    const sz = jeansCatalogSize(it.snapshot_category, raw);
+    const list = m.get(sz) ?? [];
+    list.push(it);
+    m.set(sz, list);
   }
   return m;
 }
@@ -998,7 +999,7 @@ export default function AdminPedidosClient() {
               )}
 
               {expandedOrders[order.id] &&
-                SIZE_ORDER.map((size) => {
+                orderedProductSizes(Array.from(bySize.keys())).map((size) => {
                   const list = bySize.get(size) ?? [];
                   if (!list.length) return null;
                   return (

@@ -49,7 +49,7 @@ function normalizeSnapshot(raw: unknown): CatalogBrowseSnapshot | null {
         ? Math.max(0, parsed.scrollY)
         : 0,
     size:
-      parsed.size === "M" || parsed.size === "G" || parsed.size === "GG"
+      typeof parsed.size === "string" && /^[A-Za-z0-9]{1,8}$/.test(parsed.size)
         ? parsed.size
         : "",
     brands,

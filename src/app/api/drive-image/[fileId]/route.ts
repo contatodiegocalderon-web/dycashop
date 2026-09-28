@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { Readable } from "stream";
 import { ensureDriveAuthorized, getDriveAuth } from "@/lib/drive-auth";
 import { isDriveFileIdAllowedForPublicProxy } from "@/lib/drive-image-allowlist";
+import { sourceDriveFileId } from "@/lib/size-stock-name";
 import { bufferLooksLikeHeif } from "@/lib/drive-image-sniff";
 
 export const runtime = "nodejs";
@@ -17,7 +18,7 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-const FILE_ID_RE = /^[A-Za-z0-9_-]{10,128}$/;
+const FILE_ID_RE = /^[A-Za-z0-9_-]{10,128}(?:~\d{2})?$/;
 
 async function heicToJpeg(buf: Buffer): Promise<Buffer> {
   const out = await heicConvert({
@@ -86,6 +87,7 @@ export async function GET(
   if (!FILE_ID_RE.test(fileId)) {
     return NextResponse.json({ error: "ID inválido" }, { status: 400 });
   }
+  const driveFileId = sourceDriveFileId(fileId);
 
   const allowed = await isDriveFileIdAllowedForPublicProxy(fileId);
   if (!allowed) {
@@ -103,7 +105,7 @@ export async function GET(
     const drive = google.drive({ version: "v3", auth });
 
     const meta = await drive.files.get({
-      fileId,
+      fileId: driveFileId,
       fields: "mimeType",
       supportsAllDrives: true,
     });
@@ -113,7 +115,7 @@ export async function GET(
 
     const res = await drive.files.get(
       {
-        fileId,
+        fileId: driveFileId,
         alt: "media",
         supportsAllDrives: true,
       },

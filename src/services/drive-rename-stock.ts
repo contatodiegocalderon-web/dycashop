@@ -2,6 +2,12 @@ import { google } from "googleapis";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ensureDriveAuthorized, getDriveAuth } from "@/lib/drive-auth";
 import { IMAGE_FILENAME_EXT, stripImageExtension } from "@/lib/parse-filename";
+import {
+  formatSizeStockGrid,
+  isSizeVariantDriveId,
+  parseSizeStockGrid,
+  sourceDriveFileId,
+} from "@/lib/size-stock-name";
 import type { Product } from "@/types";
 
 function googleErrMessage(e: unknown): string {
@@ -146,8 +152,17 @@ export async function renameDriveFilesToCurrentStock(
     products.push(p as Product);
   }
 
-  const toRename = products.filter((p) => p.stock > 0);
-  const toDelete = products.filter((p) => p.stock <= 0);
+  const plainProducts = products.filter(
+    (p) => !isSizeVariantDriveId(p.drive_file_id)
+  );
+  const variantSources = new Set(
+    products
+      .filter((p) => isSizeVariantDriveId(p.drive_file_id))
+      .map((p) => sourceDriveFileId(p.drive_file_id))
+  );
+
+  const toRename = plainProducts.filter((p) => p.stock > 0);
+  const toDelete = plainProducts.filter((p) => p.stock <= 0);
   const completedOps: DriveOp[] = [];
 
   const failAll = async (
@@ -177,6 +192,93 @@ export async function renameDriveFilesToCurrentStock(
     }
     return { ok: [], errors: outErrors };
   };
+
+  for (const sourceId of Array.from(variantSources)) {
+    const touched = products.filter(
+      (p) => sourceDriveFileId(p.drive_file_id) === sourceId
+    );
+    const lead = touched[0];
+    if (!lead) continue;
+    try {
+      let currentFullName = "";
+      try {
+        const meta = await drive.files.get({
+          fileId: sourceId,
+          fields: "name",
+          supportsAllDrives: true,
+        });
+        currentFullName = meta.data.name ?? "";
+      } catch (e) {
+        if (isNotFoundError(e)) {
+          for (const p of touched) ok.push(p.id);
+          continue;
+        }
+        return failAll(lead.id, googleErrMessage(e));
+      }
+
+      const extMatch = currentFullName.match(IMAGE_FILENAME_EXT);
+      const ext = extMatch ? extMatch[0].toLowerCase() : ".jpg";
+      const currentGrid = parseSizeStockGrid(currentFullName);
+      if (!currentGrid) {
+        return failAll(
+          lead.id,
+          "O nome no Drive não lista os tamanhos (ex.: 38-4/40-5). Não alterei o ficheiro."
+        );
+      }
+      const stockBySize = new Map<string, number>();
+      for (const cell of currentGrid?.cells ?? []) {
+        stockBySize.set(cell.size, cell.stock);
+      }
+      for (const p of touched) {
+        stockBySize.set(p.size, p.stock);
+      }
+      const nextBase = formatSizeStockGrid(
+        Array.from(stockBySize, ([size, stock]) => ({ size, stock })),
+        currentGrid?.labelPrefix
+      );
+
+      if (!nextBase) {
+        await drive.files.delete({
+          fileId: sourceId,
+          supportsAllDrives: true,
+        });
+        completedOps.push({
+          kind: "delete",
+          productId: lead.id,
+          fileId: sourceId,
+          previousDriveName: currentFullName,
+          previousOriginalFileName: lead.original_file_name,
+        });
+        for (const p of touched) ok.push(p.id);
+        continue;
+      }
+
+      const newFullName = `${nextBase}${ext}`;
+      if (stripImageExtension(currentFullName) !== nextBase) {
+        await drive.files.update({
+          fileId: sourceId,
+          requestBody: { name: newFullName },
+          supportsAllDrives: true,
+        });
+        completedOps.push({
+          kind: "rename",
+          productId: lead.id,
+          fileId: sourceId,
+          previousDriveName: currentFullName,
+          previousOriginalFileName: lead.original_file_name,
+        });
+        const siblingIds = touched.map((p) => p.id);
+        await admin
+          .from("products")
+          .update({ original_file_name: nextBase })
+          .in("id", siblingIds);
+      }
+
+      for (const p of touched) ok.push(p.id);
+    } catch (e) {
+      return failAll(lead.id, googleErrMessage(e));
+    }
+  }
 
   for (const product of toRename) {
     try {

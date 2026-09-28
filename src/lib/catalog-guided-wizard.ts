@@ -1,3 +1,4 @@
+import { orderedProductSizes } from "@/lib/product-sizes";
 import type { Product, ProductSize } from "@/types";
 
 /**
@@ -14,11 +15,11 @@ export function isWizardCatalogProduct(p: Product): boolean {
 }
 
 export function wizardSizeOptions(products: Product[]): ProductSize[] {
-  const available = new Set<ProductSize>();
+  const available: string[] = [];
   for (const p of products) {
-    if (isWizardCatalogProduct(p)) available.add(p.size);
+    if (isWizardCatalogProduct(p)) available.push(p.size);
   }
-  return WIZARD_SIZE_ORDER.filter((s) => available.has(s));
+  return orderedProductSizes(available);
 }
 
 export function wizardColorOptions(

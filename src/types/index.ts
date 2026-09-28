@@ -1,4 +1,5 @@
-export type ProductSize = "M" | "G" | "GG";
+/** M/G/GG no vestuário; numeração (38, 40, 42…) em calça e tênis. */
+export type ProductSize = string;
 
 export type ProductStatus = "ATIVO" | "ESGOTADO";
 

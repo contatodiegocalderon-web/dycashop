@@ -3,6 +3,7 @@ import type { DriveAuthClient } from "@/lib/drive-auth";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchDriveFileAsImageBuffer } from "@/lib/drive-download-buffer";
 import { withRetry } from "@/lib/retry";
+import { sourceDriveFileId } from "@/lib/size-stock-name";
 import {
   CATALOG_STORAGE_BUCKET,
   catalogProductStoragePath,
@@ -44,7 +45,7 @@ export async function syncOneProductImageToStorage(
   driveAuth?: DriveAuthClient
 ): Promise<void> {
   const { buffer } = await fetchDriveFileAsImageBuffer(
-    item.drive_file_id,
+    sourceDriveFileId(item.drive_file_id),
     driveAuth
   );
   const jpeg = await toCatalogJpegBuffer(buffer);
