@@ -9,10 +9,11 @@ import {
 import {
   deleteStorageForDriveFileIds,
   markProductImageSyncError,
-  syncOneProductImageToStorage,
+  syncImageGroupToStorage,
   type ImageSyncItem,
 } from "@/services/catalog-storage-sync";
 import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
+import { sourceDriveFileId } from "@/lib/size-stock-name";
 
 const IN_CHUNK = 120;
 const UPSERT_CHUNK = 80;
@@ -52,8 +53,9 @@ type SyncOptions = {
 };
 
 function rowForUpsert(row: DriveImportRow): DriveImportUpsert & { updated_at: string } {
-  const { drive_modified_at, ...rest } = row;
+  const { drive_modified_at, drive_md5, ...rest } = row;
   void drive_modified_at;
+  void drive_md5;
   return { ...rest, updated_at: new Date().toISOString() };
 }
 
@@ -82,8 +84,15 @@ type ImageStateRow = {
   id: string;
   drive_file_id: string;
   drive_updated_at: string | null;
+  drive_md5: string | null;
   image_url: string | null;
   sync_status: string | null;
+};
+
+type ImageBackfill = {
+  id: string;
+  driveMd5: string | null;
+  driveModifiedIso: string;
 };
 
 type PendingItemForRemovedProduct = {
@@ -328,7 +337,9 @@ async function fetchImageStateByDriveIds(
     const slice = ids.slice(i, i + IN_CHUNK);
     const { data, error } = await admin
       .from("products")
-      .select("id, drive_file_id, drive_updated_at, image_url, sync_status")
+      .select(
+        "id, drive_file_id, drive_updated_at, drive_md5, image_url, sync_status"
+      )
       .in("drive_file_id", slice);
     if (error) {
       throw new Error(error.message);
@@ -364,37 +375,116 @@ function timesClose(isoDrive: string, isoDb: string | null | undefined): boolean
   return Math.abs(a - b) < 3000;
 }
 
-function needsImageSync(
-  driveModifiedIso: string,
-  db: ImageStateRow
-): boolean {
-  if (!db.image_url?.trim()) return true;
-  const st = db.sync_status?.toLowerCase();
-  if (st === "error" || st === "pending") return true;
-  if (st === "done" && db.image_url?.trim()) {
-    return !timesClose(driveModifiedIso, db.drive_updated_at);
-  }
-  return true;
+function toSyncItem(row: DriveImportRow, db: ImageStateRow): ImageSyncItem {
+  return {
+    id: db.id,
+    drive_file_id: row.drive_file_id,
+    driveModifiedIso: row.drive_modified_at,
+    driveMd5: row.drive_md5,
+  };
 }
 
-function buildImageQueue(
+/**
+ * Foto já no Storage não volta à fila só porque o ficheiro foi renomeado
+ * (`modifiedTime` muda; o md5 não). Erro antigo com imagem gravada também não
+ * reentra — era isso que deixava as mesmas ~300 imagens presas.
+ */
+function classifyImages(
   rows: DriveImportRow[],
   states: ImageStateRow[]
-): ImageSyncItem[] {
+): { queue: ImageSyncItem[]; backfill: ImageBackfill[] } {
   const byDrive = new Map(states.map((s) => [s.drive_file_id, s]));
   const queue: ImageSyncItem[] = [];
+  const backfill: ImageBackfill[] = [];
+
   for (const row of rows) {
     const db = byDrive.get(row.drive_file_id);
     if (!db) continue;
-    if (needsImageSync(row.drive_modified_at, db)) {
-      queue.push({
+    const hasImage = !!db.image_url?.trim();
+    const driveMd5 = row.drive_md5?.trim() || null;
+    const storedMd5 = db.drive_md5?.trim() || null;
+
+    if (!hasImage) {
+      queue.push(toSyncItem(row, db));
+      continue;
+    }
+
+    if (driveMd5 && storedMd5 === driveMd5) {
+      if (db.sync_status !== "done") {
+        backfill.push({
+          id: db.id,
+          driveMd5,
+          driveModifiedIso: row.drive_modified_at,
+        });
+      }
+      continue;
+    }
+
+    if (driveMd5 && !storedMd5) {
+      backfill.push({
         id: db.id,
-        drive_file_id: row.drive_file_id,
+        driveMd5,
         driveModifiedIso: row.drive_modified_at,
       });
+      continue;
     }
+
+    if (driveMd5 && storedMd5 && storedMd5 !== driveMd5) {
+      queue.push(toSyncItem(row, db));
+      continue;
+    }
+
+    const current = timesClose(row.drive_modified_at, db.drive_updated_at);
+    if (current && db.sync_status === "done") continue;
+    if (current) {
+      backfill.push({
+        id: db.id,
+        driveMd5: null,
+        driveModifiedIso: row.drive_modified_at,
+      });
+      continue;
+    }
+
+    queue.push(toSyncItem(row, db));
   }
-  return queue;
+
+  return { queue, backfill };
+}
+
+async function backfillImageFingerprints(
+  admin: AdminClient,
+  rows: ImageBackfill[]
+): Promise<void> {
+  const CHUNK = 8;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const slice = rows.slice(i, i + CHUNK);
+    await Promise.all(
+      slice.map(async (row) => {
+        const patch: {
+          sync_status: "done";
+          drive_updated_at: string;
+          drive_md5?: string;
+        } = {
+          sync_status: "done",
+          drive_updated_at: row.driveModifiedIso,
+        };
+        if (row.driveMd5) patch.drive_md5 = row.driveMd5;
+        const { error } = await admin.from("products").update(patch).eq("id", row.id);
+        if (error) throw new Error(error.message);
+      })
+    );
+  }
+}
+
+function groupQueueBySourceFile(queue: ImageSyncItem[]): ImageSyncItem[][] {
+  const groups = new Map<string, ImageSyncItem[]>();
+  for (const item of queue) {
+    const key = sourceDriveFileId(item.drive_file_id);
+    const list = groups.get(key) ?? [];
+    list.push(item);
+    groups.set(key, list);
+  }
+  return Array.from(groups.values());
 }
 
 function delay(ms: number): Promise<void> {
@@ -417,32 +507,47 @@ async function processImageQueue(
 
   const driveAuth = await getDriveAuth();
   await ensureDriveAuthorized(driveAuth);
+  const groups = groupQueueBySourceFile(queue);
 
-  for (let i = 0; i < queue.length; i++) {
-    const item = queue[i]!;
+  emit?.({
+    type: "progress",
+    phase: "images",
+    current: 0,
+    total,
+    skipped: skippedCount,
+  });
+
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i]!;
     try {
       await withRetry(
-        () => syncOneProductImageToStorage(admin, item, driveAuth),
-        { label: `image-sync:${item.id}`, attempts: 3, baseDelayMs: 900 }
+        () => syncImageGroupToStorage(admin, group, driveAuth),
+        { label: `image-sync:${group[0]!.drive_file_id}`, attempts: 3, baseDelayMs: 900 }
       );
-      uploaded++;
+      uploaded += group.length;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro";
-      errors.push({
-        id: item.id,
-        drive_file_id: item.drive_file_id,
-        message: msg,
-      });
+      for (const item of group) {
+        errors.push({
+          id: item.id,
+          drive_file_id: item.drive_file_id,
+          message: msg,
+        });
+      }
       if (isTransientSyncError(e)) {
         await delay(1200);
       }
-      await withRetry(() => markProductImageSyncError(admin, item.id), {
-        label: `mark-sync-error:${item.id}`,
-        attempts: 3,
-        baseDelayMs: 500,
-      }).catch(() => {});
+      await Promise.all(
+        group.map((item) =>
+          withRetry(() => markProductImageSyncError(admin, item.id), {
+            label: `mark-sync-error:${item.id}`,
+            attempts: 3,
+            baseDelayMs: 500,
+          }).catch(() => {})
+        )
+      );
     }
-    completed++;
+    completed += group.length;
     emit?.({
       type: "progress",
       phase: "images",
@@ -450,7 +555,7 @@ async function processImageQueue(
       total,
       skipped: skippedCount,
     });
-    if (i + 1 < queue.length) {
+    if (i + 1 < groups.length) {
       await delay(BETWEEN_IMAGES_MS);
     }
   }
@@ -514,7 +619,10 @@ async function runSync(
   emit?.({ type: "phase", phase: "imagens" });
 
   const imageStates = await fetchImageStateByDriveIds(admin, ids);
-  const queue = buildImageQueue(rows, imageStates);
+  const { queue, backfill } = classifyImages(rows, imageStates);
+  if (backfill.length > 0) {
+    await backfillImageFingerprints(admin, backfill);
+  }
   const skippedCount = ids.length - queue.length;
 
   const { uploaded, errors } = await processImageQueue(

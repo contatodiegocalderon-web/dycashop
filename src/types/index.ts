@@ -20,6 +20,8 @@ export interface Product {
   drive_file_id: string;
   /** Metadado `modifiedTime` do Google Drive (última vez que confirmámos o ficheiro). */
   drive_updated_at?: string | null;
+  /** `md5Checksum` do ficheiro no Drive quando a imagem foi gravada no Storage. */
+  drive_md5?: string | null;
   /** URL pública no Supabase Storage após sync bem-sucedido. */
   image_url?: string | null;
   sync_status?: ProductSyncStatus | null;

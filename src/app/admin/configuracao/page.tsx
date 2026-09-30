@@ -500,8 +500,15 @@ function ConfiguracaoInner() {
           <p className="font-medium">{syncProg.phase}</p>
           {syncProg.total > 0 ? (
             <p className="mt-1 text-xs text-violet-900/90">
-              Imagens a processar: {syncProg.current} / {syncProg.total} · Ignoradas
-              (já atualizadas): {syncProg.skipped}
+              Faltam {Math.max(0, syncProg.total - syncProg.current)} imagens
+              {" · "}
+              {syncProg.current} de {syncProg.total} nesta leva
+              {" · "}
+              já atualizadas: {syncProg.skipped}
+            </p>
+          ) : syncProg.phase === "Imagens → Storage" ? (
+            <p className="mt-1 text-xs text-violet-900/90">
+              Nenhuma imagem nova para enviar. Já atualizadas: {syncProg.skipped}
             </p>
           ) : (
             <p className="mt-1 text-xs text-violet-900/80">A calcular…</p>

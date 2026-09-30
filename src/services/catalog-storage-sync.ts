@@ -1,7 +1,10 @@
 import sharp from "sharp";
 import type { DriveAuthClient } from "@/lib/drive-auth";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchDriveFileAsImageBuffer } from "@/lib/drive-download-buffer";
+import {
+  fetchDriveFileAsImageBuffer,
+  fetchDriveThumbnailJpeg,
+} from "@/lib/drive-download-buffer";
 import { withRetry } from "@/lib/retry";
 import { sourceDriveFileId } from "@/lib/size-stock-name";
 import {
@@ -34,22 +37,34 @@ export type ImageSyncItem = {
   drive_file_id: string;
   /** ISO modifiedTime do Drive nesta varredura */
   driveModifiedIso: string;
+  /** md5Checksum do ficheiro de origem. Null se o Drive não devolver. */
+  driveMd5: string | null;
 };
 
 /**
- * Descarrega do Drive, envia ao Storage, grava `image_url`, `drive_updated_at`, `sync_status=done`.
+ * Descarrega do Drive, envia ao Storage, grava `image_url`, `drive_updated_at`, `drive_md5`, `sync_status=done`.
+ * Vários tamanhos do mesmo ficheiro (`id~38`, `id~40`) partilham um único JPEG.
  */
-export async function syncOneProductImageToStorage(
+export async function syncImageGroupToStorage(
   admin: AdminClient,
-  item: ImageSyncItem,
+  items: ImageSyncItem[],
   driveAuth?: DriveAuthClient
 ): Promise<void> {
-  const { buffer } = await fetchDriveFileAsImageBuffer(
-    sourceDriveFileId(item.drive_file_id),
-    driveAuth
-  );
-  const jpeg = await toCatalogJpegBuffer(buffer);
-  const path = catalogProductStoragePath(item.drive_file_id);
+  if (items.length === 0) return;
+  const sourceId = sourceDriveFileId(items[0]!.drive_file_id);
+  const { buffer } = await fetchDriveFileAsImageBuffer(sourceId, driveAuth);
+  let jpeg: Buffer;
+  try {
+    jpeg = await toCatalogJpegBuffer(buffer);
+  } catch (decodeErr) {
+    if (!driveAuth) throw decodeErr;
+    const thumb = await fetchDriveThumbnailJpeg(sourceId, driveAuth).catch(
+      () => null
+    );
+    if (!thumb) throw decodeErr;
+    jpeg = await toCatalogJpegBuffer(thumb);
+  }
+  const path = catalogProductStoragePath(sourceId);
 
   await withRetry(
     async () => {
@@ -63,7 +78,7 @@ export async function syncOneProductImageToStorage(
         throw new Error(upErr.message);
       }
     },
-    { label: `storage-upload:${item.id}`, attempts: 4, baseDelayMs: 700 }
+    { label: `storage-upload:${sourceId}`, attempts: 4, baseDelayMs: 700 }
   );
 
   const { data: pub } = admin.storage
@@ -77,20 +92,34 @@ export async function syncOneProductImageToStorage(
 
   await withRetry(
     async () => {
+      const md5 = items[0]!.driveMd5?.trim() || null;
       const { error: dbErr } = await admin
         .from("products")
         .update({
           image_url: publicUrl,
-          drive_updated_at: item.driveModifiedIso,
+          drive_updated_at: items[0]!.driveModifiedIso,
+          ...(md5 ? { drive_md5: md5 } : {}),
           sync_status: "done",
         })
-        .eq("id", item.id);
+        .in(
+          "id",
+          items.map((item) => item.id)
+        );
       if (dbErr) {
         throw new Error(dbErr.message);
       }
     },
-    { label: `products-update:${item.id}`, attempts: 4, baseDelayMs: 700 }
+    { label: `products-update:${sourceId}`, attempts: 4, baseDelayMs: 700 }
   );
+}
+
+/** Um produto. Variantes do mesmo ficheiro devem ir juntas em `syncImageGroupToStorage`. */
+export async function syncOneProductImageToStorage(
+  admin: AdminClient,
+  item: ImageSyncItem,
+  driveAuth?: DriveAuthClient
+): Promise<void> {
+  await syncImageGroupToStorage(admin, [item], driveAuth);
 }
 
 export async function markProductImageSyncError(
@@ -108,9 +137,31 @@ export async function deleteStorageForDriveFileIds(
   admin: AdminClient,
   driveFileIds: string[]
 ): Promise<number> {
-  const paths = driveFileIds
-    .map((id) => id.trim())
-    .filter(Boolean)
+  const sources = Array.from(
+    new Set(
+      driveFileIds
+        .map((id) => sourceDriveFileId(id.trim()))
+        .filter((id) => /^[A-Za-z0-9_-]+$/.test(id))
+    )
+  );
+  const stillUsed = new Set<string>();
+  for (const source of sources) {
+    const [exact, variants] = await Promise.all([
+      admin.from("products").select("id").eq("drive_file_id", source).limit(1),
+      admin
+        .from("products")
+        .select("id")
+        .like("drive_file_id", `${source}~%`)
+        .limit(1),
+    ]);
+    if (exact.error) throw new Error(exact.error.message);
+    if (variants.error) throw new Error(variants.error.message);
+    if ((exact.data ?? []).length > 0 || (variants.data ?? []).length > 0) {
+      stillUsed.add(source);
+    }
+  }
+  const paths = sources
+    .filter((id) => !stillUsed.has(id))
     .map((id) => catalogProductStoragePath(id));
   if (paths.length === 0) return 0;
 

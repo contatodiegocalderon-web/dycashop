@@ -23,6 +23,43 @@ async function heicToJpeg(buf: Buffer): Promise<Buffer> {
   return Buffer.isBuffer(out) ? out : Buffer.from(out);
 }
 
+async function accessToken(auth: DriveAuthClient): Promise<string | null> {
+  const res = await auth.getAccessToken();
+  if (typeof res === "string") return res || null;
+  if (res && typeof res === "object" && "token" in res) {
+    return res.token ?? null;
+  }
+  return null;
+}
+
+/**
+ * O Drive já gera um JPEG (~1600px). Serve quando o HEIC não converte no servidor
+ * (libvips sem HEIF) e evita descarregar o original de vários MB.
+ */
+export async function fetchDriveThumbnailJpeg(
+  fileId: string,
+  auth: DriveAuthClient
+): Promise<Buffer | null> {
+  const drive = google.drive({ version: "v3", auth });
+  const meta = await drive.files.get({
+    fileId,
+    fields: "thumbnailLink",
+    supportsAllDrives: true,
+  });
+  const raw = meta.data.thumbnailLink?.trim();
+  if (!raw) return null;
+  const large = raw.replace(/=s\d+/, "=s1600");
+  const token = await accessToken(auth);
+  const res = await fetch(large, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) return null;
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length < 8000) return null;
+  if (buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) return null;
+  return buf;
+}
+
 /**
  * Descarrega bytes da imagem no Drive (OAuth já configurado).
  * Converte HEIC/HEIF para JPEG quando necessário.
@@ -78,8 +115,15 @@ async function downloadDriveFileOnce(
     mimeType === "application/octet-stream" && bufferLooksLikeHeif(body);
 
   if (isHeifMeta || isHeifSniff) {
-    body = await heicToJpeg(body);
-    mimeType = "image/jpeg";
+    try {
+      body = await heicToJpeg(body);
+      mimeType = "image/jpeg";
+    } catch (convErr) {
+      const thumb = await fetchDriveThumbnailJpeg(fileId, auth).catch(() => null);
+      if (!thumb) throw convErr;
+      body = thumb;
+      mimeType = "image/jpeg";
+    }
   }
 
   if (mimeType === "application/octet-stream" && body.length >= 3) {

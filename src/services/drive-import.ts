@@ -26,6 +26,8 @@ export interface DriveImportRow {
   drive_file_id: string;
   /** ISO 8601 — modifiedTime do ficheiro no Drive (para sync incremental). */
   drive_modified_at: string;
+  /** md5Checksum do Drive. Não muda quando o ficheiro é só renomeado. */
+  drive_md5: string | null;
   drive_image_url: string;
   original_file_name: string;
   /** Nome da pasta de categoria no Drive (ex.: BERMUDAS ELASTANO, CAMISETAS STREETWEAR). */
@@ -39,7 +41,7 @@ export interface DriveImportRow {
 }
 
 /** Campos gravados em `products` (sem metadados só para decisão de sync). */
-export type DriveImportUpsert = Omit<DriveImportRow, "drive_modified_at">;
+export type DriveImportUpsert = Omit<DriveImportRow, "drive_modified_at" | "drive_md5">;
 
 function getDriveListOptionsFromEnv(): DriveListOptions {
   const sharedDriveId = process.env.GOOGLE_DRIVE_SHARED_DRIVE_ID?.trim();
@@ -109,19 +111,29 @@ async function listImageFiles(
   drive: drive_v3.Drive,
   folderId: string,
   listOptions: DriveListOptions
-): Promise<{ id: string; name: string; modifiedTime?: string | null }[]> {
+): Promise<{
+  id: string;
+  name: string;
+  modifiedTime?: string | null;
+  md5Checksum?: string | null;
+}[]> {
   /**
    * Lista todos os ficheiros não-pasta (paginação completa) e filtra imagens.
    * O Drive muitas vezes marca JPEG/HEIC como `application/octet-stream`; a query só
    * `mimeType contains 'image/'` omitia esses ficheiros (import “parava” a meio).
    */
-  const out: { id: string; name: string; modifiedTime?: string | null }[] = [];
+  const out: {
+    id: string;
+    name: string;
+    modifiedTime?: string | null;
+    md5Checksum?: string | null;
+  }[] = [];
   const seen = new Set<string>();
   let pageToken: string | undefined;
   do {
     const res = await drive.files.list({
       q: `'${folderId}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder' and mimeType != 'application/vnd.google-apps.shortcut'`,
-      fields: "nextPageToken, files(id, name, mimeType, modifiedTime)",
+      fields: "nextPageToken, files(id, name, mimeType, modifiedTime, md5Checksum)",
       pageSize: 200,
       pageToken,
       ...listOptions,
@@ -135,6 +147,7 @@ async function listImageFiles(
         id: f.id,
         name: f.name,
         modifiedTime: f.modifiedTime ?? null,
+        md5Checksum: f.md5Checksum ?? null,
       });
     }
     pageToken = res.data.nextPageToken ?? undefined;
@@ -145,7 +158,12 @@ async function listImageFiles(
 
 function pushProductRow(
   rows: DriveImportRow[],
-  file: { id: string; name: string; modifiedTime?: string | null },
+  file: {
+    id: string;
+    name: string;
+    modifiedTime?: string | null;
+    md5Checksum?: string | null;
+  },
   opts: {
     driveFileId: string;
     size: ProductSize;
@@ -160,6 +178,7 @@ function pushProductRow(
   rows.push({
     drive_file_id: opts.driveFileId,
     drive_modified_at: file.modifiedTime ?? new Date().toISOString(),
+    drive_md5: file.md5Checksum?.trim() || null,
     drive_image_url: driveThumbnailUrl(file.id, 640),
     original_file_name: opts.originalFileName,
     category: opts.category,

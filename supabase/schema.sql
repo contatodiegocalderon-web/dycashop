@@ -10,6 +10,7 @@ create table if not exists public.products (
   drive_image_url text not null,
   catalog_image_url text,
   drive_updated_at timestamptz,
+  drive_md5 text,
   image_url text,
   sync_status text default 'pending'
     check (sync_status is null or sync_status in ('pending', 'done', 'error')),
