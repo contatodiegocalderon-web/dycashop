@@ -43,6 +43,21 @@ export function isKitsStorefront(opts: {
   );
 }
 
+export function isAdminKitDriveId(driveFileId: string | null | undefined): boolean {
+  return (driveFileId ?? "").trim().startsWith("admin-kit-");
+}
+
+/** Kit cadastrado no admin (KITs PRONTOS). Não existe ficheiro no Google Drive. */
+export function isReadyMadeKitProduct(p: {
+  source?: string | null;
+  category?: string | null;
+  drive_file_id?: string | null;
+}): boolean {
+  if (p.source === "admin") return true;
+  if (isAdminKitDriveId(p.drive_file_id)) return true;
+  return isKitsCategory(p.category);
+}
+
 export function isKitProduct(p: {
   source?: string | null;
   category?: string | null;

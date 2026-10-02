@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMercadoPagoPayment } from "@/lib/mercadopago";
-import { applyPaidOrderStockAndDrive } from "@/lib/apply-paid-order-stock";
+import {
+  applyPaidOrderStockAndDrive,
+  deleteZeroStockExceptKits,
+} from "@/lib/apply-paid-order-stock";
 import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
 import { notifyAdminsVarejoPaid } from "@/lib/admin-push";
 import { settleAbandonedAfterPaidOrder } from "@/lib/crm-abandoned-query";
@@ -51,21 +54,6 @@ async function productIdsForOrder(
   );
 }
 
-async function deleteZeroStockProducts(
-  admin: ReturnType<typeof createAdminClient>,
-  productIds: string[]
-): Promise<void> {
-  for (const productId of productIds) {
-    const { data: p } = await admin
-      .from("products")
-      .select("id, stock")
-      .eq("id", productId)
-      .maybeSingle();
-    if (p && Number(p.stock ?? 0) <= 0) {
-      await admin.from("products").delete().eq("id", productId);
-    }
-  }
-}
 
 function buildMetaAfterDrive(opts: {
   base: unknown;
@@ -223,7 +211,7 @@ export async function POST(request: NextRequest) {
         driveOk = rename.errors.length === 0;
         driveErrors = rename.errors;
         if (driveOk) {
-          await deleteZeroStockProducts(admin, productIds);
+          await deleteZeroStockExceptKits(admin, productIds);
         }
       }
       meta = buildMetaAfterDrive({

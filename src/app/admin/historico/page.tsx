@@ -7,6 +7,7 @@ import {
   type OrderDaySectionStats,
 } from "@/components/admin/order-day-section-header";
 import { useAdminAuth } from "@/contexts/admin-auth";
+import { readyKitLineCost } from "@/lib/kit-piece-cost";
 import { groupOrdersByLocalDay } from "@/lib/order-day-groups";
 import type { OrderItemRow, OrderRow } from "@/types";
 
@@ -170,18 +171,36 @@ function resolveOrderRevenueByCategory(order: OrderRow): Record<string, number> 
   return {};
 }
 
+function costByCategoryLabel(
+  items: OrderItemRow[],
+  costs: Record<string, number>
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const it of items) {
+    const label = it.snapshot_category?.trim() || "Sem categoria";
+    const kitCost = readyKitLineCost(it, costs);
+    const key = normalizeKey(label);
+    const unitCost = costs[key] ?? costs[normalizeKey("Sem categoria")] ?? 0;
+    const add = kitCost != null ? kitCost : it.quantity * unitCost;
+    out.set(label, (out.get(label) ?? 0) + add);
+  }
+  return out;
+}
+
 function calculateOrderProfit(order: OrderRow, costs: Record<string, number>): number {
-  const lines = aggregateByCategory(order.order_items ?? []);
+  const items = order.order_items ?? [];
+  const lines = aggregateByCategory(items);
   const revenueByCategory = resolveOrderRevenueByCategory(order);
   const totalRevenue = Object.values(revenueByCategory).reduce((s, n) => s + Number(n || 0), 0);
   const fallbackRevenue = totalRevenue > 0 ? totalRevenue : displayOrderAmount(order);
   const totalPieces = lines.reduce((s, l) => s + l.qty, 0) || 1;
+  const costsByLabel = costByCategoryLabel(items, costs);
 
   let profit = 0;
   for (const line of lines) {
     const key = normalizeKey(line.label);
     const unitCost = costs[key] ?? costs[normalizeKey("Sem categoria")] ?? 0;
-    const lineCost = line.qty * unitCost;
+    const lineCost = costsByLabel.get(line.label) ?? line.qty * unitCost;
     const lineRevenue =
       revenueByCategory[line.label] != null
         ? revenueByCategory[line.label]

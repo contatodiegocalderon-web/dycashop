@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ensureDriveAuthorized, getDriveAuth } from "@/lib/drive-auth";
+import { isReadyMadeKitProduct } from "@/lib/kits-category";
 import { IMAGE_FILENAME_EXT, stripImageExtension } from "@/lib/parse-filename";
 import {
   formatSizeStockGrid,
@@ -124,19 +125,6 @@ export async function renameDriveFilesToCurrentStock(
   }
 
   const admin = createAdminClient();
-  let drive: ReturnType<typeof google.drive>;
-  try {
-    const auth = await getDriveAuth();
-    await ensureDriveAuthorized(auth);
-    drive = google.drive({ version: "v3", auth });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Drive não configurado";
-    for (const id of productIds) {
-      errors.push({ productId: id, message: msg });
-    }
-    return { ok, errors };
-  }
-
   const products: Product[] = [];
   for (const productId of productIds) {
     const { data: p, error } = await admin
@@ -149,7 +137,30 @@ export async function renameDriveFilesToCurrentStock(
       ok.push(productId);
       continue;
     }
-    products.push(p as Product);
+    const row = p as Product;
+    // KITs PRONTOS não têm ficheiro no Drive: a venda só baixa o estoque do site.
+    if (isReadyMadeKitProduct(row)) {
+      ok.push(row.id);
+      continue;
+    }
+    products.push(row);
+  }
+
+  if (products.length === 0) {
+    return { ok, errors };
+  }
+
+  let drive: ReturnType<typeof google.drive>;
+  try {
+    const auth = await getDriveAuth();
+    await ensureDriveAuthorized(auth);
+    drive = google.drive({ version: "v3", auth });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Drive não configurado";
+    for (const id of productIds) {
+      if (!ok.includes(id)) errors.push({ productId: id, message: msg });
+    }
+    return { ok, errors };
   }
 
   const plainProducts = products.filter(

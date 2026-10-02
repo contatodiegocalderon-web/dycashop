@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAdmin } from "@/lib/admin-auth";
 import { resolvePrincipal } from "@/lib/access";
+import { isReadyMadeKitProduct } from "@/lib/kits-category";
 import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
 import {
   canStartOrderConfirm,
@@ -226,6 +227,7 @@ export async function POST(
     >();
     const nextStockByProductId = new Map<string, number>();
     const zeroAfterConfirm: string[] = [];
+    const keepWhenSoldOut = new Set<string>();
     const partialStock: {
       productId: string;
       requested: number;
@@ -236,7 +238,7 @@ export async function POST(
       const qty = totals.get(productId)!;
       const { data: product, error: pErr } = await admin
         .from("products")
-        .select("id, stock, status")
+        .select("id, stock, status, source, category, drive_file_id")
         .eq("id", productId)
         .single();
 
@@ -274,7 +276,10 @@ export async function POST(
         status: (product.status as "ATIVO" | "ESGOTADO") ?? "ATIVO",
       });
       nextStockByProductId.set(productId, newStock);
-      if (newStock <= 0) zeroAfterConfirm.push(productId);
+      if (isReadyMadeKitProduct(product)) keepWhenSoldOut.add(productId);
+      if (newStock <= 0 && !keepWhenSoldOut.has(productId)) {
+        zeroAfterConfirm.push(productId);
+      }
     }
 
     // 1) Aplica novo stock na BD (ainda sem confirmar o pedido).

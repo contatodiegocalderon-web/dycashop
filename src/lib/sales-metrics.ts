@@ -1,6 +1,8 @@
 /**
  * Agrega vendas confirmadas (pedidos PAGO com sale_amount) para métricas e lucro por custo de categoria.
+ * KITs PRONTOS usam o custo das peças da composição (ex.: 5 bermudas + 5 camisetas), não 1× a categoria do kit.
  */
+import { readyKitLineCost } from "@/lib/kit-piece-cost";
 
 export type CategoryCostMap = Record<string, number>;
 
@@ -25,6 +27,9 @@ export interface OrderItemSaleRow {
   order_id: string;
   quantity: number;
   snapshot_category: string | null;
+  snapshot_brand?: string | null;
+  snapshot_color?: string | null;
+  snapshot_drive_file_id?: string | null;
   products?:
     | { category: string | null }
     | { category: string | null }[]
@@ -56,6 +61,14 @@ function resolveCategory(it: OrderItemSaleRow): string {
   return "Sem categoria";
 }
 
+function lineCost(it: OrderItemSaleRow, costs: CategoryCostMap): number {
+  const kit = readyKitLineCost(it, costs);
+  if (kit != null) return kit;
+  const cat = resolveCategory(it);
+  const unit = costs[cat] ?? costs["Sem categoria"] ?? 0;
+  return it.quantity * unit;
+}
+
 /** Lucro do pedido = valor da venda − Σ (qtd × custo da categoria). */
 export function profitForOrder(
   saleAmount: number,
@@ -64,9 +77,7 @@ export function profitForOrder(
 ): number {
   let totalCost = 0;
   for (const it of items) {
-    const cat = resolveCategory(it);
-    const unit = costs[cat] ?? costs["Sem categoria"] ?? 0;
-    totalCost += it.quantity * unit;
+    totalCost += lineCost(it, costs);
   }
   return saleAmount - totalCost;
 }
@@ -200,7 +211,8 @@ export function aggregateSalesMetrics(
         normalizedCosts[catKey] ??
         normalizedCosts[normalizeKey("Sem categoria")] ??
         0;
-      const lineCost = qty * unitCost;
+      const kitCost = readyKitLineCost(it, normalizedCosts);
+      const lineCost = kitCost != null ? kitCost : qty * unitCost;
       const allocatedProfit = allocatedRev - lineCost;
       orderProfit += allocatedProfit;
 

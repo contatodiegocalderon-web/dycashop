@@ -1,6 +1,23 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { renameDriveFilesToCurrentStock } from "@/services/drive-rename-stock";
+import { isReadyMadeKitProduct } from "@/lib/kits-category";
 import { flagPendingOrdersAfterConfirm } from "@/lib/order-stock-conflict";
+
+export async function deleteZeroStockExceptKits(
+  admin: SupabaseClient,
+  productIds: string[]
+): Promise<void> {
+  for (const productId of productIds) {
+    const { data: p } = await admin
+      .from("products")
+      .select("id, stock, source, category, drive_file_id")
+      .eq("id", productId)
+      .maybeSingle();
+    if (!p || Number(p.stock ?? 0) > 0) continue;
+    if (isReadyMadeKitProduct(p)) continue;
+    await admin.from("products").delete().eq("id", productId);
+  }
+}
 
 export type ApplyPaidOrderStockResult =
   | {
@@ -128,9 +145,7 @@ export async function applyPaidOrderStockAndDrive(
 
   const deleteZero = opts.deleteZeroStockProducts !== false && driveOk;
   if (deleteZero) {
-    for (const productId of zeroAfterConfirm) {
-      await admin.from("products").delete().eq("id", productId);
-    }
+    await deleteZeroStockExceptKits(admin, zeroAfterConfirm);
   }
 
   return {
@@ -190,16 +205,7 @@ export async function retryVarejoDriveSync(
 
   const rename = await renameDriveFilesToCurrentStock(productIds);
   if (rename.errors.length === 0) {
-    for (const productId of productIds) {
-      const { data: p } = await admin
-        .from("products")
-        .select("id, stock")
-        .eq("id", productId)
-        .maybeSingle();
-      if (p && Number(p.stock ?? 0) <= 0) {
-        await admin.from("products").delete().eq("id", productId);
-      }
-    }
+    await deleteZeroStockExceptKits(admin, productIds);
   }
 
   return {
