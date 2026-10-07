@@ -476,7 +476,7 @@ export default function AdminCategoriasPage() {
         </div>
         <button
           type="button"
-          onClick={loadAll}
+          onClick={() => void loadAll()}
           disabled={loading}
           className="rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-stone-800 disabled:opacity-50"
         >
