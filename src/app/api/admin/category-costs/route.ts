@@ -51,7 +51,7 @@ function rememberStoredCostLabel(labels: Set<string>, raw: unknown) {
   const label = String(raw ?? "").trim();
   if (!label) return;
   const key = categoryLookupKey(label);
-  for (const existing of labels) {
+  for (const existing of Array.from(labels)) {
     if (categoryLookupKey(existing) === key) return;
   }
   labels.add(label);
@@ -70,7 +70,7 @@ function readStoredCost(
   const exact = costs.get(label);
   if (exact) return exact;
   const key = categoryLookupKey(label);
-  for (const [storedLabel, value] of costs) {
+  for (const [storedLabel, value] of Array.from(costs)) {
     if (categoryLookupKey(storedLabel) === key) return value;
   }
   return undefined;
