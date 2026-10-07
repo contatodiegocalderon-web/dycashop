@@ -234,11 +234,15 @@ export default function AdminCategoriasPage() {
 
   async function saveAll() {
     if (!isOwner) return;
-    setSaving(true);
     setError(null);
     setOk(null);
+    let costEntries: {
+      category_label: string;
+      cost_per_piece: number;
+      weight_grams_per_piece: number;
+    }[];
     try {
-      const costEntries = categories.map((category_label) => ({
+      costEntries = categories.map((category_label) => ({
         category_label,
         cost_per_piece: parseCostInput(
           costEditsRef.current[category_label],
@@ -248,17 +252,34 @@ export default function AdminCategoriasPage() {
           String(weightEdits[category_label] ?? "250").replace(",", ".")
         ),
       }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro");
+      return;
+    }
+    const typedCosts = { ...costEditsRef.current };
+    for (const entry of costEntries) {
+      typedCosts[entry.category_label] = String(entry.cost_per_piece);
+    }
+    costEditsRef.current = typedCosts;
+    setCostEdits(typedCosts);
+    setSaving(true);
+    try {
       const showcaseEntries = categories.map((category_label) => ({
         category_label,
         video_url: (videoEdits[category_label] ?? "").trim() || null,
         video_poster_url: (posterEdits[category_label] ?? "").trim() || null,
-        wholesale_tiers: isKitsCategory(category_label)
-          ? showcaseRows.find((r) => r.category_label === category_label)
-              ?.wholesale_tiers?.length
-            ? showcaseRows.find((r) => r.category_label === category_label)!
-                .wholesale_tiers
-            : [{ minQty: 1, maxQty: null, price: 0 }]
-          : parseTierText(tiersEdits[category_label] ?? ""),
+        wholesale_tiers: (() => {
+          const existing = showcaseRows.find((r) => r.category_label === category_label)
+            ?.wholesale_tiers;
+          const fallback =
+            existing && existing.length > 0
+              ? existing
+              : [{ minQty: 1, maxQty: null, price: 0 }];
+          if (isKitsCategory(category_label)) return fallback;
+          const text = (tiersEdits[category_label] ?? "").trim();
+          if (!text) return fallback;
+          return parseTierText(text);
+        })(),
         retail_price_per_piece: (() => {
           if (isKitsCategory(category_label)) return null;
           const raw = (retailEdits[category_label] ?? "").trim();
@@ -306,6 +327,7 @@ export default function AdminCategoriasPage() {
         const label = String(row.category_label ?? "").trim();
         const n = Number(row.cost_per_piece);
         if (!label || !Number.isFinite(n)) continue;
+        if (n === 0 && (keepCosts[label] ?? 0) > 0) continue;
         keepCosts[label] = n;
       }
       setOk("Categorias atualizadas com sucesso.");
@@ -675,14 +697,21 @@ export default function AdminCategoriasPage() {
           </div>
 
           {isOwner && (
-            <button
-              type="button"
-              onClick={saveAll}
-              disabled={saving}
-              className="mt-6 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-            >
-              {saving ? "A guardar…" : "Guardar categorias"}
-            </button>
+            <div className="sticky bottom-4 z-30 mt-6 rounded-2xl border border-violet-200 bg-white/95 p-3 shadow-lg backdrop-blur">
+              {error && (
+                <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                  {error}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => void saveAll()}
+                disabled={saving}
+                className="w-full rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50 sm:w-auto"
+              >
+                {saving ? "A guardar…" : "Guardar categorias"}
+              </button>
+            </div>
           )}
         </>
       ) : (
