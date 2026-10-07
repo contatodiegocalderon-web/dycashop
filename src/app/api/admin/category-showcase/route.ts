@@ -173,8 +173,8 @@ export async function GET(request: NextRequest) {
       const found =
         mapExact.get(category_label) ??
         mapNormalized.get(categoryLookupKey(category_label));
-      return (
-        found ?? {
+      if (!found) {
+        return {
           category_label,
           video_url: null,
           video_poster_url: null,
@@ -184,8 +184,9 @@ export async function GET(request: NextRequest) {
           catalog_cover_image_url: null,
           catalog_banner_hidden: false,
           display_order: null,
-        }
-      );
+        };
+      }
+      return { ...found, category_label };
     });
     return NextResponse.json({ rows });
   } catch (e) {

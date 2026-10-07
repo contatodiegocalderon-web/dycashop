@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { HomeBannersAdminPanel } from "@/components/admin/home-banners-admin";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import {
+  categoryLookupKey,
   DISPLAY_ORDER_DEFAULT_SENTINEL,
   sortCategoryLabelsForCatalog,
 } from "@/lib/catalog-categories";
@@ -29,6 +30,44 @@ type ShowcaseRow = {
 };
 
 type CoverKind = "home_grid" | "category_page";
+
+function parseCostInput(raw: string | undefined, label: string): number {
+  const text = String(raw ?? "")
+    .trim()
+    .replace(/\s/g, "")
+    .replace(",", ".");
+  if (!text) throw new Error(`Informe o custo de ${label}.`);
+  const n = Number(text);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`Custo inválido em ${label}.`);
+  }
+  return n;
+}
+
+function keptCostForLabel(
+  keep: Record<string, number> | undefined,
+  label: string
+): number | undefined {
+  if (!keep) return undefined;
+  if (Object.prototype.hasOwnProperty.call(keep, label)) {
+    const direct = Number(keep[label]);
+    if (Number.isFinite(direct)) return direct;
+  }
+  const key = categoryLookupKey(label);
+  for (const [storedLabel, value] of Object.entries(keep)) {
+    if (categoryLookupKey(storedLabel) !== key) continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
+function costRowForLabel(rows: CostRow[], label: string): CostRow | undefined {
+  const exact = rows.find((r) => r.category_label === label);
+  if (exact) return exact;
+  const key = categoryLookupKey(label);
+  return rows.find((r) => categoryLookupKey(r.category_label) === key);
+}
 
 function tiersToText(tiers: WholesaleTier[]) {
   return tiers
@@ -78,6 +117,7 @@ export default function AdminCategoriasPage() {
 
   const [categories, setCategories] = useState<string[]>([]);
   const [costEdits, setCostEdits] = useState<Record<string, string>>({});
+  const costEditsRef = useRef<Record<string, string>>({});
   const [weightEdits, setWeightEdits] = useState<Record<string, string>>({});
   const [videoEdits, setVideoEdits] = useState<Record<string, string>>({});
   const [posterEdits, setPosterEdits] = useState<Record<string, string>>({});
@@ -94,10 +134,15 @@ export default function AdminCategoriasPage() {
   const [showcaseRows, setShowcaseRows] = useState<ShowcaseRow[]>([]);
   const [reorderBusy, setReorderBusy] = useState(false);
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (opts?: {
+    preserveStatus?: boolean;
+    keepCosts?: Record<string, number>;
+  }) => {
     setLoading(true);
-    setError(null);
-    setOk(null);
+    if (!opts?.preserveStatus) {
+      setError(null);
+      setOk(null);
+    }
     try {
       const [costRes, showcaseRes] = await Promise.all([
         adminFetch("/api/admin/category-costs"),
@@ -144,12 +189,13 @@ export default function AdminCategoriasPage() {
       const catCoverMap: Record<string, string> = {};
       const hiddenMap: Record<string, boolean> = {};
       for (const label of sortedLabels) {
-        const cost = costRows.find((r) => r.category_label === label)?.cost_per_piece ?? 0;
-        const weight =
-          costRows.find((r) => r.category_label === label)?.weight_grams_per_piece ??
-          250;
+        const stored = costRowForLabel(costRows, label);
+        const kept = keptCostForLabel(opts?.keepCosts, label);
+        const loaded = Number(stored?.cost_per_piece);
+        const cost = kept != null ? kept : loaded;
+        const weight = stored?.weight_grams_per_piece ?? 250;
         const showcase = showcaseRowsParsed.find((r) => r.category_label === label);
-        costMap[label] = String(cost);
+        costMap[label] = Number.isFinite(cost) ? String(cost) : "";
         weightMap[label] = String(weight);
         videoMap[label] = showcase?.video_url ?? "";
         posterMap[label] = showcase?.video_poster_url ?? "";
@@ -165,6 +211,7 @@ export default function AdminCategoriasPage() {
       }
 
       setCategories(sortedLabels);
+      costEditsRef.current = costMap;
       setCostEdits(costMap);
       setWeightEdits(weightMap);
       setVideoEdits(videoMap);
@@ -193,7 +240,10 @@ export default function AdminCategoriasPage() {
     try {
       const costEntries = categories.map((category_label) => ({
         category_label,
-        cost_per_piece: Number(String(costEdits[category_label] ?? "0").replace(",", ".")),
+        cost_per_piece: parseCostInput(
+          costEditsRef.current[category_label],
+          category_label
+        ),
         weight_grams_per_piece: Number(
           String(weightEdits[category_label] ?? "250").replace(",", ".")
         ),
@@ -245,8 +295,21 @@ export default function AdminCategoriasPage() {
       if (!showcaseRes.ok) {
         throw new Error(showcaseJson.error ?? "Falha ao salvar categorias");
       }
+      const keepCosts: Record<string, number> = {};
+      for (const entry of costEntries) {
+        keepCosts[entry.category_label] = entry.cost_per_piece;
+      }
+      const savedRows = (
+        costJson as { rows?: Array<{ category_label?: string; cost_per_piece?: number }> }
+      ).rows;
+      for (const row of savedRows ?? []) {
+        const label = String(row.category_label ?? "").trim();
+        const n = Number(row.cost_per_piece);
+        if (!label || !Number.isFinite(n)) continue;
+        keepCosts[label] = n;
+      }
       setOk("Categorias atualizadas com sucesso.");
-      await loadAll();
+      await loadAll({ preserveStatus: true, keepCosts });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
     } finally {
@@ -536,9 +599,14 @@ export default function AdminCategoriasPage() {
                       inputMode="decimal"
                       disabled={!isOwner}
                       value={costEdits[label] ?? ""}
-                      onChange={(e) =>
-                        setCostEdits((prev) => ({ ...prev, [label]: e.target.value }))
-                      }
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setCostEdits((prev) => {
+                          const next = { ...prev, [label]: value };
+                          costEditsRef.current = next;
+                          return next;
+                        });
+                      }}
                       className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 disabled:bg-stone-100"
                     />
                   </label>
