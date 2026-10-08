@@ -11,8 +11,9 @@ export type ReactivationCampaign =
   | "day45"
   | "day60";
 
-export const ABANDON_NEW_AFTER_DAYS = 5;
-export const ABANDON_REPEAT_AFTER_DAYS = 7;
+/** Etapa 1 (Tarefas): o lead só entra na fila depois de 20 dias. */
+export const ABANDON_NEW_AFTER_DAYS = 20;
+export const ABANDON_REPEAT_AFTER_DAYS = 20;
 /** Etapa 1: leads com 60+ dias saem da fila — o pedido já ficou velho demais. */
 export const ABANDON_UNTIL_DAYS = 60;
 export const STAGE3_AFTER_DAYS = 20;
