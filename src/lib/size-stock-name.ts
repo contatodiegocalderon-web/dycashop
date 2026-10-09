@@ -94,14 +94,14 @@ export function formatSizeStockGrid(
 }
 
 /**
- * Pasta de tamanho: `M`, `G`, `GG`, `38` ou `38-4` (tamanho e, se houver, estoque).
+ * Pasta de tamanho: `P`, `M`, `G`, `GG`, `38` ou `38-4` (tamanho e, se houver, estoque).
  */
 export function parseSizeFolder(
   name: string
 ): { size: string; stock: number | null } | null {
   const key = name.trim();
   const lower = key.toLowerCase();
-  if (lower === "m" || lower === "g" || lower === "gg") {
+  if (lower === "p" || lower === "m" || lower === "g" || lower === "gg") {
     return { size: lower === "gg" ? "GG" : lower.toUpperCase(), stock: null };
   }
   const numbered = key.match(/^(\d{2})(?:-(\d+))?$/);

@@ -178,7 +178,7 @@ export function CatalogFilters({
   colorOptions,
   showCategoryFilter = true,
   categoryNavigation,
-  sizeOptions = ["M", "G", "GG"],
+  sizeOptions = ["P", "M", "G", "GG"],
   onSize,
   onCategory,
   onBrands,

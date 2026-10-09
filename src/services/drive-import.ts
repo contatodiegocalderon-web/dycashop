@@ -285,7 +285,7 @@ function dedupeDriveRows(rows: DriveImportRow[]): DriveImportRow[] {
 
 /**
  * Pasta principal do catálogo (ID/link configurado) → cada subpasta **é uma categoria**
- * (ex.: BERMUDAS ELASTANO, CAMISETAS STREETWEAR). Dentro de cada uma: pastas **M**, **G**, **GG**
+ * (ex.: BERMUDAS ELASTANO, CAMISETAS STREETWEAR). Dentro de cada uma: pastas **P**, **M**, **G**, **GG**
  * ou numeradas (`38`, `38-4`) com as fotos.
  *
  * Calça e tênis: a foto fica direto na categoria e o nome lista os tamanhos

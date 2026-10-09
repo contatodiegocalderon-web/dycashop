@@ -1,4 +1,4 @@
-const APPAREL_SIZE_ORDER = ["M", "G", "GG"] as const;
+const APPAREL_SIZE_ORDER = ["P", "M", "G", "GG"] as const;
 
 export function compareProductSizes(a: string, b: string): number {
   const ia = APPAREL_SIZE_ORDER.indexOf(a as (typeof APPAREL_SIZE_ORDER)[number]);

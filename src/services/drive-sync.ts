@@ -590,7 +590,7 @@ async function runSync(
       removedMissingFromDrive: prune.removed,
       storageRemoved,
       message:
-        "Nenhuma imagem válida nas pastas M, G ou GG. Estrutura: uma subpasta por categoria; dentro, M, G, GG com ficheiros «MARCA COR».",
+        "Nenhuma imagem válida nas pastas P, M, G ou GG. Estrutura: uma subpasta por categoria; dentro, P, M, G, GG com ficheiros «MARCA COR».",
     });
   }
 

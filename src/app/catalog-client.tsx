@@ -134,7 +134,7 @@ export function CatalogClient({
   );
 
   const sizeOptions = useMemo(() => {
-    if (products.length === 0) return ["M", "G", "GG"];
+    if (products.length === 0) return ["P", "M", "G", "GG"];
     return orderedProductSizes(
       products.map((p) => jeansCatalogSize(p.category, p.size))
     );

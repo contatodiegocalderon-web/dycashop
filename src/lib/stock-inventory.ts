@@ -40,7 +40,7 @@ function categoryLabel(raw: string | null | undefined): string {
 
 function normalizeSize(raw: string): string {
   const s = String(raw ?? "").trim().toUpperCase();
-  if (s === "M" || s === "G" || s === "GG") return s;
+  if (s === "P" || s === "M" || s === "G" || s === "GG") return s;
   return s || "—";
 }
 

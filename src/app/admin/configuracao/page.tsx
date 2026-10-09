@@ -456,9 +456,9 @@ function ConfiguracaoInner() {
         <p className="mt-2 text-xs leading-relaxed text-stone-600">
           Cole o link da pasta principal do catálogo (ex.: <strong>CATÁLOGO</strong>). Dentro
           dela, <strong>cada pasta é uma categoria</strong> (BERMUDAS ELASTANO, CAMISETAS
-          STREETWEAR, JEANS…). Em cada categoria existem as pastas <strong>M</strong>,{" "}
-          <strong>G</strong> e <strong>GG</strong> com as fotos (<code>MARCA COR</code> no
-          nome do ficheiro).
+          STREETWEAR, JEANS…). Em cada categoria existem as pastas <strong>P</strong>,{" "}
+          <strong>M</strong>, <strong>G</strong> e <strong>GG</strong> com as fotos (
+          <code>MARCA COR</code> no nome do ficheiro).
         </p>
         {driveFolderId && (
           <p className="mt-2 text-xs text-stone-500">

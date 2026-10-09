@@ -8,7 +8,7 @@ import type { Product, ProductSize } from "@/types";
  */
 export const ENABLE_GUIDED_CATEGORY_WIZARD = false;
 
-export const WIZARD_SIZE_ORDER: ProductSize[] = ["M", "G", "GG"];
+export const WIZARD_SIZE_ORDER: ProductSize[] = ["P", "M", "G", "GG"];
 
 export function isWizardCatalogProduct(p: Product): boolean {
   return p.status === "ATIVO" && p.stock > 0;
