@@ -12,7 +12,14 @@ type KiwifyPayload = {
   subscription_id?: string;
   Customer?: { email?: string; full_name?: string; mobile?: string };
   Subscription?: { status?: string };
+  Product?: { product_id?: string; product_name?: string };
 };
+
+/** O webhook da Kiwify vale para todos os produtos da conta; só o plano de dropshipping dá acesso à comunidade. */
+function isCommunityProduct(payload: KiwifyPayload): boolean {
+  const name = payload.Product?.product_name?.trim();
+  return !name || /dropshipping/i.test(name);
+}
 
 const REVOKE_EVENTS = new Set([
   "order_refunded",
@@ -56,6 +63,9 @@ export async function POST(request: NextRequest) {
     .toLowerCase();
   if (!orderId || !email) {
     return NextResponse.json({ ok: true, ignored: "sem pedido ou email" });
+  }
+  if (!isCommunityProduct(payload)) {
+    return NextResponse.json({ ok: true, ignored: "outro produto" });
   }
 
   const event = String(payload.webhook_event_type ?? "").trim();
