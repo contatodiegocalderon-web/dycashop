@@ -45,6 +45,18 @@ const cards: CardDef[] = [
     ownerOnly: true,
     preview: null,
   },
+  {
+    href: "/admin/parceiros",
+    title: "Parceiros drop",
+    ownerOnly: true,
+    preview: null,
+  },
+  {
+    href: "/admin/comunidade",
+    title: "Comunidade: aulas e cronograma",
+    ownerOnly: true,
+    preview: null,
+  },
 ];
 
 function fmtMoney(n: number) {

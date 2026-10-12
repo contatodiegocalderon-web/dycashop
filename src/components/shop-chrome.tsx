@@ -10,6 +10,10 @@ import { SiteHeader } from "@/components/site-header";
 export function ShopChrome({ children }: { children: ReactNode }) {
   const path = usePathname();
   const admin = path?.startsWith("/admin") ?? false;
+  const dropChrome =
+    path === "/venda-sem-estoque" ||
+    path === "/comunidade" ||
+    (path?.startsWith("/comunidade/") ?? false);
 
   useEffect(() => {
     if (!path) return;
@@ -18,7 +22,7 @@ export function ShopChrome({ children }: { children: ReactNode }) {
     rememberCatalogReturnUrl(path, search);
   }, [path]);
 
-  if (admin) {
+  if (admin || dropChrome) {
     return <>{children}</>;
   }
 

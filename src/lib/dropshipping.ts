@@ -1,4 +1,4 @@
-/** Plano de revenda / dropshipping DYCASHOP — funil de conversão na home. */
+/** Plano de revenda / dropshipping DYCASHOP — funil de conversão. */
 
 export const DROP_MONTHLY_PRICE_BRL = 100;
 
@@ -11,11 +11,12 @@ export const DROP_CHECKOUT_URL = "https://pay.kiwify.com.br/C6JV9t8";
 export const DROP_CATALOG_DRIVE_URL =
   "https://drive.google.com/drive/folders/1qMLAaPdhvOhkusmrQKKux9AniWQNQgEd?usp=drive_link";
 
-/** Defaults da calculadora (30 camisetas/mês a R$60 → R$1.050 com custo R$25). */
-export const DROP_CALC_DEFAULT_SALE_BRL = 60;
-export const DROP_CALC_DEFAULT_QTY_PER_MONTH = 30;
+export const DROP_LANDING_PATH = "/venda-sem-estoque";
+export const DROP_LOGIN_PATH = "/comunidade/entrar";
+export const DROP_COMMUNITY_PATH = "/comunidade";
+export const DROP_CLAIM_PATH = "/comunidade/criar-acesso";
 
-/** Tabela do funil — preços exclusivos a partir de 1 peça. */
+/** Tabela de preços exclusivos a partir de 1 peça. */
 export type DropMemberPriceRow = {
   label: string;
   price: number;
@@ -31,3 +32,10 @@ export const DROP_MEMBER_PRICE_ROWS: DropMemberPriceRow[] = [
   { label: "Conjunto dryfit frio", price: 60 },
   { label: "Jeans", price: 65 },
 ];
+
+/** Preços de atacado para quem monta estoque próprio. */
+export const DROP_STOCK_TIERS = [
+  { qty: 10, unit: 23 },
+  { qty: 30, unit: 21 },
+  { qty: 100, unit: 19 },
+] as const;
