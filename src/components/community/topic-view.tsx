@@ -23,6 +23,24 @@ import {
 
 type Toggle = (kind: ToggleKind, id: string, done: boolean) => Promise<void>;
 
+function Linkified({ text }: { text: string }) {
+  return text.split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
+    /^https?:\/\//.test(part) ? (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="break-all font-medium text-emerald-300 underline decoration-emerald-400/40 underline-offset-2 hover:text-emerald-200"
+      >
+        {part}
+      </a>
+    ) : (
+      part
+    )
+  );
+}
+
 function TopicHeader({ topic, right }: { topic: CommunityTopic; right?: React.ReactNode }) {
   return (
     <div
@@ -137,7 +155,7 @@ function LessonsView({ topic, data, toggle }: { topic: CommunityTopic; data: Com
                   <h2 className="text-xl font-bold text-white">{current.title}</h2>
                   {current.description ? (
                     <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-stone-400">
-                      {current.description}
+                      <Linkified text={current.description} />
                     </p>
                   ) : null}
                 </div>

@@ -1,9 +1,30 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { WEEKDAY_LABELS, addDays, saoPauloToday } from "@/lib/drop-community";
 import { buildDayPlan, type PlanSlot } from "@/lib/drop-content-plan";
 import { DROP_CHECKOUT_URL } from "@/lib/dropshipping";
+
+/** No celular, o checkout só abre pelo botão do card do plano; os outros descem até ele. */
+export function scrollToPlanOnMobile(e: MouseEvent<HTMLAnchorElement>) {
+  if (!window.matchMedia("(max-width: 767px)").matches) return;
+  const card = document.getElementById("plano");
+  if (!card) return;
+  e.preventDefault();
+  const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  card.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+  // Imagens que carregam durante a rolagem empurram o card; corrige ao final.
+  window.addEventListener(
+    "scrollend",
+    () => {
+      const offset = parseFloat(getComputedStyle(card).scrollMarginTop) || 0;
+      if (Math.abs(card.getBoundingClientRect().top - offset) > 8) {
+        card.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+      }
+    },
+    { once: true }
+  );
+}
 
 function Lock({ size = 11 }: { size?: number }) {
   return (
@@ -220,6 +241,7 @@ export function CommunityShowcase() {
                   href={DROP_CHECKOUT_URL}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={scrollToPlanOnMobile}
                   className="jr-cta mt-3 rounded-xl px-4 py-2.5 text-[11px] font-extrabold uppercase tracking-wider text-zinc-950"
                 >
                   Quero ver tudo

@@ -20,12 +20,9 @@ import {
   DROP_WHOLESALE_UNIT_BRL,
 } from "@/lib/dropshipping";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
-import { CommunityShowcase } from "@/components/drop-landing-showcase";
+import { CommunityShowcase, scrollToPlanOnMobile } from "@/components/drop-landing-showcase";
 import { FREE_PIECE_EVERY, PIECE_MILESTONES } from "@/lib/drop-rewards";
 
-const EXAMPLE_SALE_BRL = 60;
-const PROFIT_EACH = EXAMPLE_SALE_BRL - DROP_WHOLESALE_UNIT_BRL;
-const SALES_TO_PAY_PLAN = Math.ceil(DROP_MONTHLY_PRICE_BRL / PROFIT_EACH);
 const CNPJ = "65.888.954/0001-28";
 const INSTAGRAM_URL = "https://www.instagram.com/dyfontecamisetas/";
 
@@ -334,15 +331,18 @@ function Check() {
 function PrimaryCta({
   children,
   className = "",
+  checkout = false,
 }: {
   children: ReactNode;
   className?: string;
+  checkout?: boolean;
 }) {
   return (
     <a
       href={DROP_CHECKOUT_URL}
       target="_blank"
       rel="noopener noreferrer"
+      onClick={checkout ? undefined : scrollToPlanOnMobile}
       className={`drop-cta-glow inline-flex items-center justify-center whitespace-nowrap rounded-full bg-emerald-500 px-7 py-4 text-sm font-bold uppercase tracking-[0.12em] text-zinc-950 transition hover:bg-emerald-400 ${className}`}
     >
       {children}
@@ -460,10 +460,9 @@ const STEPS = [
 const INCLUDED = [
   `Preço de atacado em 1 peça — camiseta e bermuda a ${money(DROP_WHOLESALE_UNIT_BRL)}`,
   "Cronograma diário pronto: o que postar no feed e nos stories",
-  "Vídeos novos toda semana e fotos do catálogo, sem a nossa marca",
+  "Vídeos novos toda semana",
   "Catálogo com +10 mil itens, atualizado em tempo real",
   "Jornada de recompensas: 1 peça grátis a cada 10 vendidas",
-  "Preço que cai até R$ 20 conforme você vende",
   "Aulas passo a passo de pedido, etiqueta e frete",
   "Despacho em até 24h direto pro seu cliente",
   "Entrada no time com +500 parceiros",
@@ -923,7 +922,7 @@ export function DropLanding({
                   { label: "1 peça", sub: "dropshipping", unit: DROP_WHOLESALE_UNIT_BRL },
                   ...DROP_STOCK_TIERS.map((t) => ({
                     label: `${t.qty} peças`,
-                    sub: "estoque próprio",
+                    sub: "atacado",
                     unit: t.unit,
                   })),
                 ].map((s, i) => (
@@ -1001,7 +1000,7 @@ export function DropLanding({
               </p>
             </div>
             <p className="inline-flex shrink-0 items-center gap-2 self-start rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-200 lg:self-auto">
-              🎁 A cada {FREE_PIECE_EVERY} peças: 1 grátis
+              🎁 A cada {FREE_PIECE_EVERY} peças vendidas: você ganha 1 grátis
             </p>
           </div>
 
@@ -1037,6 +1036,9 @@ export function DropLanding({
                 <p className="mt-1 text-base font-semibold tracking-tight text-stone-50">
                   {m.at === 0 ? `R$ ${m.price} por peça` : m.title}
                 </p>
+                {m.price != null ? (
+                  <p className="mt-0.5 text-xs font-semibold text-emerald-300/90">mesmo levando só 1</p>
+                ) : null}
                 <p className="mt-1 text-xs leading-relaxed text-stone-500">
                   {m.at === 0 ? "Sua primeira venda já começa a contar." : m.desc}
                 </p>
@@ -1052,9 +1054,9 @@ export function DropLanding({
         >
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
             <Tilt max={4} className="mx-auto max-w-3xl">
-              <div className="drop-card drop-plan grid gap-8 p-7 sm:p-10 md:grid-cols-[1.2fr_0.8fr]">
+              <div id="plano" className="drop-card drop-plan grid scroll-mt-20 gap-8 p-7 sm:p-10 md:grid-cols-[1.2fr_0.8fr]">
                 <div>
-                  <Eyebrow>Plano parceiro</Eyebrow>
+                  <Eyebrow>Plano mensal</Eyebrow>
                   <p className="mt-3 text-2xl font-semibold tracking-tight text-stone-50">
                     Tudo que você recebe
                   </p>
@@ -1072,14 +1074,10 @@ export function DropLanding({
                     R${DROP_MONTHLY_PRICE_BRL}
                   </p>
                   <p className="mt-1 text-sm text-stone-400">por mês</p>
-                  <p className="mt-4 text-sm text-stone-400">
-                    Se paga com {SALES_TO_PAY_PLAN} vendas no mês (vendendo a{" "}
-                    {money(EXAMPLE_SALE_BRL)}).
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-emerald-300">
+                  <p className="mt-4 text-sm font-medium text-emerald-300">
                     Garantia de 7 dias · cancele quando quiser
                   </p>
-                  <PrimaryCta className="mt-6 w-full !px-4">Quero ser parceiro</PrimaryCta>
+                  <PrimaryCta checkout className="mt-6 w-full !px-4">Quero ser parceiro</PrimaryCta>
                   <p className="mt-3 text-center text-xs text-stone-500">
                     Depois de pagar você cria sua senha e entra na hora. Já assinou?{" "}
                     <Link href={DROP_LOGIN_PATH} className="text-stone-300 underline">
