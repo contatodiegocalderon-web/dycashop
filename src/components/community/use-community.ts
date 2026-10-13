@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { DROP_LOGIN_PATH } from "@/lib/dropshipping";
 import type { LessonModule } from "@/lib/drop-community";
+import { buildDayPlan, isDayComplete, type PlanSlotId } from "@/lib/drop-content-plan";
 
 export type Lesson = {
   id: string;
@@ -32,7 +33,38 @@ export type CommunityData = {
     items: ScheduleItem[];
     checkedItemIds: string[];
   };
+  plan: {
+    today: string;
+    /** `AAAA-MM-DD|slot` da semana atual. */
+    checks: string[];
+    streakBeforeToday: number;
+    formats: { format_key: string; material_url: string | null; lesson_id: string | null }[];
+  };
 };
+
+export type ToggleKind = "lesson" | "schedule" | "plan";
+
+function withList(d: CommunityData, kind: ToggleKind, fn: (list: string[]) => string[]): CommunityData {
+  if (kind === "lesson") return { ...d, completedLessonIds: fn(d.completedLessonIds) };
+  if (kind === "schedule") return { ...d, schedule: { ...d.schedule, checkedItemIds: fn(d.schedule.checkedItemIds) } };
+  return { ...d, plan: { ...d.plan, checks: fn(d.plan.checks) } };
+}
+
+export function planDayProgress(data: CommunityData, date: string) {
+  const plan = buildDayPlan(date);
+  const isChecked = (slot: PlanSlotId) => data.plan.checks.includes(`${date}|${slot}`);
+  return {
+    plan,
+    isChecked,
+    done: plan.slots.filter((s) => isChecked(s.id)).length,
+    total: plan.slots.length,
+    complete: isDayComplete(isChecked),
+  };
+}
+
+export function currentStreak(data: CommunityData): number {
+  return data.plan.streakBeforeToday + (planDayProgress(data, data.plan.today).complete ? 1 : 0);
+}
 
 export function useCommunity() {
   const [data, setData] = useState<CommunityData | null>(null);
@@ -57,17 +89,15 @@ export function useCommunity() {
   }, []);
 
   const toggle = useCallback(
-    async (kind: "lesson" | "schedule", id: string, done: boolean) => {
-      const key = kind === "lesson" ? "completedLessonIds" : "checkedItemIds";
+    async (kind: ToggleKind, id: string, done: boolean) => {
       const apply = (on: boolean) =>
-        setData((d) => {
-          if (!d) return d;
-          const list = kind === "lesson" ? d.completedLessonIds : d.schedule.checkedItemIds;
-          const next = on ? Array.from(new Set([...list, id])) : list.filter((x) => x !== id);
-          return kind === "lesson"
-            ? { ...d, [key]: next }
-            : { ...d, schedule: { ...d.schedule, [key]: next } };
-        });
+        setData((d) =>
+          d
+            ? withList(d, kind, (list) =>
+                on ? Array.from(new Set([...list, id])) : list.filter((x) => x !== id)
+              )
+            : d
+        );
       apply(done);
       const res = await fetch("/api/drop/progress", {
         method: "POST",

@@ -11,6 +11,17 @@ import {
   type LessonModule,
 } from "@/lib/drop-community";
 import { DROP_CLAIM_PATH } from "@/lib/dropshipping";
+import { CONTENT_FORMATS, EFFORT_LABELS, FORMAT_KEYS, type FormatKey } from "@/lib/drop-content-plan";
+
+type FormatLink = { format_key: string; material_url: string | null; lesson_id: string | null };
+
+type Tab = "aulas" | "formatos" | "cronograma";
+
+const TAB_LABELS: Record<Tab, string> = {
+  aulas: "Aulas",
+  formatos: "Material do cronograma",
+  cronograma: "Extras da semana",
+};
 
 type Lesson = {
   id: string;
@@ -44,7 +55,9 @@ function fmt(iso: string) {
 export default function AdminComunidadePage() {
   const router = useRouter();
   const { adminFetch, isOwner } = useAdminAuth();
-  const [tab, setTab] = useState<"aulas" | "cronograma">("aulas");
+  const [tab, setTab] = useState<Tab>("aulas");
+  const [formats, setFormats] = useState<FormatLink[]>([]);
+  const [savedFormat, setSavedFormat] = useState<string | null>(null);
   const [mod, setMod] = useState<LessonModule>("atacado");
   const [week, setWeek] = useState<string | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -63,6 +76,7 @@ export default function AdminComunidadePage() {
         week?: string;
         lessons?: Lesson[];
         items?: Item[];
+        formats?: FormatLink[];
       };
       if (!res.ok) {
         setError(data.error ?? "Falha ao carregar");
@@ -71,6 +85,7 @@ export default function AdminComunidadePage() {
       setWeek(data.week ?? null);
       setLessons(data.lessons ?? []);
       setItems(data.items ?? []);
+      setFormats(data.formats ?? []);
     },
     [adminFetch]
   );
@@ -182,6 +197,18 @@ export default function AdminComunidadePage() {
     if (ok) setEditing(null);
   }
 
+  async function saveFormat(e: FormEvent<HTMLFormElement>, key: FormatKey) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const ok = await send("POST", {
+      type: "format",
+      format_key: key,
+      material_url: f.get("material_url"),
+      lesson_id: f.get("lesson_id"),
+    });
+    if (ok) setSavedFormat(key);
+  }
+
   if (!isOwner) return null;
 
   const modLessons = lessons.filter((l) => l.module === mod);
@@ -230,7 +257,7 @@ export default function AdminComunidadePage() {
       </details>
 
       <div className="mt-6 flex gap-2">
-        {(["aulas", "cronograma"] as const).map((t) => (
+        {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -242,7 +269,7 @@ export default function AdminComunidadePage() {
               tab === t ? "bg-violet-600 text-white" : "border border-white/15 text-violet-200"
             }`}
           >
-            {t === "aulas" ? "Aulas" : "Cronograma semanal"}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
@@ -372,6 +399,51 @@ export default function AdminComunidadePage() {
               Adicionar aula
             </button>
           </form>
+        </section>
+      ) : tab === "formatos" ? (
+        <section className="mt-6">
+          <p className="text-sm text-violet-200/70">
+            O cronograma de cada dia é montado sozinho a partir destes 10 formatos. Cole o link da pasta do
+            Drive com o material de cada um e escolha a aula que ensina. O parceiro vê os botões
+            &quot;Pegar material&quot; e &quot;Ver aula&quot; no post do dia.
+          </p>
+          <ul className="mt-5 grid gap-3 md:grid-cols-2">
+            {FORMAT_KEYS.map((key) => {
+              const f = CONTENT_FORMATS[key];
+              const cur = formats.find((x) => x.format_key === key);
+              return (
+                <li key={key} className="rounded-2xl border border-white/10 p-4">
+                  <form onSubmit={(e) => void saveFormat(e, key)} className="space-y-2">
+                    <p className="text-sm font-bold text-white">{f.label}</p>
+                    <p className="text-xs text-violet-200/60">{EFFORT_LABELS[f.effort]} · {f.how}</p>
+                    <input
+                      name="material_url"
+                      defaultValue={cur?.material_url ?? ""}
+                      placeholder="Link da pasta do material (Drive)"
+                      className={field}
+                    />
+                    <select name="lesson_id" defaultValue={cur?.lesson_id ?? ""} className={field}>
+                      <option value="">Sem aula vinculada</option>
+                      {LESSON_TOPICS.map((t) => (
+                        <optgroup key={t.slug} label={t.title}>
+                          {lessons
+                            .filter((l) => l.module === t.slug)
+                            .map((l) => (
+                              <option key={l.id} value={l.id}>
+                                {l.title}
+                              </option>
+                            ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <button disabled={busy} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
+                      {savedFormat === key ? "✓ Salvo" : "Salvar"}
+                    </button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
         </section>
       ) : week ? (
         <section className="mt-6">

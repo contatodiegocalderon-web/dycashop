@@ -16,7 +16,13 @@ import {
   type CommunityTopic,
 } from "@/lib/drop-community";
 import { CommunityLoading, CommunityShell } from "@/components/community/community-shell";
-import { useCommunity, type CommunityData, type Lesson } from "@/components/community/use-community";
+import {
+  currentStreak,
+  planDayProgress,
+  useCommunity,
+  type CommunityData,
+  type Lesson,
+} from "@/components/community/use-community";
 
 function money(n: number) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -29,10 +35,12 @@ function topicHref(t: CommunityTopic): string {
 function topicMeta(t: CommunityTopic, data: CommunityData): { label: string; progress: number | null } {
   if (t.kind === "link") return { label: "Abrir no Drive ↗", progress: null };
   if (t.kind === "schedule") {
-    const today = data.schedule.items.filter((i) => i.weekday === data.schedule.today);
-    if (!today.length) return { label: "Ver a semana", progress: null };
-    const done = today.filter((i) => data.schedule.checkedItemIds.includes(i.id)).length;
-    return { label: `Hoje: ${done}/${today.length} feitos`, progress: done / today.length };
+    const { done, total } = planDayProgress(data, data.plan.today);
+    const streak = currentStreak(data);
+    return {
+      label: `Hoje: ${done}/${total} postados${streak ? ` · 🔥 ${streak}` : ""}`,
+      progress: total ? done / total : null,
+    };
   }
   const lessons = data.lessons.filter((l) => l.module === t.slug);
   if (!lessons.length) return { label: "Aulas em breve", progress: null };
@@ -133,17 +141,18 @@ export function DropCommunity() {
   const upNext = nextLesson(data);
   const upNextTopic = upNext ? getTopic(upNext.module) : null;
   const upNextThumb = upNext ? youtubeId(upNext.youtube_url) : null;
-  const todayItems = data.schedule.items.filter((i) => i.weekday === data.schedule.today);
-  const todayDone = todayItems.filter((i) => data.schedule.checkedItemIds.includes(i.id)).length;
+  const todayPlan = planDayProgress(data, data.plan.today);
 
   return (
     <CommunityShell>
       <section className="cm-hero relative overflow-hidden">
         {upNextThumb ? (
-          <Image src={youtubeThumb(upNextThumb)} alt="" fill unoptimized priority className="object-cover opacity-30 blur-[2px]" />
+          <>
+            <Image src={youtubeThumb(upNextThumb)} alt="" fill unoptimized priority className="object-cover opacity-30 blur-[2px]" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#050706] via-[#050706]/85 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#050706] to-transparent" />
+          </>
         ) : null}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#0b0b0d] via-[#0b0b0d]/85 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#0b0b0d] to-transparent" />
         <div className="relative mx-auto max-w-7xl px-4 pb-14 pt-10 sm:px-8 sm:pb-20 sm:pt-16">
           <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-400">
             Olá, {first}
@@ -193,11 +202,10 @@ export function DropCommunity() {
               </div>
             </>
           )}
-          {todayItems.length ? (
-            <p className="mt-5 text-xs text-stone-400">
-              Cronograma de hoje: {todayDone} de {todayItems.length} feitos
-            </p>
-          ) : null}
+          <p className="mt-5 text-xs text-stone-400">
+            Hoje é <strong className="text-emerald-300">{todayPlan.plan.theme.toLowerCase()}</strong>:{" "}
+            {todayPlan.done} de {todayPlan.total} posts feitos
+          </p>
         </div>
       </section>
 
@@ -235,7 +243,7 @@ export function DropCommunity() {
         })}
 
         <section className="mt-12 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 sm:p-6">
+          <div className="cm-slot rounded-2xl p-5 sm:p-6">
             <h2 className="text-base font-bold uppercase tracking-wide text-white">Dropshipping</h2>
             <p className="mt-1 text-xs text-stone-400">
               A partir de 1 peça. Quanto mais você vender, mais vamos diminuir o preço pra você.
@@ -251,7 +259,7 @@ export function DropCommunity() {
               </tbody>
             </table>
           </div>
-          <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 sm:p-6">
+          <div className="cm-slot rounded-2xl p-5 sm:p-6">
             <h2 className="text-base font-bold uppercase tracking-wide text-white">Atacado</h2>
             <p className="mt-1 text-xs text-stone-400">Preço exclusivo de atacado.</p>
             <div className="mt-4 grid grid-cols-3 gap-2">

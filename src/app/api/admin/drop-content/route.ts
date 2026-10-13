@@ -7,6 +7,7 @@ import {
   isIsoDate,
   isLessonModule,
 } from "@/lib/drop-community";
+import { isFormatKey } from "@/lib/drop-content-plan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
 
   const week = mondayOf(request.nextUrl.searchParams.get("week")) ?? currentWeekStart();
   const admin = createAdminClient();
-  const [lessons, items] = await Promise.all([
+  const [lessons, items, formats] = await Promise.all([
     admin
       .from("drop_lessons")
       .select("id, module, title, description, youtube_url, position, published")
@@ -55,14 +56,16 @@ export async function GET(request: NextRequest) {
       .eq("week_start", week)
       .order("weekday")
       .order("position"),
+    admin.from("drop_content_formats").select("format_key, material_url, lesson_id"),
   ]);
-  const err = lessons.error ?? items.error;
+  const err = lessons.error ?? items.error ?? formats.error;
   if (err) return NextResponse.json({ error: err.message }, { status: 500 });
 
   return NextResponse.json({
     week,
     lessons: lessons.data ?? [],
     items: items.data ?? [],
+    formats: formats.data ?? [],
   });
 }
 
@@ -120,6 +123,24 @@ export async function POST(request: NextRequest) {
       link_url: text(body.link_url),
       position: count ?? 0,
     });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.type === "format") {
+    const key = String(body.format_key ?? "");
+    if (!isFormatKey(key)) {
+      return NextResponse.json({ error: "Formato inválido" }, { status: 400 });
+    }
+    const { error } = await admin.from("drop_content_formats").upsert(
+      {
+        format_key: key,
+        material_url: text(body.material_url),
+        lesson_id: text(body.lesson_id),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "format_key" }
+    );
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }

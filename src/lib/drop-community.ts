@@ -18,7 +18,7 @@ export const COMMUNITY_TOPICS: CommunityTopic[] = [
   {
     slug: "cronograma",
     title: "Cronograma de conteúdo",
-    tagline: "O que postar em cada dia — dê o check",
+    tagline: "Todo dia o que postar no story, status, Reels e TikTok",
     kind: "schedule",
     accent: "#10b981",
     cover: "/comunidade/capas/cronograma.jpg",

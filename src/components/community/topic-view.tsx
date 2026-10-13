@@ -4,18 +4,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState, type CSSProperties } from "react";
-import {
-  WEEKDAY_LABELS,
-  addDays,
-  youtubeId,
-  youtubeThumb,
-  type CommunityTopic,
-} from "@/lib/drop-community";
+import { youtubeId, youtubeThumb, type CommunityTopic } from "@/lib/drop-community";
 import { CommunityLoading, CommunityShell } from "@/components/community/community-shell";
+import { ScheduleView } from "@/components/community/schedule-view";
 import { TopicIcon } from "@/components/community/topic-icon";
-import { useCommunity, type CommunityData } from "@/components/community/use-community";
+import {
+  useCommunity,
+  type CommunityData,
+  type ToggleKind,
+} from "@/components/community/use-community";
 
-type Toggle = (kind: "lesson" | "schedule", id: string, done: boolean) => Promise<void>;
+type Toggle = (kind: ToggleKind, id: string, done: boolean) => Promise<void>;
 
 function TopicHeader({ topic, right }: { topic: CommunityTopic; right?: React.ReactNode }) {
   return (
@@ -175,142 +174,17 @@ function LessonsView({ topic, data, toggle }: { topic: CommunityTopic; data: Com
   );
 }
 
-function formatDay(iso: string): string {
-  const [, m, d] = iso.split("-");
-  return `${d}/${m}`;
-}
-
-function ScheduleView({ topic, data, toggle }: { topic: CommunityTopic; data: CommunityData; toggle: Toggle }) {
-  const { items, checkedItemIds, today, weekStart } = data.schedule;
-  const [day, setDay] = useState(today);
-  const dayItems = items.filter((i) => i.weekday === day);
-  const doneTotal = items.filter((i) => checkedItemIds.includes(i.id)).length;
-  const pct = items.length ? Math.round((doneTotal / items.length) * 100) : 0;
-
-  return (
-    <main className="mx-auto max-w-4xl px-4 pb-20 pt-6 sm:px-8">
-      <TopicHeader
-        topic={topic}
-        right={
-          items.length ? (
-            <div className="text-right">
-              <p className="font-mono text-2xl font-semibold text-emerald-400">{pct}%</p>
-              <p className="text-[11px] text-stone-500">
-                {doneTotal} de {items.length} da semana
-              </p>
-            </div>
-          ) : null
-        }
-      />
-
-      <div className="cm-row mt-8 flex gap-2 overflow-x-auto pb-2">
-        {WEEKDAY_LABELS.map((label, i) => {
-          const wd = i + 1;
-          const list = items.filter((it) => it.weekday === wd);
-          const allDone = list.length > 0 && list.every((it) => checkedItemIds.includes(it.id));
-          const active = wd === day;
-          return (
-            <button
-              key={label}
-              type="button"
-              onClick={() => setDay(wd)}
-              className={`min-w-[84px] shrink-0 rounded-xl px-3 py-2.5 text-center transition ${
-                active
-                  ? "bg-white text-zinc-950"
-                  : "bg-white/[0.05] text-stone-300 hover:bg-white/10"
-              }`}
-            >
-              <span className="block text-xs font-bold">
-                {wd === today ? "Hoje" : label.slice(0, 3)}
-              </span>
-              <span className={`block text-[11px] ${active ? "text-zinc-600" : "text-stone-500"}`}>
-                {formatDay(addDays(weekStart, i))}
-              </span>
-              <span
-                className={`mx-auto mt-1 block h-1.5 w-1.5 rounded-full ${
-                  allDone ? "bg-emerald-500" : list.length ? "bg-stone-500" : "bg-transparent"
-                }`}
-              />
-            </button>
-          );
-        })}
-      </div>
-
-      <h2 className="mt-8 text-lg font-bold text-white">
-        {WEEKDAY_LABELS[day - 1]}
-        {day === today ? " · hoje" : ""}
-      </h2>
-
-      {!dayItems.length ? (
-        <p className="mt-4 rounded-xl border border-dashed border-white/15 px-5 py-10 text-center text-sm text-stone-400">
-          {items.length
-            ? "Nada programado pra este dia."
-            : "O cronograma desta semana ainda vai ser publicado pela equipe."}
-        </p>
-      ) : (
-        <ul className="mt-4 space-y-3">
-          {dayItems.map((it) => {
-            const checked = checkedItemIds.includes(it.id);
-            return (
-              <li
-                key={it.id}
-                className={`flex gap-4 rounded-2xl border p-4 transition sm:p-5 ${
-                  checked
-                    ? "border-emerald-500/30 bg-emerald-500/[0.06]"
-                    : "border-white/[0.08] bg-white/[0.03]"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => void toggle("schedule", it.id, !checked)}
-                  aria-pressed={checked}
-                  aria-label={checked ? "Desmarcar" : "Marcar como feito"}
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition ${
-                    checked
-                      ? "border-emerald-500 bg-emerald-500 text-zinc-950"
-                      : "border-stone-500 text-transparent hover:border-emerald-400"
-                  }`}
-                >
-                  <svg viewBox="0 0 16 16" width={14} height={14} fill="none" aria-hidden>
-                    <path d="M3 8.5l3 3 7-7" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-                <div className="min-w-0 flex-1">
-                  <p className={`font-semibold ${checked ? "text-stone-400 line-through" : "text-white"}`}>
-                    {it.title}
-                  </p>
-                  {it.description ? (
-                    <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-stone-400">
-                      {it.description}
-                    </p>
-                  ) : null}
-                  {it.link_url ? (
-                    <a
-                      href={it.link_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-3 inline-flex rounded-md bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
-                    >
-                      Abrir conteúdo ↗
-                    </a>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </main>
-  );
-}
-
 export function TopicView({ topic }: { topic: CommunityTopic }) {
   const { data, error, toggle } = useCommunity();
   if (!data) return <CommunityLoading error={error} />;
   return (
     <CommunityShell back>
       {topic.kind === "schedule" ? (
-        <ScheduleView topic={topic} data={data} toggle={toggle} />
+        <ScheduleView
+          data={data}
+          toggle={toggle}
+          header={(right) => <TopicHeader topic={topic} right={right} />}
+        />
       ) : (
         <LessonsView topic={topic} data={data} toggle={toggle} />
       )}

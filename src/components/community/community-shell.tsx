@@ -18,7 +18,14 @@ export function CommunityShell({
   back?: boolean;
 }) {
   return (
-    <div className="min-h-[100dvh] bg-[#0b0b0d] text-stone-100">
+    <div className="cm-shell min-h-[100dvh] text-stone-100">
+      <div className="cm-bg" aria-hidden>
+        <span className="cm-bg-aurora" />
+        <span className="cm-bg-grid" />
+        <span className="cm-bg-beam" />
+        <span className="cm-bg-beam" />
+        <span className="cm-bg-grain" />
+      </div>
       <header className="sticky top-0 z-40 bg-gradient-to-b from-black/90 to-black/40 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-8">
           <div className="flex items-center gap-4">
@@ -63,7 +70,7 @@ export function CommunityShell({
 
 export function CommunityLoading({ error }: { error?: string | null }) {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[#0b0b0d] px-6 text-center text-sm text-stone-500">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#050706] px-6 text-center text-sm text-stone-500">
       {error ?? "Abrindo a comunidade…"}
     </div>
   );
