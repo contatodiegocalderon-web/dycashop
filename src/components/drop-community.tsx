@@ -68,7 +68,7 @@ function TopicPoster({ topic, data, priority }: { topic: CommunityTopic; data: C
         alt=""
         fill
         priority={priority}
-        sizes="(min-width: 1024px) 16vw, (min-width: 640px) 28vw, 44vw"
+        sizes="(min-width: 1024px) 220px, (min-width: 640px) 28vw, 44vw"
         className="cm-poster-art object-cover object-top"
       />
       <span className="relative mt-auto block text-center">
@@ -197,9 +197,11 @@ export function DropCommunity() {
         <JourneyBanner />
 
         <h2 className="mt-10 text-lg font-bold text-white sm:text-xl">Seus tópicos</h2>
-        <div className="cm-row -mx-4 mt-1 grid auto-cols-[44vw] grid-flow-col gap-3 overflow-x-auto px-4 py-3 sm:-mx-8 sm:auto-cols-[28vw] sm:px-8 lg:grid-flow-row lg:grid-cols-6 lg:overflow-visible">
+        <div className="cm-row -mx-4 mt-1 grid auto-cols-[44vw] grid-flow-col gap-3 overflow-x-auto px-4 py-3 sm:-mx-8 sm:auto-cols-[28vw] sm:px-8 lg:mx-auto lg:flex lg:max-w-4xl lg:flex-wrap lg:justify-center lg:gap-4 lg:overflow-visible lg:px-0">
           {COMMUNITY_TOPICS.map((t, i) => (
-            <TopicPoster key={t.slug} topic={t} data={data} priority={i < 4} />
+            <div key={t.slug} className="lg:w-[calc((100%-3rem)/4)]">
+              <TopicPoster topic={t} data={data} priority={i < 4} />
+            </div>
           ))}
         </div>
 

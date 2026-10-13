@@ -38,6 +38,9 @@ function BrowserFrame({ url, children }: { url: string; children: ReactNode }) {
 
 /* ---------- Cronograma ---------- */
 
+/** Quantas tarefas de hoje ficam abertas na landing; o resto aparece embaçado. */
+const FREE_TASKS = 2;
+
 function sortByHour(slots: PlanSlot[]) {
   return [...slots].sort((a, b) => parseInt(a.when, 10) - parseInt(b.when, 10));
 }
@@ -128,7 +131,7 @@ export function CommunityShowcase() {
           </div>
 
           <ul className="mt-4 space-y-2">
-            {slots.map((s) => {
+            {slots.slice(0, FREE_TASKS).map((s) => {
               const isOn = Boolean(checked[key(s.id)]);
               const isOpen = open === s.id;
               return (
@@ -189,6 +192,41 @@ export function CommunityShowcase() {
               );
             })}
           </ul>
+
+          {slots.length > FREE_TASKS ? (
+            <div className="relative mt-2">
+              <ul className="pointer-events-none select-none space-y-2 blur-[5px]" aria-hidden>
+                {slots.slice(FREE_TASKS).map((s, i) => (
+                  <li key={s.id} className="flex items-center gap-3 rounded-xl bg-white/[0.04] px-3 py-2.5">
+                    <span className="h-9 w-9 shrink-0 rounded-full border-2 border-stone-500" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                        {s.channel === "story" ? "Story · Status" : "Reels · TikTok · Feed"}
+                      </p>
+                      <div className="mt-1.5 h-3.5 rounded bg-white/30" style={{ width: `${48 + ((i * 17) % 30)}%` }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 px-6 text-center">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300 ring-1 ring-emerald-400/30">
+                  <Lock size={20} />
+                </span>
+                <p className="mt-3 text-base font-black uppercase tracking-tight text-white">
+                  +{slots.length - FREE_TASKS} tarefas de hoje
+                </p>
+                <p className="mt-0.5 text-xs text-stone-300">Liberadas pra quem é parceiro</p>
+                <a
+                  href={DROP_CHECKOUT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="jr-cta mt-3 rounded-xl px-4 py-2.5 text-[11px] font-extrabold uppercase tracking-wider text-zinc-950"
+                >
+                  Quero ver tudo
+                </a>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
       )}

@@ -483,12 +483,6 @@ export function DropLanding({
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <PrimaryCta>Quero ser parceiro</PrimaryCta>
-              <a
-                href="#como"
-                className="inline-flex items-center justify-center rounded-full border border-white/12 px-7 py-4 text-sm font-semibold uppercase tracking-[0.12em] text-stone-300 hover:text-white"
-              >
-                Como funciona
-              </a>
             </div>
             <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs text-stone-500">
               <li>Sem pedido mínimo</li>
@@ -683,7 +677,7 @@ export function DropLanding({
                 ))}
               </ul>
             </div>
-            <div data-reveal>
+            <div className="min-w-0" data-reveal>
               <CommunityShowcase />
             </div>
           </div>
@@ -774,7 +768,7 @@ export function DropLanding({
         {/* 7. Preços */}
         <section className="border-y border-white/[0.06] bg-white/[0.015] py-20 sm:py-24">
           <div className="mx-auto grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2">
-            <div data-reveal>
+            <div className="min-w-0" data-reveal>
               <Eyebrow>Seu custo por peça</Eyebrow>
               <SectionTitle>Preço de atacado, a partir de 1 peça.</SectionTitle>
               <Tilt max={4} className="mt-8">
@@ -798,13 +792,13 @@ export function DropLanding({
               </Tilt>
             </div>
 
-            <div data-reveal>
+            <div className="min-w-0" data-reveal>
               <Eyebrow>Estoque próprio</Eyebrow>
               <SectionTitle>PREÇO EXCLUSIVO NO ATACADO👕</SectionTitle>
               <p className="mt-4 max-w-md text-sm leading-relaxed text-stone-400">
                 Membros da comunidade têm preço exclusivo no atacado para conseguir lucrar mais.
               </p>
-              <div className="drop-stairs mt-8 flex items-end gap-3">
+              <div className="drop-stairs mt-8 flex items-end gap-1.5 sm:gap-3">
                 {[
                   { label: "1 peça", sub: "dropshipping", unit: DROP_WHOLESALE_UNIT_BRL },
                   ...DROP_STOCK_TIERS.map((t) => ({
@@ -815,11 +809,11 @@ export function DropLanding({
                 ].map((s, i) => (
                   <div
                     key={s.label}
-                    className="drop-stair flex-1"
+                    className="drop-stair min-w-0 flex-1"
                     style={{ "--i": i } as CSSProperties}
                   >
-                    <p className="text-center font-mono text-base font-semibold tabular-nums text-stone-50 sm:text-xl">
-                      {money(s.unit)}
+                    <p className="text-center font-mono text-xs font-semibold tabular-nums text-stone-50 sm:text-xl">
+                      R${s.unit}
                     </p>
                     <div className="drop-stair-bar mt-2" />
                     <p className="mt-2 text-center text-[11px] font-semibold text-stone-300">
