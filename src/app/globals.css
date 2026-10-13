@@ -374,6 +374,19 @@ body {
   transform: none;
 }
 
+.drop-pillar-bar {
+  animation: drop-pillar-fill var(--pillar-ms, 2800ms) linear both;
+}
+
+@keyframes drop-pillar-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 .drop-proof-scene {
   position: relative;
   height: 430px;

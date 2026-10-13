@@ -113,23 +113,11 @@ function campaignBody(
       }
       return `${sawOrder} e ficou pendente. Consigo um preço melhor pra você nessa. Estou à disposição.`;
     case "day20":
-      return `Passando pra conferir se o pedido chegou certinho. Como estão as vendas? Qualquer coisa estou por aqui.`;
+      return `Passando pra conferir se o pedido chegou certinho. Como estão as vendas?`;
     case "day45":
-      if (channel === "lojista") {
-        return `Consigo uma condição especial pra reposição da loja. Estou à disposição pra te passar os valores.`;
-      }
-      if (channel === "revendedor") {
-        return `Consigo um preço top pra você girar mais nessa. Estou à disposição pra te passar as condições.`;
-      }
-      return `Chegou coisa nova e consigo um preço melhor pra você. Estou à disposição.`;
+      return `Chegou bastante coisa nova e consigo um preço melhor pra você.`;
     case "day60":
-      if (channel === "lojista") {
-        return `Vi que já faz um tempo que você comprou com a gente. Fechamos parceria com uma fábrica nova e a condição pra loja ficou mais competitiva. Estou à disposição.`;
-      }
-      if (channel === "revendedor") {
-        return `Vi que já faz um tempo que você comprou com a gente. Fechamos parceria com uma fábrica nova e agora o preço pra revenda ficou mais competitivo. Estou à disposição.`;
-      }
-      return `Vi que já faz um tempo que você comprou com a gente. Tem coleção nova e consigo um preço mais em conta. Estou à disposição.`;
+      return `Vi que já faz um tempo que você comprou com a gente. Fechamos com uma fábrica nova, agora consigo fazer um preço melhor ainda.`;
   }
 }
 
@@ -195,13 +183,13 @@ export const CAMPAIGN_META: Record<
     stage: "Etapa 4",
     title: "Reativação",
     stageNum: 4,
-    hint: "Oferecer condição, sem fechamento forçado",
+    hint: "Novidades e preço melhor",
   },
   day60: {
     stage: "Etapa 5",
     title: "Inativo",
     stageNum: 5,
-    hint: "Parceria nova · tom do perfil",
+    hint: "Fábrica nova · preço melhor ainda",
   },
 };
 

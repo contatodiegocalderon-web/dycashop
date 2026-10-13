@@ -21,7 +21,7 @@ import {
 } from "@/lib/dropshipping";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
 import { CommunityShowcase } from "@/components/drop-landing-showcase";
-import { FREE_PIECE_EVERY, PIECE_MILESTONES, SPEND_MILESTONES } from "@/lib/drop-rewards";
+import { FREE_PIECE_EVERY, PIECE_MILESTONES } from "@/lib/drop-rewards";
 
 const EXAMPLE_SALE_BRL = 60;
 const PROFIT_EACH = EXAMPLE_SALE_BRL - DROP_WHOLESALE_UNIT_BRL;
@@ -82,6 +82,141 @@ function useReveal() {
     els.forEach((el) => io.observe(el));
     return () => io.disconnect();
   }, []);
+}
+
+const HERO_PILLARS: { title: string; desc: string; target: string; icon: ReactNode }[] = [
+  {
+    title: "Tudo pronto pra postar",
+    target: "por-dentro",
+    desc: "Fotos e vídeos prontos. É só seguir o cronograma.",
+    icon: (
+      <path d="M8 3v3M16 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm4 9 2 2 4-4" />
+    ),
+  },
+  {
+    title: "Preço exclusivo pra membros",
+    target: "custo",
+    desc: "Atacado a partir de 1 peça.",
+    icon: <path d="M20 12 12 20l-8-8V4h8l8 8ZM8.5 8.5h.01" />,
+  },
+  {
+    title: "Alta procura + preço de fábrica",
+    target: "estoque",
+    desc: "Os produtos que mais vendem, direto da fonte.",
+    icon: <path d="M12 3c1 3 4 4.5 4 8.5a4 4 0 0 1-8 0c0-1.8.8-3 1.8-4 .2 1.6 1 2.5 2.2 2.5 0-2.5-1-4.5 0-7ZM6 17a7 7 0 0 0 12 0" />,
+  },
+  {
+    title: "Enviamos pro seu cliente",
+    target: "por-que",
+    desc: "Nossa equipe embala e despacha seu pedido em até 24h.",
+    icon: (
+      <path d="M3 7h11v9H3zM14 10h4l3 3v3h-7M7 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm10 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+    ),
+  },
+];
+
+const PILLAR_MS = 2800;
+
+function HeroPillars() {
+  const [active, setActive] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [motion, setMotion] = useState(false);
+  const [shown, setShown] = useState(false);
+  const [cycling, setCycling] = useState(false);
+
+  useEffect(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setMotion(!reduce);
+    const raf = requestAnimationFrame(() => setShown(true));
+    const t = window.setTimeout(() => setCycling(true), reduce ? 0 : 1100);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!motion || paused || !cycling) return;
+    const t = window.setTimeout(() => setActive((i) => (i + 1) % HERO_PILLARS.length), PILLAR_MS);
+    return () => window.clearTimeout(t);
+  }, [active, paused, motion, cycling]);
+
+  return (
+    <ul
+      className="mt-6 grid max-w-xl grid-cols-2 gap-2.5 sm:gap-3"
+      onMouseLeave={() => setPaused(false)}
+    >
+      {HERO_PILLARS.map((p, i) => {
+        const on = (cycling || paused) && i === active;
+        return (
+          <li
+            key={p.title}
+            style={{ transitionDelay: shown && !cycling ? `${200 + i * 130}ms` : "0ms" }}
+            onMouseEnter={() => {
+              setActive(i);
+              setPaused(true);
+            }}
+            className={`relative overflow-hidden rounded-2xl border transition-[opacity,transform,border-color,background-color,box-shadow] duration-700 ease-out ${
+              shown ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
+            } ${
+              on
+                ? "border-emerald-400/50 bg-emerald-400/[0.08] shadow-[0_0_32px_-8px_rgba(16,185,129,0.55)]"
+                : "border-white/[0.07] bg-white/[0.02]"
+            }`}
+          >
+            <a
+              href={`#${p.target}`}
+              onClick={(e) => {
+                const el = document.getElementById(p.target);
+                if (!el) return;
+                e.preventDefault();
+                setActive(i);
+                setPaused(true);
+                el.scrollIntoView({ behavior: motion ? "smooth" : "auto", block: "start" });
+              }}
+              className="block h-full rounded-[inherit] p-3 outline-none sm:p-4 focus-visible:ring-2 focus-visible:ring-emerald-400/60"
+            >
+            <span
+              className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-500 ${
+                on ? "scale-110 bg-emerald-400 text-zinc-950" : "bg-emerald-400/10 text-emerald-300"
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width={18}
+                height={18}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                {p.icon}
+              </svg>
+            </span>
+            <p
+              className={`mt-3 text-sm font-semibold leading-snug tracking-tight transition-colors duration-500 sm:text-[15px] ${
+                on ? "text-stone-50" : "text-stone-300"
+              }`}
+            >
+              {p.title}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-stone-500">{p.desc}</p>
+            </a>
+            {on && motion && !paused && cycling ? (
+              <span
+                key={`bar-${active}`}
+                className="drop-pillar-bar absolute inset-x-0 bottom-0 h-0.5 origin-left bg-emerald-400"
+                style={{ "--pillar-ms": `${PILLAR_MS}ms` } as CSSProperties}
+                aria-hidden
+              />
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 function useStageLight() {
@@ -472,25 +607,10 @@ export function DropLanding({
               Monte sua loja de roupas{" "}
               <span className="text-emerald-400">sem comprar uma peça antes.</span>
             </h1>
-            <p className="mt-6 max-w-xl text-base leading-relaxed text-stone-300 sm:text-lg">
-              Você divulga com as fotos e vídeos que a gente manda. Quando o seu
-              cliente pagar, você compra a peça com a gente por{" "}
-              <strong className="text-stone-50">
-                {money(DROP_WHOLESALE_UNIT_BRL)}
-              </strong>{" "}
-              — preço de atacado, mesmo sendo uma só — e nós enviamos direto pra
-              casa dele.
-            </p>
+            <HeroPillars />
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <PrimaryCta>Quero ser parceiro</PrimaryCta>
             </div>
-            <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs text-stone-500">
-              <li>Sem pedido mínimo</li>
-              <li>Cronograma pronto todo dia</li>
-              <li>Despacho em até 24h</li>
-              <li>Garantia de 7 dias</li>
-              <li>Cancele quando quiser</li>
-            </ul>
           </div>
 
           {heroShots.length > 0 ? (
@@ -552,7 +672,7 @@ export function DropLanding({
         </section>
 
         {/* 2. O que trava × como fica */}
-        <section className="border-y border-white/[0.06] bg-white/[0.015] py-20 sm:py-24">
+        <section id="por-que" className="scroll-mt-16 border-y border-white/[0.06] bg-white/[0.015] py-20 sm:py-24">
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
             <div data-reveal>
               <Eyebrow>Por que a maioria nunca começa</Eyebrow>
@@ -684,7 +804,7 @@ export function DropLanding({
         </section>
 
         {/* 5. Prova: o catálogo real */}
-        <section className="border-y border-white/[0.06] py-20 sm:py-24">
+        <section id="estoque" className="scroll-mt-16 border-y border-white/[0.06] py-20 sm:py-24">
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between" data-reveal>
               <div>
@@ -766,7 +886,7 @@ export function DropLanding({
         </section>
 
         {/* 7. Preços */}
-        <section className="border-y border-white/[0.06] bg-white/[0.015] py-20 sm:py-24">
+        <section id="custo" className="scroll-mt-16 border-y border-white/[0.06] bg-white/[0.015] py-20 sm:py-24">
           <div className="mx-auto grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2">
             <div className="min-w-0" data-reveal>
               <Eyebrow>Seu custo por peça</Eyebrow>
@@ -893,19 +1013,24 @@ export function DropLanding({
             {PIECE_MILESTONES.map((m, i) => (
               <li
                 key={m.at}
-                className="relative lg:text-center"
+                className="relative"
                 data-reveal
                 style={{ "--reveal-delay": `${i * 70}ms` } as CSSProperties}
               >
-                <span
-                  className={`relative z-10 flex h-11 w-11 items-center justify-center rounded-full font-mono text-sm font-bold lg:mx-auto ${
-                    i === 0
-                      ? "bg-emerald-400 text-zinc-950 shadow-[0_0_24px_rgba(16,185,129,0.55)]"
-                      : "border border-emerald-400/40 bg-[#0c0f0e] text-emerald-300"
-                  }`}
-                >
-                  {i + 1}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full font-mono text-sm font-bold ${
+                      i === 0
+                        ? "bg-emerald-400 text-zinc-950 shadow-[0_0_24px_rgba(16,185,129,0.55)]"
+                        : "border border-emerald-400/40 bg-[#0c0f0e] text-emerald-300"
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="bg-gradient-to-r from-violet-300 via-fuchsia-200 to-violet-400 bg-clip-text text-sm font-bold uppercase tracking-[0.16em] text-transparent drop-shadow-[0_0_14px_rgba(168,85,247,0.85)]">
+                    {m.rank}
+                  </span>
+                </div>
                 <p className="mt-3 font-mono text-xs font-semibold uppercase tracking-wider text-emerald-400">
                   {m.at === 0 ? "Início" : `${m.at} peças vendidas`}
                 </p>
@@ -918,29 +1043,6 @@ export function DropLanding({
               </li>
             ))}
           </ol>
-
-          <div className="mt-12 grid gap-3 md:grid-cols-3">
-            {SPEND_MILESTONES.map((m, i) => (
-              <article
-                key={m.at}
-                className="drop-card overflow-hidden"
-                data-reveal
-                style={{ "--reveal-delay": `${i * 90}ms` } as CSSProperties}
-              >
-                <div className="relative aspect-[4/3]">
-                  <Image src={m.image} alt={m.title} fill sizes="(min-width: 768px) 33vw, 100vw" className="object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#111113] via-transparent to-transparent" />
-                </div>
-                <div className="-mt-6 p-5 pt-0">
-                  <p className="relative font-mono text-xs font-semibold text-emerald-400">
-                    {money(m.at).replace(",00", "")} em compras
-                  </p>
-                  <p className="mt-1 text-lg font-semibold tracking-tight text-stone-50">{m.title}</p>
-                  <p className="mt-1 text-sm text-stone-400">{m.desc}</p>
-                </div>
-              </article>
-            ))}
-          </div>
         </section>
 
         {/* 10. Oferta */}
