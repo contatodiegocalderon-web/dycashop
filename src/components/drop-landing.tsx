@@ -20,7 +20,7 @@ import {
   DROP_WHOLESALE_UNIT_BRL,
 } from "@/lib/dropshipping";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
-import { CommunityShowcase, JourneyShowcase } from "@/components/drop-landing-showcase";
+import { CommunityShowcase } from "@/components/drop-landing-showcase";
 
 const EXAMPLE_SALE_BRL = 60;
 const PROFIT_EACH = EXAMPLE_SALE_BRL - DROP_WHOLESALE_UNIT_BRL;
@@ -353,12 +353,6 @@ const SCHEDULE_POINTS = [
   },
 ];
 
-const JOURNEY_POINTS = [
-  { k: "a cada 10 peças", t: "1 peça grátis", d: "E um vídeo exclusivo gravado pra você postar." },
-  { k: "50 → 500 peças", t: "Preço cai até R$ 20", d: "R$ 23, R$ 22, R$ 21 e R$ 20 por peça, pra sempre." },
-  { k: "100 peças", t: "Suporte exclusivo", d: "Vídeos e mídias só pra você, sem limite." },
-  { k: "R$ 5 mil → 50 mil", t: "Prêmios de membro", d: "Pulseira, placa de reconhecimento e preço de sócio." },
-];
 
 const FAQ = [
   {
@@ -700,36 +694,7 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 5. Por dentro: jornada */}
-        <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-          <div className="max-w-3xl" data-reveal>
-            <Eyebrow>Jornada de recompensas</Eyebrow>
-            <SectionTitle>Cada venda te leva pro próximo nível.</SectionTitle>
-            <p className="mt-5 max-w-2xl text-base leading-relaxed text-stone-400">
-              Todo pedido confirmado no seu WhatsApp entra sozinho na sua jornada. Você vê seu progresso
-              crescer, o seu preço por peça cair e os prêmios destravando.
-            </p>
-          </div>
-          <div className="mt-10" data-reveal>
-            <JourneyShowcase />
-          </div>
-          <ul className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {JOURNEY_POINTS.map((p, i) => (
-              <li
-                key={p.t}
-                className="drop-card p-5"
-                data-reveal
-                style={{ "--reveal-delay": `${i * 70}ms` } as CSSProperties}
-              >
-                <p className="font-mono text-sm font-semibold text-emerald-400">{p.k}</p>
-                <p className="mt-1 text-base font-semibold tracking-tight text-stone-50">{p.t}</p>
-                <p className="mt-1 text-sm text-stone-400">{p.d}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {/* 6. Prova: o catálogo real */}
+        {/* 5. Prova: o catálogo real */}
         <section className="border-y border-white/[0.06] py-20 sm:py-24">
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between" data-reveal>
@@ -787,7 +752,7 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 7. Como funciona */}
+        {/* 6. Como funciona */}
         <section id="como" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-20 sm:px-6 sm:py-24">
           <div data-reveal>
             <Eyebrow>Como funciona</Eyebrow>
@@ -811,7 +776,7 @@ export function DropLanding({
           </ol>
         </section>
 
-        {/* 8. Preços */}
+        {/* 7. Preços */}
         <section className="border-y border-white/[0.06] bg-white/[0.015] py-20 sm:py-24">
           <div className="mx-auto grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2">
             <div data-reveal>
@@ -874,7 +839,7 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 9. Pra quem é */}
+        {/* 8. Pra quem é */}
         <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
           <div data-reveal>
             <Eyebrow>Pra quem é</Eyebrow>
@@ -917,7 +882,7 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 10. Oferta */}
+        {/* 9. Oferta */}
         <section
           id="assinar"
           className="scroll-mt-24 border-y border-white/[0.06] py-20 sm:py-24"
@@ -981,7 +946,7 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 11. Dúvidas */}
+        {/* 10. Dúvidas */}
         <section className="mx-auto max-w-3xl px-4 py-20 sm:px-6 sm:py-24">
           <div className="text-center" data-reveal>
             <Eyebrow>Dúvidas</Eyebrow>
