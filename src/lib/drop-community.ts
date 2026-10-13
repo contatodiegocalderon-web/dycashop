@@ -1,89 +1,81 @@
+import { WHATSAPP_SELLERS } from "@/lib/sellers";
+
 /** Estrutura da comunidade de parceiros (tópicos, semana do cronograma, vídeos). */
 
-export type LessonModule = "atacado" | "varejo" | "etiqueta" | "pedido";
+export type LessonModule = "aulas" | "atacado" | "varejo" | "etiqueta" | "pedido";
 
 export type CommunityTopic = {
   slug: LessonModule | "catalogo" | "cronograma";
   title: string;
   tagline: string;
-  kind: "lessons" | "link" | "schedule";
+  kind: "lessons" | "link" | "schedule" | "external";
+  /** Destino fixo. Sem isso, link abre o Drive e o resto abre /comunidade/[slug]. */
+  href?: string;
   accent: string;
-  /** Capa estilo pôster em `public/comunidade/capas`. */
+  /** Capa estilo pôster em `public/comunidade/capas`. Vazio usa o fundo do cartão. */
   cover: string;
   posterEyebrow: string;
   posterTitle: string;
 };
 
+const orderPhone = WHATSAPP_SELLERS.find((s) => s.name === "Diego")?.phone ?? "5511958936770";
+const orderText = encodeURIComponent("Oi! Vendi e quero enviar meu pedido.");
+
+/** Trilha única. A página /comunidade/aulas toca esta sequência. */
+export const AULAS_TOPIC: CommunityTopic = {
+  slug: "aulas",
+  title: "Assistir aulas",
+  tagline: "Assista nesta ordem",
+  kind: "lessons",
+  accent: "#34d399",
+  cover: "/comunidade/capas/atacado.jpg",
+  posterEyebrow: "Na ordem",
+  posterTitle: "Assistir aulas",
+};
+
 export const COMMUNITY_TOPICS: CommunityTopic[] = [
   {
     slug: "cronograma",
-    title: "Cronograma de conteúdo",
+    title: "Cronograma",
     tagline: "Todo dia o que postar no story, status, Reels e TikTok",
     kind: "schedule",
     accent: "#10b981",
     cover: "/comunidade/capas/cronograma.jpg",
     posterEyebrow: "Poste todo dia",
-    posterTitle: "Cronograma de conteúdo",
+    posterTitle: "Cronograma",
   },
   {
     slug: "catalogo",
-    title: "Catálogo do Drive 100% atualizado",
-    tagline: "+10 mil itens sem marca, prontos pra divulgar",
+    title: "Pro Drive",
+    tagline: "Fotos e vídeos prontos pra divulgar",
     kind: "link",
     accent: "#38bdf8",
     cover: "/comunidade/capas/catalogo.jpg",
-    posterEyebrow: "100% atualizado",
-    posterTitle: "Catálogo do Drive",
+    posterEyebrow: "Catálogo atualizado",
+    posterTitle: "Pro Drive",
   },
-  {
-    slug: "etiqueta",
-    title: "Como gerar etiqueta de envio / calcular frete",
-    tagline: "Passo a passo no SuperFrete",
-    kind: "lessons",
-    accent: "#a78bfa",
-    cover: "/comunidade/capas/etiqueta.jpg",
-    posterEyebrow: "Calcular frete e",
-    posterTitle: "Gerar etiqueta",
-  },
+  AULAS_TOPIC,
   {
     slug: "pedido",
-    title: "Como fazer seu pedido",
-    tagline: "Vendeu? Veja como pedir pra gente",
-    kind: "lessons",
+    title: "Vendeu? Então envie seu pedido",
+    tagline: "Manda o pedido no WhatsApp",
+    kind: "external",
+    href: `https://wa.me/${orderPhone}?text=${orderText}`,
     accent: "#f59e0b",
     cover: "/comunidade/capas/pedido.jpg",
     posterEyebrow: "Vendeu? Então",
-    posterTitle: "Faça seu pedido",
-  },
-  {
-    slug: "atacado",
-    title: "Atacado",
-    tagline: "Aulas de como vender no atacado",
-    kind: "lessons",
-    accent: "#eab308",
-    cover: "/comunidade/capas/atacado.jpg",
-    posterEyebrow: "Aprenda a vender no",
-    posterTitle: "Atacado",
-  },
-  {
-    slug: "varejo",
-    title: "Varejo",
-    tagline: "Aulas de como vender no varejo",
-    kind: "lessons",
-    accent: "#f43f5e",
-    cover: "/comunidade/capas/varejo.jpg",
-    posterEyebrow: "Aprenda a vender no",
-    posterTitle: "Varejo",
+    posterTitle: "Envie seu pedido",
   },
 ];
 
-export const LESSON_MODULES: LessonModule[] = ["atacado", "varejo", "etiqueta", "pedido"];
+export const LESSON_MODULES: LessonModule[] = ["aulas", "atacado", "varejo", "etiqueta", "pedido"];
 
 export function isLessonModule(v: string): v is LessonModule {
   return (LESSON_MODULES as string[]).includes(v);
 }
 
 export function getTopic(slug: string): CommunityTopic | undefined {
+  if (slug === AULAS_TOPIC.slug) return AULAS_TOPIC;
   return COMMUNITY_TOPICS.find((t) => t.slug === slug);
 }
 
@@ -153,4 +145,25 @@ export function youtubeId(url: string | null | undefined): string | null {
 
 export function youtubeThumb(id: string): string {
   return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+}
+
+export function isFileVideo(url: string | null | undefined): boolean {
+  return /\.(mp4|webm)(\?|$)/i.test(String(url ?? "").trim());
+}
+
+/** Capa ao lado do mp4 (`boas-vindas.mp4` → `boas-vindas.jpg`). */
+export function videoPoster(url: string | null | undefined): string | null {
+  const raw = String(url ?? "").trim();
+  if (!isFileVideo(raw)) return null;
+  return raw.replace(/\.(mp4|webm)(\?.*)?$/i, ".jpg$2");
+}
+
+export function lessonStill(url: string | null | undefined): string | null {
+  const id = youtubeId(url);
+  if (id) return youtubeThumb(id);
+  return videoPoster(url);
+}
+
+export function isWelcomeLesson(url: string | null | undefined): boolean {
+  return /boas-vindas\.mp4/i.test(String(url ?? ""));
 }

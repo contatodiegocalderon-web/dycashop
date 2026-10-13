@@ -10,13 +10,13 @@ import {
 import {
   COMMUNITY_TOPICS,
   getTopic,
-  youtubeId,
-  youtubeThumb,
+  lessonStill,
   type CommunityTopic,
 } from "@/lib/drop-community";
 import { CommunityLoading, CommunityShell } from "@/components/community/community-shell";
 import { JourneyBanner } from "@/components/community/journey";
 import { TodayTasks } from "@/components/community/schedule-view";
+import { WelcomeVideo } from "@/components/community/welcome-video";
 import {
   currentStreak,
   planDayProgress,
@@ -30,11 +30,13 @@ function money(n: number) {
 }
 
 function topicHref(t: CommunityTopic): string {
+  if (t.href) return t.href;
   return t.kind === "link" ? DROP_CATALOG_DRIVE_URL : `/comunidade/${t.slug}`;
 }
 
 function topicMeta(t: CommunityTopic, data: CommunityData): { label: string; progress: number | null } {
-  if (t.kind === "link") return { label: "Abrir no Drive ↗", progress: null };
+  if (t.kind === "external") return { label: "WhatsApp ↗", progress: null };
+  if (t.kind === "link") return { label: t.href ? "Ver a aula" : "Abrir no Drive ↗", progress: null };
   if (t.kind === "schedule") {
     const { done, total } = planDayProgress(data, data.plan.today);
     const streak = currentStreak(data);
@@ -54,23 +56,31 @@ function topicMeta(t: CommunityTopic, data: CommunityData): { label: string; pro
 
 function TopicPoster({ topic, data, priority }: { topic: CommunityTopic; data: CommunityData; priority: boolean }) {
   const meta = topicMeta(topic, data);
-  const external = topic.kind === "link";
+  const href = topicHref(topic);
+  const external = href.startsWith("http");
   return (
     <Link
-      href={topicHref(topic)}
+      href={href}
       target={external ? "_blank" : undefined}
       rel={external ? "noopener noreferrer" : undefined}
       className="cm-poster group"
       aria-label={topic.title}
     >
-      <Image
-        src={topic.cover}
-        alt=""
-        fill
-        priority={priority}
-        sizes="(min-width: 1024px) 220px, (min-width: 640px) 28vw, 44vw"
-        className="cm-poster-art object-cover object-top"
-      />
+      {topic.cover ? (
+        <Image
+          src={topic.cover}
+          alt=""
+          fill
+          priority={priority}
+          sizes="(min-width: 1024px) 220px, (min-width: 640px) 28vw, 44vw"
+          className="cm-poster-art object-cover object-top"
+        />
+      ) : (
+        <span
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(37,211,102,0.38),transparent_58%)]"
+          aria-hidden
+        />
+      )}
       <span className="relative mt-auto block text-center">
         <span className="block text-[9px] font-semibold uppercase tracking-[0.22em] text-stone-200 sm:text-[10px]">
           {topic.posterEyebrow}
@@ -91,15 +101,15 @@ function TopicPoster({ topic, data, priority }: { topic: CommunityTopic; data: C
 }
 
 function LessonThumb({ lesson, done, number }: { lesson: Lesson; done: boolean; number: number }) {
-  const id = youtubeId(lesson.youtube_url);
+  const still = lessonStill(lesson.youtube_url);
   return (
     <Link
       href={`/comunidade/${lesson.module}?aula=${lesson.id}`}
       className="group block w-[72vw] max-w-[300px] shrink-0 snap-start"
     >
       <div className="relative aspect-video overflow-hidden rounded-lg bg-zinc-800 ring-1 ring-white/10 transition duration-300 group-hover:scale-[1.04] group-hover:ring-white/30">
-        {id ? (
-          <Image src={youtubeThumb(id)} alt="" fill unoptimized className="object-cover" />
+        {still ? (
+          <Image src={still} alt="" fill unoptimized className="object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-stone-500">Vídeo em breve</div>
         )}
@@ -126,28 +136,34 @@ function LessonThumb({ lesson, done, number }: { lesson: Lesson; done: boolean; 
 }
 
 function nextLesson(data: CommunityData): Lesson | null {
-  for (const t of COMMUNITY_TOPICS) {
-    if (t.kind !== "lessons") continue;
-    const l = data.lessons.find((x) => x.module === t.slug && !data.completedLessonIds.includes(x.id));
-    if (l) return l;
-  }
-  return null;
+  return data.lessons.find((x) => x.module === "aulas" && !data.completedLessonIds.includes(x.id)) ?? null;
 }
 
 export function DropCommunity() {
-  const { data, error, toggle } = useCommunity();
+  const { data, error, toggle, dismissWelcome } = useCommunity();
   if (!data) return <CommunityLoading error={error} />;
 
   const first = (data.user.fullName || data.user.email).split(/[\s@]/)[0];
+  const aulas = data.lessons
+    .filter((l) => l.module === "aulas")
+    .slice()
+    .sort((a, b) => a.position - b.position);
   const upNext = nextLesson(data);
   const upNextTopic = upNext ? getTopic(upNext.module) : null;
-  const upNextThumb = upNext ? youtubeId(upNext.youtube_url) : null;
+  const upNextThumb = upNext ? lessonStill(upNext.youtube_url) : null;
   return (
     <CommunityShell>
+      <WelcomeVideo
+        data={data}
+        onDismiss={() => void dismissWelcome()}
+        onWatched={(id) => {
+          if (!data.completedLessonIds.includes(id)) void toggle("lesson", id, true);
+        }}
+      />
       <section className="cm-hero relative overflow-hidden">
         {upNextThumb ? (
           <>
-            <Image src={youtubeThumb(upNextThumb)} alt="" fill unoptimized priority className="object-cover opacity-30 blur-[2px]" />
+            <Image src={upNextThumb} alt="" fill unoptimized priority className="object-cover opacity-30 blur-[2px]" />
             <div className="absolute inset-0 bg-gradient-to-r from-[#050706] via-[#050706]/85 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#050706] to-transparent" />
           </>
@@ -205,30 +221,26 @@ export function DropCommunity() {
           ))}
         </div>
 
-        {COMMUNITY_TOPICS.filter((t) => t.kind === "lessons").map((t) => {
-          const lessons = data.lessons.filter((l) => l.module === t.slug);
-          if (!lessons.length) return null;
-          return (
-            <section key={t.slug} className="mt-10">
-              <div className="flex items-baseline justify-between gap-4">
-                <h2 className="text-lg font-bold text-white sm:text-xl">{t.title}</h2>
-                <Link href={`/comunidade/${t.slug}`} className="text-xs font-semibold text-stone-400 hover:text-white">
-                  Ver tudo →
-                </Link>
-              </div>
-              <div className="cm-row -mx-4 mt-1 flex snap-x gap-3 overflow-x-auto px-4 py-3 sm:-mx-8 sm:px-8">
-                {lessons.map((l, i) => (
-                  <LessonThumb
-                    key={l.id}
-                    lesson={l}
-                    number={i + 1}
-                    done={data.completedLessonIds.includes(l.id)}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+        {aulas.length ? (
+          <section className="mt-10">
+            <div className="flex items-baseline justify-between gap-4">
+              <h2 className="text-lg font-bold text-white sm:text-xl">Aulas</h2>
+              <Link href="/comunidade/aulas" className="text-xs font-semibold text-stone-400 hover:text-white">
+                Ver tudo →
+              </Link>
+            </div>
+            <div className="cm-row -mx-4 mt-1 flex snap-x gap-3 overflow-x-auto px-4 py-3 sm:-mx-8 sm:px-8">
+              {aulas.map((l, i) => (
+                <LessonThumb
+                  key={l.id}
+                  lesson={l}
+                  number={i + 1}
+                  done={data.completedLessonIds.includes(l.id)}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="mt-12 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
           <div className="cm-slot rounded-2xl p-5 sm:p-6">

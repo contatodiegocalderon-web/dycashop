@@ -402,7 +402,7 @@ const FAQ = [
   },
   {
     q: "E se eu quiser ter estoque próprio?",
-    a: "Parceiro tem tabela exclusiva no atacado: 10 peças a R$ 23, 30 peças a R$ 21, 100 peças a R$ 19 e 200 peças a R$ 18 cada.",
+    a: "Parceiro tem tabela exclusiva no atacado: 10 peças a R$ 23, 30 peças a R$ 21, 50 peças a R$ 20, 100 peças a R$ 19 e 200 peças a R$ 18 cada.",
   },
 ];
 

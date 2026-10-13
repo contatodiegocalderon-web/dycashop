@@ -13,7 +13,9 @@ export function generateMetadata({ params }: { params: { topico: string } }): Me
 export default function TopicPage({ params }: { params: { topico: string } }) {
   const topic = getTopic(params.topico);
   if (!topic) notFound();
-  if (topic.kind === "link") redirect(DROP_CATALOG_DRIVE_URL);
+  if (topic.kind === "link" || topic.kind === "external") {
+    redirect(topic.href ?? DROP_CATALOG_DRIVE_URL);
+  }
   return (
     <Suspense>
       <TopicView topic={topic} />

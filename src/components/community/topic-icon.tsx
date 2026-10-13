@@ -22,6 +22,7 @@ const PATHS: Record<CommunityTopic["slug"], string[]> = {
     "M6 5.5H5v15h14v-15h-1",
     "M8.5 13.5l2.5 2.5 4.5-5",
   ],
+  aulas: ["M8 5.5v13l11-6.5z"],
   cronograma: [
     "M4 6h16v14H4z",
     "M4 10h16",

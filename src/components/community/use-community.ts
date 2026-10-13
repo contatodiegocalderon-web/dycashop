@@ -25,6 +25,8 @@ export type ScheduleItem = {
 
 export type CommunityData = {
   user: { email: string; fullName: string | null };
+  /** Já fechou o vídeo de boas-vindas da primeira entrada. */
+  welcomeSeen: boolean;
   lessons: Lesson[];
   completedLessonIds: string[];
   schedule: {
@@ -110,5 +112,10 @@ export function useCommunity() {
     []
   );
 
-  return { data, error, toggle };
+  const dismissWelcome = useCallback(async () => {
+    setData((d) => (d ? { ...d, welcomeSeen: true } : d));
+    await fetch("/api/drop/welcome", { method: "POST", credentials: "include" });
+  }, []);
+
+  return { data, error, toggle, dismissWelcome };
 }

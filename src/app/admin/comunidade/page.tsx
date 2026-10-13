@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import {
-  COMMUNITY_TOPICS,
+  AULAS_TOPIC,
   WEEKDAY_LABELS,
   addDays,
   youtubeId,
@@ -53,7 +53,7 @@ type Item = {
   position: number;
 };
 
-const LESSON_TOPICS = COMMUNITY_TOPICS.filter((t) => t.kind === "lessons");
+const LESSON_TOPICS = [AULAS_TOPIC];
 
 const field =
   "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-violet-200/30";
@@ -87,7 +87,7 @@ export default function AdminComunidadePage() {
       setBusy(false);
     }
   }
-  const [mod, setMod] = useState<LessonModule>("atacado");
+  const [mod, setMod] = useState<LessonModule>("aulas");
   const [week, setWeek] = useState<string | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [items, setItems] = useState<Item[]>([]);

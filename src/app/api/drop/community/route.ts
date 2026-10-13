@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   const weekStart = currentWeekStart();
   const today = saoPauloToday();
   const admin = createAdminClient();
-  const [lessons, progress, items, planChecks, formats] = await Promise.all([
+  const [lessons, progress, items, planChecks, formats, memberRow] = await Promise.all([
     admin
       .from("drop_lessons")
       .select("id, module, title, description, youtube_url, position")
@@ -40,9 +40,16 @@ export async function GET(request: NextRequest) {
       .gte("day", addDays(today.date, -120))
       .order("day", { ascending: false }),
     admin.from("drop_content_formats").select("format_key, material_url, lesson_id"),
+    admin.from("drop_members").select("welcome_seen_at").eq("id", member.memberId).maybeSingle(),
   ]);
 
-  const err = lessons.error ?? progress.error ?? items.error ?? planChecks.error ?? formats.error;
+  const err =
+    lessons.error ??
+    progress.error ??
+    items.error ??
+    planChecks.error ??
+    formats.error ??
+    memberRow.error;
   if (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -61,6 +68,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     user: { email: member.email, fullName: member.fullName },
+    welcomeSeen: Boolean(memberRow.data?.welcome_seen_at),
     lessons: lessons.data ?? [],
     completedLessonIds: (progress.data ?? []).map((p) => p.lesson_id),
     schedule: {

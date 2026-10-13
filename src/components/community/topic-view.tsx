@@ -4,10 +4,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState, type CSSProperties } from "react";
-import { youtubeId, youtubeThumb, type CommunityTopic } from "@/lib/drop-community";
+import {
+  isFileVideo,
+  lessonStill,
+  videoPoster,
+  youtubeId,
+  type CommunityTopic,
+} from "@/lib/drop-community";
 import { CommunityLoading, CommunityShell } from "@/components/community/community-shell";
 import { ScheduleView } from "@/components/community/schedule-view";
 import { TopicIcon } from "@/components/community/topic-icon";
+import { WelcomeVideo } from "@/components/community/welcome-video";
 import {
   useCommunity,
   type CommunityData,
@@ -40,15 +47,19 @@ function TopicHeader({ topic, right }: { topic: CommunityTopic; right?: React.Re
 
 function LessonsView({ topic, data, toggle }: { topic: CommunityTopic; data: CommunityData; toggle: Toggle }) {
   const params = useSearchParams();
-  const lessons = data.lessons.filter((l) => l.module === topic.slug);
+  const lessons = data.lessons
+    .filter((l) => l.module === topic.slug)
+    .slice()
+    .sort((a, b) => a.position - b.position);
   const wanted = params.get("aula");
   const fallback =
     lessons.find((l) => !data.completedLessonIds.includes(l.id)) ?? lessons[0] ?? null;
-  const [currentId, setCurrentId] = useState<string | null>(
-    lessons.some((l) => l.id === wanted) ? wanted : fallback?.id ?? null
-  );
+  const resolved =
+    lessons.find((l) => l.id === wanted || youtubeId(l.youtube_url) === wanted) ?? fallback;
+  const [currentId, setCurrentId] = useState<string | null>(resolved?.id ?? null);
   const current = lessons.find((l) => l.id === currentId) ?? null;
   const videoId = youtubeId(current?.youtube_url);
+  const fileVideo = isFileVideo(current?.youtube_url);
   const done = current ? data.completedLessonIds.includes(current.id) : false;
   const doneCount = lessons.filter((l) => data.completedLessonIds.includes(l.id)).length;
 
@@ -91,7 +102,11 @@ function LessonsView({ topic, data, toggle }: { topic: CommunityTopic; data: Com
       ) : (
         <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_360px]">
           <div>
-            <div className="relative aspect-video overflow-hidden rounded-xl bg-black ring-1 ring-white/10">
+            <div
+              className={`overflow-hidden rounded-xl bg-black ring-1 ring-white/10 ${
+                fileVideo ? "flex max-h-[75vh] items-center justify-center" : "relative aspect-video"
+              }`}
+            >
               {videoId ? (
                 <iframe
                   key={videoId}
@@ -100,6 +115,15 @@ function LessonsView({ topic, data, toggle }: { topic: CommunityTopic; data: Com
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                   className="absolute inset-0 h-full w-full"
+                />
+              ) : fileVideo && current?.youtube_url ? (
+                <video
+                  key={current.youtube_url}
+                  src={current.youtube_url}
+                  poster={videoPoster(current.youtube_url) ?? undefined}
+                  controls
+                  playsInline
+                  className="max-h-[75vh] w-full bg-black object-contain"
                 />
               ) : (
                 <div className="flex h-full items-center justify-center text-sm text-stone-500">
@@ -134,7 +158,7 @@ function LessonsView({ topic, data, toggle }: { topic: CommunityTopic; data: Com
 
           <ol className="space-y-2">
             {lessons.map((l, i) => {
-              const id = youtubeId(l.youtube_url);
+              const still = lessonStill(l.youtube_url);
               const isDone = data.completedLessonIds.includes(l.id);
               const active = l.id === current?.id;
               return (
@@ -147,8 +171,8 @@ function LessonsView({ topic, data, toggle }: { topic: CommunityTopic; data: Com
                     }`}
                   >
                     <span className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md bg-zinc-800">
-                      {id ? (
-                        <Image src={youtubeThumb(id)} alt="" fill unoptimized className="object-cover" />
+                      {still ? (
+                        <Image src={still} alt="" fill unoptimized className="object-cover" />
                       ) : null}
                       {isDone ? (
                         <span className="absolute inset-x-0 bottom-0 h-1 bg-emerald-500" />
@@ -175,10 +199,17 @@ function LessonsView({ topic, data, toggle }: { topic: CommunityTopic; data: Com
 }
 
 export function TopicView({ topic }: { topic: CommunityTopic }) {
-  const { data, error, toggle } = useCommunity();
+  const { data, error, toggle, dismissWelcome } = useCommunity();
   if (!data) return <CommunityLoading error={error} />;
   return (
     <CommunityShell back>
+      <WelcomeVideo
+        data={data}
+        onDismiss={() => void dismissWelcome()}
+        onWatched={(id) => {
+          if (!data.completedLessonIds.includes(id)) void toggle("lesson", id, true);
+        }}
+      />
       {topic.kind === "schedule" ? (
         <ScheduleView
           data={data}
