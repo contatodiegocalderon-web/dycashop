@@ -61,10 +61,10 @@ export const CONTENT_FORMATS: Record<FormatKey, ContentFormat> = {
     effort: 1,
     goal: "alcance",
     supply: "semanal",
-    how: "Use o vídeo de giro de camiseta da semana, com uma música em alta e o preço na tela.",
+    how: "Use o vídeo da semana girando as camisetas pra mostrar as opções de modelos e estampas, com uma música em alta e o preço na tela.",
     stories: [
-      "Poste o giro com a enquete \"Qual cor você usaria?\".",
-      "Escreva \"Chegou reposição 🔥\" e coloque o link do seu WhatsApp.",
+      "Poste o vídeo com a enquete \"Qual dessas você usaria?\".",
+      "Escreva \"Modelos novos da semana 🔥 Qual você quer?\" e coloque o link do seu WhatsApp.",
     ],
   },
   puxando_bermudas: {
@@ -73,10 +73,10 @@ export const CONTENT_FORMATS: Record<FormatKey, ContentFormat> = {
     effort: 1,
     goal: "alcance",
     supply: "semanal",
-    how: "Use o vídeo da semana puxando a bermuda pra mostrar o tecido e a elasticidade.",
+    how: "Use o vídeo da semana puxando as bermudas pra mostrar as opções de modelos e cores, com uma música em alta e o preço na tela.",
     stories: [
-      "Poste o vídeo com a caixa de perguntas \"Qual tamanho você usa?\".",
-      "Escreva \"Teste do tecido ✅\" e coloque o link do seu WhatsApp.",
+      "Poste o vídeo com a caixa de perguntas \"Qual dessas você leva?\".",
+      "Escreva \"Bermudas novas da semana 🔥 Escolhe a sua\" e coloque o link do seu WhatsApp.",
     ],
   },
   kits: {
@@ -400,7 +400,7 @@ export function buildDayPlan(isoDate: string): DayPlan {
         ? { purpose: "Post do mês", purposeTip: "Esse formato vai pro feed só 1 vez por mês. Nos stories ele aparece toda semana." }
         : null),
       ...(followUp
-        ? { purposeTip: "Continua o story anterior: mesma peça, agora de perto, com o link do WhatsApp." }
+        ? { purposeTip: "Continua o story anterior: depois de mostrar as opções, agora mostre a qualidade de perto, com o link do WhatsApp." }
         : null),
       format,
       text: story ? format.stories[(n + i) % format.stories.length]! : "",
