@@ -49,7 +49,7 @@ export const PIECE_MILESTONES: PieceMilestone[] = [
   },
   { at: 150, rank: "Pro", title: "Preço cai para R$ 22", desc: "Mais margem em cada venda.", price: 22, icon: "price" },
   { at: 300, rank: "Lenda", title: "Preço cai para R$ 21", desc: "Preço de quem vende muito.", price: 21, icon: "price" },
-  { at: 500, rank: "Ícone", title: "Preço cai para R$ 20", desc: "O menor preço por peça da DYCASHOP.", price: 20, icon: "price" },
+  { at: 500, rank: "Ícone", title: "Preço cai para R$ 20", desc: "O menor preço levando 1 unidade na DYCASHOP.", price: 20, icon: "price" },
 ];
 
 export type SpendMilestone = {
@@ -72,7 +72,7 @@ export const SPEND_MILESTONES: SpendMilestone[] = [
     at: 10000,
     title: "Placa de reconhecimento",
     desc: "Uma placa com seu nome pra mostrar sua conquista.",
-    image: "/comunidade/recompensas/placa-v3.jpg",
+    image: "/comunidade/recompensas/placa-v4.jpg",
     claim: "plaque",
   },
   {

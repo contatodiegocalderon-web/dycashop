@@ -402,7 +402,7 @@ const FAQ = [
   },
   {
     q: "E se eu quiser ter estoque próprio?",
-    a: "Parceiro tem tabela exclusiva no atacado: 10 peças a R$ 23, 30 peças a R$ 21 e 100 peças a R$ 19 cada.",
+    a: "Parceiro tem tabela exclusiva no atacado: 10 peças a R$ 23, 30 peças a R$ 21, 100 peças a R$ 19 e 200 peças a R$ 18 cada.",
   },
 ];
 
@@ -800,10 +800,9 @@ export function DropLanding({
 
             <div data-reveal>
               <Eyebrow>Estoque próprio</Eyebrow>
-              <SectionTitle>Quer ter peça em mãos?</SectionTitle>
+              <SectionTitle>PREÇO EXCLUSIVO NO ATACADO👕</SectionTitle>
               <p className="mt-4 max-w-md text-sm leading-relaxed text-stone-400">
-                Na jornada o seu preço cai conforme você vende, até R$ 20. E se quiser
-                comprar pra ter estoque próprio, parceiro tem tabela exclusiva:
+                Membros da comunidade têm preço exclusivo no atacado para conseguir lucrar mais.
               </p>
               <div className="drop-stairs mt-8 flex items-end gap-3">
                 {[

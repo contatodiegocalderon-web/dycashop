@@ -38,4 +38,5 @@ export const DROP_STOCK_TIERS = [
   { qty: 10, unit: 23 },
   { qty: 30, unit: 21 },
   { qty: 100, unit: 19 },
+  { qty: 200, unit: 18 },
 ] as const;
