@@ -192,9 +192,6 @@ export function CommunityShowcase() {
         </div>
       </div>
       )}
-      <p className="mt-3 text-center text-[11px] text-stone-500">
-        Esse é o cronograma real de hoje. Toque numa tarefa pra ver como fazer e marque o ✓.
-      </p>
     </BrowserFrame>
   );
 }

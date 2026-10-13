@@ -807,7 +807,7 @@ export function DropLanding({
               </p>
               <div className="drop-stairs mt-8 flex items-end gap-3">
                 {[
-                  { label: "👕 1 peça", sub: "dropshipping", unit: DROP_WHOLESALE_UNIT_BRL },
+                  { label: "1 peça", sub: "dropshipping", unit: DROP_WHOLESALE_UNIT_BRL },
                   ...DROP_STOCK_TIERS.map((t) => ({
                     label: `${t.qty} peças`,
                     sub: "estoque próprio",
@@ -888,7 +888,7 @@ export function DropLanding({
               </p>
             </div>
             <p className="inline-flex shrink-0 items-center gap-2 self-start rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-200 lg:self-auto">
-              🎁 A cada {FREE_PIECE_EVERY} peças: 1 grátis + 1 vídeo exclusivo
+              🎁 A cada {FREE_PIECE_EVERY} peças: 1 grátis
             </p>
           </div>
 
@@ -914,7 +914,7 @@ export function DropLanding({
                   {i + 1}
                 </span>
                 <p className="mt-3 font-mono text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                  {m.at === 0 ? "Início" : `${m.at} peças`}
+                  {m.at === 0 ? "Início" : `${m.at} peças vendidas`}
                 </p>
                 <p className="mt-1 text-base font-semibold tracking-tight text-stone-50">
                   {m.at === 0 ? `R$ ${m.price} por peça` : m.title}
