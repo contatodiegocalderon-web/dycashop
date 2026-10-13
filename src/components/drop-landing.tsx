@@ -812,7 +812,7 @@ export function DropLanding({
               </p>
               <div className="drop-stairs mt-8 flex items-end gap-3">
                 {[
-                  { label: "1 peça", sub: "dropshipping", unit: DROP_WHOLESALE_UNIT_BRL },
+                  { label: "👕 1 peça", sub: "dropshipping", unit: DROP_WHOLESALE_UNIT_BRL },
                   ...DROP_STOCK_TIERS.map((t) => ({
                     label: `${t.qty} peças`,
                     sub: "estoque próprio",
