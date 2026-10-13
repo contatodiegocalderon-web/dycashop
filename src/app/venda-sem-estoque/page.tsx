@@ -10,7 +10,7 @@ import {
 export const metadata: Metadata = {
   title: "Venda sem estoque · DYCASHOP",
   description:
-    "Monte sua loja de roupas sem comprar estoque: preço de atacado em 1 peça, conteúdo pronto todo dia e despacho em até 24h direto pro seu cliente.",
+    "Monte sua loja de roupas sem comprar estoque: preço de atacado em 1 peça, cronograma de conteúdo pronto todo dia, jornada de recompensas e despacho em até 24h direto pro seu cliente.",
 };
 
 export const revalidate = 300;

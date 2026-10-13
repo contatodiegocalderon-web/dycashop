@@ -20,6 +20,7 @@ import {
   DROP_WHOLESALE_UNIT_BRL,
 } from "@/lib/dropshipping";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
+import { CommunityShowcase, JourneyShowcase } from "@/components/drop-landing-showcase";
 
 const EXAMPLE_SALE_BRL = 60;
 const PROFIT_EACH = EXAMPLE_SALE_BRL - DROP_WHOLESALE_UNIT_BRL;
@@ -285,7 +286,11 @@ const BLOCKERS = [
   },
   {
     pain: "Não sabe o que postar nem tem foto boa",
-    fix: "Mandamos foto e vídeo prontos todo dia, com cronograma.",
+    fix: "O cronograma diz o que postar todo dia, com foto e vídeo prontos.",
+  },
+  {
+    pain: "Começa animado e desiste na segunda semana",
+    fix: "A jornada mostra seu progresso e te dá 1 peça grátis a cada 10 vendidas.",
   },
   {
     pain: "Pouca variedade pra oferecer",
@@ -300,15 +305,15 @@ const BLOCKERS = [
 const STEPS = [
   {
     t: "Assina o plano",
-    d: `${money(DROP_MONTHLY_PRICE_BRL)} por mês. Em seguida pede o acesso em Já sou parceiro.`,
+    d: `${money(DROP_MONTHLY_PRICE_BRL)} por mês, com garantia de 7 dias.`,
   },
   {
-    t: "Recebe o login",
-    d: "A equipe cria o seu acesso à comunidade e manda no WhatsApp.",
+    t: "Entra na hora",
+    d: "Logo depois do pagamento você cria sua senha e já entra na comunidade.",
   },
   {
-    t: "Posta e divulga",
-    d: "Segue o cronograma: posta o conteúdo do dia e manda o catálogo pros clientes.",
+    t: "Segue o cronograma",
+    d: "Abre as tarefas do dia, posta o que está na lista e dá o check.",
   },
   {
     t: "Vendeu, a gente envia",
@@ -318,13 +323,41 @@ const STEPS = [
 
 const INCLUDED = [
   `Preço de atacado em 1 peça — camiseta e bermuda a ${money(DROP_WHOLESALE_UNIT_BRL)}`,
-  "Foto e vídeo prontos pra postar todo dia, com cronograma",
-  "Catálogo com +10 mil itens, atualizado em tempo real e sem a nossa marca",
+  "Cronograma diário pronto: o que postar no feed e nos stories",
+  "Vídeos novos toda semana e fotos do catálogo, sem a nossa marca",
+  "Catálogo com +10 mil itens, atualizado em tempo real",
+  "Jornada de recompensas: 1 peça grátis a cada 10 vendidas",
+  "Preço que cai até R$ 20 conforme você vende",
+  "Aulas passo a passo de pedido, etiqueta e frete",
   "Despacho em até 24h direto pro seu cliente",
-  "Passo a passo de pedido e etiqueta na comunidade",
   "Entrada no time com +500 parceiros",
-  "Preço que cai conforme você vende mais",
   "Tabela exclusiva se quiser montar estoque próprio",
+];
+
+const SCHEDULE_POINTS = [
+  {
+    t: "Tudo já escolhido pra você",
+    d: "2 posts no feed e até 3 stories por dia, na ordem certa pra vender.",
+  },
+  {
+    t: "Material novo toda semana",
+    d: "Vídeos girando camiseta, puxando bermuda, kits e qualidade, mais as fotos do catálogo.",
+  },
+  {
+    t: "Sem tempo? Só o essencial",
+    d: "O post principal e o story da noite. São 2 tarefas e já conta o dia.",
+  },
+  {
+    t: "Constância que vira venda",
+    d: "Cada check soma na sua sequência de dias seguidos.",
+  },
+];
+
+const JOURNEY_POINTS = [
+  { k: "a cada 10 peças", t: "1 peça grátis", d: "E um vídeo exclusivo gravado pra você postar." },
+  { k: "50 → 500 peças", t: "Preço cai até R$ 20", d: "R$ 23, R$ 22, R$ 21 e R$ 20 por peça, pra sempre." },
+  { k: "100 peças", t: "Suporte exclusivo", d: "Vídeos e mídias só pra você, sem limite." },
+  { k: "R$ 5 mil → 50 mil", t: "Prêmios de membro", d: "Pulseira, placa de reconhecimento e preço de sócio." },
 ];
 
 const FAQ = [
@@ -350,7 +383,15 @@ const FAQ = [
   },
   {
     q: "Eu preciso criar as fotos e os vídeos?",
-    a: "Não. Mandamos o conteúdo pronto todo dia. Você só posta seguindo o cronograma.",
+    a: "Não. Os vídeos novos chegam toda semana e as fotos estão no catálogo. O cronograma diz o que postar em cada dia e como fazer.",
+  },
+  {
+    q: "Quanto tempo eu preciso por dia?",
+    a: "Você decide. O essencial são 2 tarefas: o post principal e o story da noite. Com mais tempo, você faz o cronograma completo: 2 posts no feed e até 3 stories.",
+  },
+  {
+    q: "Como funciona a jornada de recompensas?",
+    a: "Todo pedido confirmado no WhatsApp da sua assinatura conta sozinho. A cada 10 peças você ganha 1 grátis e um vídeo exclusivo. Com 50 peças o preço cai pra R$ 23, depois R$ 22, R$ 21 e R$ 20. Com 100 peças você ganha suporte exclusivo. Em compras: R$ 5 mil dá a pulseira de membro, R$ 10 mil a placa e R$ 50 mil o preço de sócio.",
   },
   {
     q: "O cliente vai ver que é da DYCASHOP?",
@@ -362,7 +403,7 @@ const FAQ = [
   },
   {
     q: "Como recebo o acesso depois de pagar?",
-    a: "Clica em Já sou parceiro, manda nome, email e WhatsApp. A equipe cria o login da comunidade e te avisa no WhatsApp.",
+    a: "Na hora. Logo depois do pagamento a Kiwify te leva pra página de criar sua senha, e você já entra na comunidade.",
   },
   {
     q: "E se eu quiser ter estoque próprio?",
@@ -408,6 +449,12 @@ export function DropLanding({
             </span>
           </Link>
           <div className="flex items-center gap-2">
+            <a
+              href="#por-dentro"
+              className="hidden rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400 hover:text-white md:inline-block"
+            >
+              Por dentro
+            </a>
             <Link
               href={DROP_LOGIN_PATH}
               className="rounded-full border border-white/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-300 hover:text-white"
@@ -456,6 +503,7 @@ export function DropLanding({
             </div>
             <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs text-stone-500">
               <li>Sem pedido mínimo</li>
+              <li>Cronograma pronto todo dia</li>
               <li>Despacho em até 24h</li>
               <li>Garantia de 7 dias</li>
               <li>Cancele quando quiser</li>
@@ -623,7 +671,65 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 4. Prova: o catálogo real */}
+        {/* 4. Por dentro: cronograma */}
+        <section id="por-dentro" className="relative scroll-mt-24 overflow-hidden border-y border-white/[0.06] py-20 sm:py-28">
+          <div className="drop-showcase-glow" aria-hidden />
+          <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr]">
+            <div data-reveal>
+              <Eyebrow>Por dentro da comunidade</Eyebrow>
+              <SectionTitle>Você abre, faz o que está na lista e dá o check.</SectionTitle>
+              <p className="mt-5 max-w-lg text-base leading-relaxed text-stone-400">
+                Nada de pensar em estratégia. Todo dia o cronograma já monta o que postar no feed e nos
+                stories, com o material pronto e o passo a passo de cada tarefa.
+              </p>
+              <ul className="mt-8 space-y-4 text-sm text-stone-200">
+                {SCHEDULE_POINTS.map((p) => (
+                  <li key={p.t} className="flex gap-3">
+                    <Check />
+                    <span>
+                      <strong className="text-stone-50">{p.t}</strong>
+                      <span className="block text-stone-400">{p.d}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div data-reveal>
+              <CommunityShowcase />
+            </div>
+          </div>
+        </section>
+
+        {/* 5. Por dentro: jornada */}
+        <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+          <div className="max-w-3xl" data-reveal>
+            <Eyebrow>Jornada de recompensas</Eyebrow>
+            <SectionTitle>Cada venda te leva pro próximo nível.</SectionTitle>
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-stone-400">
+              Todo pedido confirmado no seu WhatsApp entra sozinho na sua jornada. Você vê seu progresso
+              crescer, o seu preço por peça cair e os prêmios destravando.
+            </p>
+          </div>
+          <div className="mt-10" data-reveal>
+            <JourneyShowcase />
+          </div>
+          <ul className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {JOURNEY_POINTS.map((p, i) => (
+              <li
+                key={p.t}
+                className="drop-card p-5"
+                data-reveal
+                style={{ "--reveal-delay": `${i * 70}ms` } as CSSProperties}
+              >
+                <p className="font-mono text-sm font-semibold text-emerald-400">{p.k}</p>
+                <p className="mt-1 text-base font-semibold tracking-tight text-stone-50">{p.t}</p>
+                <p className="mt-1 text-sm text-stone-400">{p.d}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* 6. Prova: o catálogo real */}
         <section className="border-y border-white/[0.06] py-20 sm:py-24">
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between" data-reveal>
@@ -681,7 +787,7 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 5. Como funciona */}
+        {/* 7. Como funciona */}
         <section id="como" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-20 sm:px-6 sm:py-24">
           <div data-reveal>
             <Eyebrow>Como funciona</Eyebrow>
@@ -705,7 +811,7 @@ export function DropLanding({
           </ol>
         </section>
 
-        {/* 6. Preços */}
+        {/* 8. Preços */}
         <section className="border-y border-white/[0.06] bg-white/[0.015] py-20 sm:py-24">
           <div className="mx-auto grid max-w-6xl gap-12 px-4 sm:px-6 lg:grid-cols-2">
             <div data-reveal>
@@ -733,11 +839,11 @@ export function DropLanding({
             </div>
 
             <div data-reveal>
-              <Eyebrow>Quanto mais vende, mais barato</Eyebrow>
-              <SectionTitle>Cresceu? O seu custo cai.</SectionTitle>
+              <Eyebrow>Estoque próprio</Eyebrow>
+              <SectionTitle>Quer ter peça em mãos?</SectionTitle>
               <p className="mt-4 max-w-md text-sm leading-relaxed text-stone-400">
-                Conforme o seu número de vendas sobe, o preço da peça diminui. E se
-                quiser montar estoque próprio, parceiro tem tabela exclusiva:
+                Na jornada o seu preço cai conforme você vende, até R$ 20. E se quiser
+                comprar pra ter estoque próprio, parceiro tem tabela exclusiva:
               </p>
               <div className="drop-stairs mt-8 flex items-end gap-3">
                 {[
@@ -768,7 +874,7 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 7. Pra quem é */}
+        {/* 9. Pra quem é */}
         <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
           <div data-reveal>
             <Eyebrow>Pra quem é</Eyebrow>
@@ -811,7 +917,7 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 8. Oferta */}
+        {/* 10. Oferta */}
         <section
           id="assinar"
           className="scroll-mt-24 border-y border-white/[0.06] py-20 sm:py-24"
@@ -847,11 +953,10 @@ export function DropLanding({
                   </p>
                   <PrimaryCta className="mt-6 w-full !px-4">Quero ser parceiro</PrimaryCta>
                   <p className="mt-3 text-center text-xs text-stone-500">
-                    Depois de pagar, clique em{" "}
+                    Depois de pagar você cria sua senha e entra na hora. Já assinou?{" "}
                     <Link href={DROP_LOGIN_PATH} className="text-stone-300 underline">
-                      Já sou parceiro
-                    </Link>{" "}
-                    pra receber o login.
+                      Entrar
+                    </Link>
                   </p>
                 </div>
               </div>
@@ -876,7 +981,7 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 9. Dúvidas */}
+        {/* 11. Dúvidas */}
         <section className="mx-auto max-w-3xl px-4 py-20 sm:px-6 sm:py-24">
           <div className="text-center" data-reveal>
             <Eyebrow>Dúvidas</Eyebrow>

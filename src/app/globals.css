@@ -394,6 +394,15 @@ body {
   filter: blur(30px);
 }
 
+.drop-showcase-glow {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(60% 50% at 75% 45%, rgba(16, 185, 129, 0.14), transparent 70%),
+    radial-gradient(40% 40% at 10% 90%, rgba(16, 185, 129, 0.06), transparent 70%);
+}
+
 .drop-phone {
   position: absolute;
   top: 6%;
