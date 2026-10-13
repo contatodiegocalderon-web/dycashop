@@ -443,12 +443,6 @@ export function DropLanding({
             </span>
           </Link>
           <div className="flex items-center gap-2">
-            <a
-              href="#por-dentro"
-              className="hidden rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400 hover:text-white md:inline-block"
-            >
-              Por dentro
-            </a>
             <Link
               href={DROP_LOGIN_PATH}
               className="rounded-full border border-white/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-300 hover:text-white"
