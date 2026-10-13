@@ -6,6 +6,7 @@ import { WEEKDAY_LABELS, addDays } from "@/lib/drop-community";
 import {
   EFFORT_LABELS,
   GOAL_LABELS,
+  SUPPLY_LABELS,
   type PlanSlot,
 } from "@/lib/drop-content-plan";
 import {
@@ -81,18 +82,7 @@ function SlotCard({
   lessonHref: string | null;
   onToggle: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
-  const isReels = slot.channel === "reels";
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(slot.text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setCopied(false);
-    }
-  }
+  const weekly = slot.format.supply === "semanal";
 
   return (
     <li
@@ -120,29 +110,25 @@ function SlotCard({
           <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold text-stone-300">
             {GOAL_LABELS[slot.format.goal]}
           </span>
-          <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold text-stone-300">
-            ~{isReels ? slot.format.minutes : Math.ceil(slot.format.minutes / 2)} min
+          <span
+            className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+              weekly ? "bg-amber-400/15 text-amber-200" : "bg-emerald-400/10 text-emerald-200"
+            }`}
+          >
+            {slot.channel === "story" && weekly ? "Vídeo da semana · pode repetir" : SUPPLY_LABELS[slot.format.supply]}
           </span>
         </div>
 
         {!checked ? (
           <>
             <p className="mt-3 text-sm leading-relaxed text-stone-300">{slot.format.how}</p>
-            <p className="mt-1 text-xs text-stone-500">{slot.purposeTip}</p>
-
-            <div className="mt-3 rounded-xl border border-white/[0.08] bg-black/40 p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">
-                {isReels ? "Legenda pronta" : "O que colocar no story"}
+            {slot.text ? (
+              <p className="mt-2 text-sm leading-relaxed text-stone-100">
+                <span className="mr-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-400">No story:</span>
+                {slot.text}
               </p>
-              <p className="mt-1.5 text-sm leading-relaxed text-stone-100">{slot.text}</p>
-              <button
-                type="button"
-                onClick={() => void copy()}
-                className="mt-2 text-xs font-semibold text-emerald-300 hover:text-emerald-200"
-              >
-                {copied ? "✓ Copiado" : "Copiar texto"}
-              </button>
-            </div>
+            ) : null}
+            <p className="mt-1.5 text-xs text-stone-500">{slot.purposeTip}</p>
 
             {material || lessonHref ? (
               <div className="mt-3 flex flex-wrap gap-2">
@@ -170,6 +156,71 @@ function SlotCard({
         ) : null}
       </div>
     </li>
+  );
+}
+
+/** Checklist do dia na home da comunidade. */
+export function TodayTasks({ data, toggle }: { data: CommunityData; toggle: Toggle }) {
+  const date = data.plan.today;
+  const { plan, isChecked, done, total } = planDayProgress(data, date);
+  const streak = currentStreak(data);
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return (
+    <div className="jr-hero relative overflow-hidden rounded-3xl p-5 sm:p-6">
+      <div>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-emerald-400">Tarefas de hoje</p>
+            <h2 className="mt-1 text-xl font-black uppercase tracking-tight text-white sm:text-2xl">{plan.theme}</h2>
+          </div>
+          <div className="text-right">
+            <p className="font-mono text-2xl font-bold text-white">
+              {done}
+              <span className="text-stone-500">/{total}</span>
+            </p>
+            <p className="text-[10px] uppercase tracking-wider text-stone-500">
+              {streak ? `🔥 ${streak} ${streak === 1 ? "dia" : "dias"} seguidos` : "feitas"}
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div className="jr-bar h-full rounded-full" style={{ width: `${pct}%` }} />
+        </div>
+
+        <ul className="mt-4 space-y-2">
+          {[...plan.slots].sort((a, b) => parseInt(a.when, 10) - parseInt(b.when, 10)).map((s) => {
+            const checked = isChecked(s.id);
+            return (
+              <li
+                key={s.id}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
+                  checked ? "bg-emerald-400/[0.08]" : "bg-white/[0.04]"
+                }`}
+              >
+                <CheckButton checked={checked} onClick={() => void toggle("plan", `${date}|${s.id}`, !checked)} />
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                    <span className="font-mono normal-case">{s.when}</span>
+                    {s.channel === "story" ? "Story · Status" : "Reels · TikTok · Feed"}
+                    {s.essential ? <span className="text-emerald-300">★</span> : null}
+                  </p>
+                  <p className={`truncate text-sm font-semibold ${checked ? "text-stone-500 line-through" : "text-white"}`}>
+                    {s.format.label}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+
+        <Link
+          href="/comunidade/cronograma"
+          className="jr-cta mt-4 flex items-center justify-center rounded-xl px-4 py-3 text-xs font-extrabold uppercase tracking-wider text-zinc-950"
+        >
+          Ver como fazer cada uma →
+        </Link>
+      </div>
+    </div>
   );
 }
 
@@ -251,17 +302,21 @@ export function ScheduleView({
         <summary className="cursor-pointer font-semibold text-white">Como funciona o cronograma</summary>
         <ul className="mt-3 list-disc space-y-1.5 pl-5 text-stone-400">
           <li>
-            Todo dia tem <strong className="text-stone-200">1 vídeo</strong> pra postar no Reels, no TikTok e no
-            feed (o mesmo vídeo nos três) e até <strong className="text-stone-200">3 stories</strong>, que você
-            também posta no Status do WhatsApp.
+            Todo dia tem <strong className="text-stone-200">posts pro Reels, TikTok e feed</strong> (o mesmo
+            conteúdo nos três) e até <strong className="text-stone-200">3 stories</strong>, que você também posta
+            no Status do WhatsApp.
           </li>
           <li>
-            Sem tempo? Faça só o <strong className="text-emerald-300">★ Essencial</strong>: o vídeo e o story da
-            noite, que é o que mais gera pedido. Leva de 5 a 15 minutos.
+            Os <strong className="text-amber-200">vídeos novos da semana</strong> (girando, puxando, kits e
+            qualidade) chegam 1 vez por semana: cada um vai pro feed só uma vez. Nos stories pode repetir à vontade.
           </li>
           <li>
-            Cada dia da semana tem um tema e os formatos se revezam, pra seu perfil nunca ficar repetitivo.
-            O material de cada formato está no botão &quot;Pegar material&quot; e é explicado nas aulas.
+            O volume do feed vem do que dá pra fazer quantas vezes quiser: fotos do catálogo editadas, fotos de IA,
+            cortes e narração em vídeos antigos.
+          </li>
+          <li>
+            Sem tempo? Faça só o <strong className="text-emerald-300">★ Essencial</strong>: o post principal e o
+            story da noite, que é o que mais gera pedido.
           </li>
           <li>Dê o check quando postar e mantenha a sequência 🔥. Constância é o que faz vender.</li>
         </ul>
@@ -310,14 +365,14 @@ export function ScheduleView({
             onClick={() => setMode(false)}
             className={`rounded-full px-3 py-1.5 transition ${!essentialOnly ? "bg-white text-zinc-950" : "text-stone-300"}`}
           >
-            Completo · {plan.minutes} min
+            Completo
           </button>
           <button
             type="button"
             onClick={() => setMode(true)}
             className={`rounded-full px-3 py-1.5 transition ${essentialOnly ? "bg-emerald-400 text-zinc-950" : "text-stone-300"}`}
           >
-            ★ Essencial · {plan.essentialMinutes} min
+            ★ Só o essencial
           </button>
         </div>
       </div>

@@ -9,7 +9,6 @@ import {
 } from "@/lib/dropshipping";
 import {
   COMMUNITY_TOPICS,
-  WEEKDAY_LABELS,
   getTopic,
   youtubeId,
   youtubeThumb,
@@ -17,6 +16,7 @@ import {
 } from "@/lib/drop-community";
 import { CommunityLoading, CommunityShell } from "@/components/community/community-shell";
 import { JourneyBanner } from "@/components/community/journey";
+import { TodayTasks } from "@/components/community/schedule-view";
 import {
   currentStreak,
   planDayProgress,
@@ -135,15 +135,13 @@ function nextLesson(data: CommunityData): Lesson | null {
 }
 
 export function DropCommunity() {
-  const { data, error } = useCommunity();
+  const { data, error, toggle } = useCommunity();
   if (!data) return <CommunityLoading error={error} />;
 
   const first = (data.user.fullName || data.user.email).split(/[\s@]/)[0];
   const upNext = nextLesson(data);
   const upNextTopic = upNext ? getTopic(upNext.module) : null;
   const upNextThumb = upNext ? youtubeId(upNext.youtube_url) : null;
-  const todayPlan = planDayProgress(data, data.plan.today);
-
   return (
     <CommunityShell>
       <section className="cm-hero relative overflow-hidden">
@@ -154,59 +152,44 @@ export function DropCommunity() {
             <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#050706] to-transparent" />
           </>
         ) : null}
-        <div className="relative mx-auto max-w-7xl px-4 pb-14 pt-10 sm:px-8 sm:pb-20 sm:pt-16">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-400">
-            Olá, {first}
-          </p>
-          {upNext && upNextTopic ? (
-            <>
-              <h1 className="mt-3 max-w-2xl text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
-                {upNext.title}
-              </h1>
-              <p className="mt-3 text-sm text-stone-300">
-                Continue em <strong className="text-white">{upNextTopic.title}</strong>
-                {upNext.description ? ` — ${upNext.description}` : ""}
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  href={`/comunidade/${upNext.module}?aula=${upNext.id}`}
-                  className="inline-flex items-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-bold text-zinc-950 hover:bg-white/85"
-                >
-                  <svg viewBox="0 0 20 20" width={16} height={16} fill="currentColor" aria-hidden>
-                    <path d="M6 4l10 6-10 6z" />
-                  </svg>
-                  Assistir
-                </Link>
-                <Link
-                  href="/comunidade/cronograma"
-                  className="inline-flex items-center gap-2 rounded-md bg-white/15 px-6 py-3 text-sm font-bold text-white hover:bg-white/25"
-                >
-                  Cronograma de hoje
-                </Link>
-              </div>
-            </>
-          ) : (
-            <>
-              <h1 className="mt-3 max-w-2xl text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
-                Bora vender hoje.
-              </h1>
-              <p className="mt-3 max-w-xl text-sm text-stone-300">
-                Siga o cronograma do dia, mostre o catálogo pros seus clientes e, vendeu, faça o pedido.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  href="/comunidade/cronograma"
-                  className="inline-flex items-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-bold text-zinc-950 hover:bg-white/85"
-                >
-                  Ver cronograma de {WEEKDAY_LABELS[data.schedule.today - 1]?.toLowerCase()}
-                </Link>
-              </div>
-            </>
-          )}
-          <p className="mt-5 text-xs text-stone-400">
-            Hoje é <strong className="text-emerald-300">{todayPlan.plan.theme.toLowerCase()}</strong>:{" "}
-            {todayPlan.done} de {todayPlan.total} posts feitos
-          </p>
+        <div className="relative mx-auto grid max-w-7xl items-center gap-8 px-4 pb-12 pt-8 sm:px-8 sm:pb-16 sm:pt-12 lg:grid-cols-[1fr_440px]">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-400">
+              Olá, {first}
+            </p>
+            {upNext && upNextTopic ? (
+              <>
+                <h1 className="mt-3 max-w-2xl text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
+                  {upNext.title}
+                </h1>
+                <p className="mt-3 text-sm text-stone-300">
+                  Continue em <strong className="text-white">{upNextTopic.title}</strong>
+                  {upNext.description ? ` — ${upNext.description}` : ""}
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    href={`/comunidade/${upNext.module}?aula=${upNext.id}`}
+                    className="inline-flex items-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-bold text-zinc-950 hover:bg-white/85"
+                  >
+                    <svg viewBox="0 0 20 20" width={16} height={16} fill="currentColor" aria-hidden>
+                      <path d="M6 4l10 6-10 6z" />
+                    </svg>
+                    Assistir aula
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <h1 className="mt-3 max-w-2xl text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
+                  Bora vender hoje.
+                </h1>
+                <p className="mt-3 max-w-xl text-sm text-stone-300">
+                  Faça as tarefas de hoje, mostre o catálogo pros seus clientes e, vendeu, faça o pedido.
+                </p>
+              </>
+            )}
+          </div>
+          <TodayTasks data={data} toggle={toggle} />
         </div>
       </section>
 
