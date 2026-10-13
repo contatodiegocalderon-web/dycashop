@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       kind === "free_piece"
         ? r.freeAvailable > 0
         : kind === "video"
-          ? r.videosAvailable > 0
+          ? r.canRequestVideo
           : kind === "bracelet"
             ? j.spent >= 5000 && !r.claimed("bracelet")
             : j.spent >= 10000 && !r.claimed("plaque");

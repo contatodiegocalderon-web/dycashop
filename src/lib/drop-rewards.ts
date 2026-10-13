@@ -4,7 +4,8 @@ import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 
 export const BASE_UNIT_PRICE = 25;
 export const FREE_PIECE_EVERY = 10;
-export const VIDEO_UNTIL_PIECES = 100;
+/** A partir daqui o parceiro tem suporte exclusivo e pede vídeos sem limite. */
+export const SUPPORT_AT_PIECES = 100;
 
 export type RewardKind = "free_piece" | "video" | "bracelet" | "plaque";
 
@@ -42,8 +43,8 @@ export const PIECE_MILESTONES: PieceMilestone[] = [
   {
     at: 100,
     rank: "Elite",
-    title: "Atendente exclusivo",
-    desc: "Um funcionário só pra você, com vídeos e mídias exclusivas.",
+    title: "Suporte exclusivo",
+    desc: "Um suporte só pra você: peça vídeos e mídias exclusivas sem limite.",
     icon: "staff",
   },
   { at: 150, rank: "Pro", title: "Preço cai para R$ 22", desc: "Mais margem em cada venda.", price: 22, icon: "price" },
@@ -64,21 +65,21 @@ export const SPEND_MILESTONES: SpendMilestone[] = [
     at: 5000,
     title: "Pulseira de membro",
     desc: "A pulseira oficial de quem faz parte.",
-    image: "/comunidade/recompensas/pulseira.jpg",
+    image: "/comunidade/recompensas/pulseira-cartoon.jpg",
     claim: "bracelet",
   },
   {
     at: 10000,
     title: "Placa de reconhecimento",
     desc: "Uma placa com seu nome pra mostrar sua conquista.",
-    image: "/comunidade/recompensas/placa.jpg",
+    image: "/comunidade/recompensas/placa-cartoon.jpg",
     claim: "plaque",
   },
   {
     at: 50000,
     title: "Preço de sócio",
     desc: "Preço de sócio em qualquer quantidade.",
-    image: "/comunidade/recompensas/socio.jpg",
+    image: "/comunidade/recompensas/socio-cartoon.jpg",
     claim: null,
   },
 ];
@@ -100,7 +101,8 @@ export function computeRewards(pieces: number, spent: number, claims: Pick<Rewar
   const nextPrice = PIECE_MILESTONES.find((m) => m.price != null && pieces < m.at) ?? null;
 
   const freeEarned = Math.floor(pieces / FREE_PIECE_EVERY);
-  const videosEarned = Math.floor(Math.min(pieces, VIDEO_UNTIL_PIECES) / FREE_PIECE_EVERY);
+  const videosEarned = Math.floor(pieces / FREE_PIECE_EVERY);
+  const hasSupport = pieces >= SUPPORT_AT_PIECES;
   const nextSpend = SPEND_MILESTONES.find((m) => spent < m.at) ?? null;
 
   return {
@@ -112,14 +114,15 @@ export function computeRewards(pieces: number, spent: number, claims: Pick<Rewar
     progressToNext: next ? (pieces - current.at) / (next.at - current.at) : 1,
     unitPrice,
     nextPrice,
-    hasStaff: pieces >= 100,
+    hasSupport,
     isPartnerPrice: spent >= 50000,
     cycle: pieces % FREE_PIECE_EVERY,
     freeEarned,
     freeAvailable: Math.max(0, freeEarned - count("free_piece")),
     videosEarned,
+    /** Com suporte exclusivo o pedido de vídeo é ilimitado. */
+    canRequestVideo: hasSupport || videosEarned - count("video") > 0,
     videosAvailable: Math.max(0, videosEarned - count("video")),
-    videoPhaseOver: pieces >= VIDEO_UNTIL_PIECES,
     nextSpend,
     claimed: (k: RewardKind) => count(k) > 0,
   };

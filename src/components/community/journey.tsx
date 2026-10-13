@@ -8,7 +8,6 @@ import {
   PIECE_MILESTONES,
   REWARD_KIND_LABELS,
   SPEND_MILESTONES,
-  VIDEO_UNTIL_PIECES,
   computeRewards,
   type PieceMilestone,
   type RewardClaim,
@@ -360,45 +359,56 @@ function CycleCards({ r, demo, reload }: { r: RewardsState; demo: boolean; reloa
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-400">
-              {r.videoPhaseOver ? "Liberado com 100 peças" : `A cada ${FREE_PIECE_EVERY} peças · até ${VIDEO_UNTIL_PIECES}`}
+              {r.hasSupport ? "Suporte exclusivo liberado" : `A cada ${FREE_PIECE_EVERY} peças`}
             </p>
-            <h3 className="mt-1 text-2xl font-black uppercase tracking-tight text-white">
-              {r.videoPhaseOver ? "Atendente exclusivo" : "Vídeo exclusivo"}
-            </h3>
+            <h3 className="mt-1 text-2xl font-black uppercase tracking-tight text-white">Vídeo exclusivo</h3>
           </div>
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-300">
-            <Icon name={r.videoPhaseOver ? "staff" : "video"} size={24} />
-          </span>
+          {r.hasSupport ? (
+            <span className="rounded-full bg-emerald-400 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-950">
+              Sem limite
+            </span>
+          ) : (
+            <div className="text-right">
+              <p className="jr-number-sm font-black tabular-nums text-emerald-300">{r.videosAvailable}</p>
+              <p className="text-[10px] uppercase tracking-wider text-stone-500">pra pedir</p>
+            </div>
+          )}
         </div>
-        {r.videoPhaseOver ? (
-          <p className="mt-4 text-sm leading-relaxed text-stone-300">
-            Você tem um funcionário só pra você: peça vídeos e mídias exclusivas quando quiser, direto no WhatsApp.
-          </p>
+        <p className="mt-4 text-sm leading-relaxed text-stone-300">
+          A gente grava um vídeo só seu, com a peça que você escolher, pra você postar e vender mais.
+        </p>
+        {r.hasSupport ? (
+          <div className="jr-glass mt-4 flex items-center gap-3 rounded-2xl px-4 py-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300">
+              <Icon name="staff" />
+            </span>
+            <p className="text-sm text-stone-200">
+              Você tem <strong className="text-white">suporte exclusivo</strong>: peça vídeos e mídias exclusivas sem
+              limite.
+            </p>
+          </div>
         ) : (
           <>
-            <p className="mt-4 text-sm leading-relaxed text-stone-300">
-              A gente grava um vídeo só seu, com a peça que você escolher, pra você postar e vender mais.
-            </p>
             <div className="mt-4 flex items-center gap-3">
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-                <div className="jr-bar h-full rounded-full" style={{ width: `${Math.min(100, r.pieces)}%` }} />
+                <div className="jr-bar h-full rounded-full" style={{ width: `${r.pieces}%` }} />
               </div>
-              <span className="font-mono text-xs text-stone-400">{Math.min(r.pieces, 100)}/100</span>
+              <span className="font-mono text-xs text-stone-400">{r.pieces}/100</span>
             </div>
             <p className="mt-2 text-xs text-stone-400">
-              <strong className="text-emerald-300">{r.videosAvailable}</strong> vídeo{r.videosAvailable === 1 ? "" : "s"} pra pedir ·{" "}
-              {r.videosEarned} de 10 liberados
+              Com <strong className="text-emerald-300">100 peças</strong> você libera o suporte exclusivo e pede
+              vídeos sem limite.
             </p>
-            <ClaimButton
-              kind="video"
-              label={r.videosAvailable ? "Pedir vídeo exclusivo" : "Venda mais pra liberar"}
-              placeholder="Qual peça você quer no vídeo? Tem alguma ideia?"
-              disabled={!r.videosAvailable}
-              demo={demo}
-              onDone={reload}
-            />
           </>
         )}
+        <ClaimButton
+          kind="video"
+          label={r.canRequestVideo ? "Pedir vídeo exclusivo" : "Venda mais pra liberar"}
+          placeholder="Qual peça você quer no vídeo? Tem alguma ideia?"
+          disabled={!r.canRequestVideo}
+          demo={demo}
+          onDone={reload}
+        />
       </div>
     </section>
   );

@@ -964,7 +964,7 @@ body {
 }
 
 .jr-prize-off .jr-prize-img {
-  filter: grayscale(0.85) brightness(0.55);
+  filter: grayscale(0.6) brightness(0.6);
 }
 
 .jr-prize:hover {
