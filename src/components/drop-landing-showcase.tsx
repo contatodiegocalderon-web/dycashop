@@ -3,6 +3,16 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { WEEKDAY_LABELS, addDays, saoPauloToday } from "@/lib/drop-community";
 import { buildDayPlan, type PlanSlot } from "@/lib/drop-content-plan";
+import { DROP_CHECKOUT_URL } from "@/lib/dropshipping";
+
+function Lock({ size = 11 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
 
 function Tick({ size = 15 }: { size?: number }) {
   return (
@@ -72,10 +82,17 @@ export function CommunityShowcase() {
                 setDay(wd);
                 setOpen(null);
               }}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
-                active ? "bg-emerald-400 text-zinc-950" : "bg-white/[0.05] text-stone-400 hover:text-white"
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
+                active
+                  ? wd === today.weekday
+                    ? "bg-emerald-400 text-zinc-950"
+                    : "bg-white/15 text-white"
+                  : wd === today.weekday
+                    ? "bg-emerald-400/15 text-emerald-200"
+                    : "bg-white/[0.04] text-stone-500 hover:text-stone-300"
               }`}
             >
+              {wd !== today.weekday ? <Lock /> : null}
               {label.slice(0, 3)}
               {wd === today.weekday ? " · hoje" : ""}
             </button>
@@ -83,6 +100,9 @@ export function CommunityShowcase() {
         })}
       </div>
 
+      {day !== today.weekday ? (
+        <LockedDay weekday={WEEKDAY_LABELS[day - 1]} onBack={() => setDay(today.weekday)} />
+      ) : (
       <div className="jr-hero relative overflow-hidden rounded-3xl p-5 sm:p-6">
         <div>
           <div className="flex items-start justify-between gap-4">
@@ -171,10 +191,65 @@ export function CommunityShowcase() {
           </ul>
         </div>
       </div>
+      )}
       <p className="mt-3 text-center text-[11px] text-stone-500">
-        Esse é o cronograma real de {day === today.weekday ? "hoje" : WEEKDAY_LABELS[day - 1].toLowerCase()}.
-        Toque numa tarefa pra ver como fazer e marque o ✓.
+        Esse é o cronograma real de hoje. Toque numa tarefa pra ver como fazer e marque o ✓.
       </p>
     </BrowserFrame>
+  );
+}
+
+const LOCKED_ROWS = [
+  { channel: "Story · Status", w: "62%" },
+  { channel: "Reels · TikTok · Feed", w: "48%" },
+  { channel: "Story · Status", w: "70%" },
+  { channel: "Reels · TikTok · Feed", w: "55%" },
+  { channel: "Story · Status", w: "66%" },
+];
+
+/** Os outros dias aparecem só como prévia embaçada (sem o conteúdo real) até a pessoa assinar. */
+function LockedDay({ weekday, onBack }: { weekday: string; onBack: () => void }) {
+  return (
+    <div className="jr-hero relative overflow-hidden rounded-3xl p-5 sm:p-6">
+      <div>
+      <div className="pointer-events-none select-none blur-[6px]" aria-hidden>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-emerald-400">Tarefas de {weekday}</p>
+        <div className="mt-2 h-6 w-2/3 rounded-md bg-white/25" />
+        <div className="mt-2 h-3 w-5/6 rounded bg-white/10" />
+        <div className="mt-4 h-1.5 rounded-full bg-white/10" />
+        <ul className="mt-4 space-y-2">
+          {LOCKED_ROWS.map((r, i) => (
+            <li key={i} className="flex items-center gap-3 rounded-xl bg-white/[0.04] px-3 py-2.5">
+              <span className="h-9 w-9 shrink-0 rounded-full border-2 border-stone-500" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">{r.channel}</p>
+                <div className="mt-1.5 h-3.5 rounded bg-white/30" style={{ width: r.w }} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="absolute -inset-5 flex flex-col items-center justify-center bg-black/40 px-6 text-center sm:-inset-6">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-300 ring-1 ring-emerald-400/30">
+          <Lock size={26} />
+        </span>
+        <p className="mt-4 text-lg font-black uppercase tracking-tight text-white">Liberado só pra parceiros</p>
+        <p className="mt-1 max-w-xs text-sm text-stone-300">
+          Assine e receba o cronograma da semana inteira, com o que postar em cada dia.
+        </p>
+        <a
+          href={DROP_CHECKOUT_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="jr-cta mt-5 rounded-xl px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-zinc-950"
+        >
+          Quero liberar a semana
+        </a>
+        <button type="button" onClick={onBack} className="mt-3 text-xs text-stone-400 underline hover:text-white">
+          Voltar pro dia de hoje
+        </button>
+      </div>
+      </div>
+    </div>
   );
 }
