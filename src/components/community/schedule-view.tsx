@@ -115,7 +115,13 @@ function SlotCard({
               weekly ? "bg-amber-400/15 text-amber-200" : "bg-emerald-400/10 text-emerald-200"
             }`}
           >
-            {slot.channel === "story" && weekly ? "Vídeo da semana · pode repetir" : SUPPLY_LABELS[slot.format.supply]}
+            {slot.cadence === "semana"
+              ? "Feed 1x por semana"
+              : slot.cadence === "mes"
+                ? "Feed 1x por mês"
+                : slot.channel === "story" && weekly
+                  ? "Vídeo da semana · pode repetir"
+                  : SUPPLY_LABELS[slot.format.supply]}
           </span>
         </div>
 
@@ -307,12 +313,17 @@ export function ScheduleView({
             no Status do WhatsApp.
           </li>
           <li>
-            Os <strong className="text-amber-200">vídeos novos da semana</strong> (girando, puxando, kits e
-            qualidade) chegam 1 vez por semana: cada um vai pro feed só uma vez. Nos stories pode repetir à vontade.
+            O feed de todo dia são <strong className="text-stone-200">2 posts de fotos</strong>: fotos do catálogo
+            no seu fundo e fotos feitas com IA.
           </li>
           <li>
-            O volume do feed vem do que dá pra fazer quantas vezes quiser: fotos do catálogo editadas, fotos de IA,
-            cortes e narração em vídeos antigos.
+            O <strong className="text-amber-200">vídeo girando camiseta</strong> e o{" "}
+            <strong className="text-amber-200">vídeo puxando bermuda</strong> vão pro feed 1 vez por semana.
+          </li>
+          <li>
+            Kits, qualidade, cortes, narração e vídeo aparecendo vão pro feed só{" "}
+            <strong className="text-stone-200">1 vez por mês</strong>. Nos stories eles aparecem toda semana e pode
+            repetir à vontade.
           </li>
           <li>
             Sem tempo? Faça só o <strong className="text-emerald-300">★ Essencial</strong>: o post principal e o

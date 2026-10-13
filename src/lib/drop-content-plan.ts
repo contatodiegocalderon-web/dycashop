@@ -1,10 +1,9 @@
 /**
  * Cronograma automático de conteúdo da comunidade.
  *
- * Os vídeos de produto (girando, puxando, kits, qualidade) chegam 1 vez por semana, então cada um vai
- * pro Reels/feed só uma vez na semana. O volume do feed vem dos formatos que dá pra produzir à vontade
- * (fotos do catálogo editadas, fotos de IA, cortes e narração em vídeos antigos). Nos stories os vídeos
- * da semana podem repetir sem problema.
+ * Feed (Reels/TikTok/feed): todo dia 2 posts de fotos (catálogo no fundo + IA). Girando camiseta e
+ * puxando bermuda vão pro feed 1 vez por semana; os outros formatos (kits, qualidade, cortes, narração,
+ * aparecendo) vão pro feed só 1 vez por mês. Nos stories todos os formatos aparecem toda semana.
  *
  * O plano é calculado só a partir da data. O essencial do dia é o post principal + o story da noite.
  */
@@ -183,7 +182,10 @@ export function isFormatKey(v: string): v is FormatKey {
   return v in CONTENT_FORMATS;
 }
 
-export type PlanSlotId = "reels" | "reels-2" | "story-manha" | "story-tarde" | "story-noite";
+export type PlanSlotId = "reels" | "reels-2" | "reels-video" | "story-manha" | "story-tarde" | "story-noite";
+
+/** Frequência do post no feed: `semana` = 1x por semana · `mes` = 1x por mês. */
+export type FeedCadence = "semana" | "mes";
 
 export const ESSENTIAL_SLOTS: PlanSlotId[] = ["reels", "story-noite"];
 
@@ -197,6 +199,7 @@ export type PlanSlot = {
   /** Instrução do story (vazio nos posts do feed). */
   text: string;
   essential: boolean;
+  cadence: FeedCadence | null;
 };
 
 export type DayPlan = {
@@ -210,88 +213,88 @@ export type DayPlan = {
 type DayTemplate = {
   theme: string;
   themeTip: string;
-  reels: FormatKey;
-  reels2: FormatKey | null;
+  /** Vídeo que vai pro feed 1x por semana nesse dia. */
+  weeklyVideo: FormatKey | null;
   manha: FormatKey | null;
   tarde: FormatKey | null;
   noite: FormatKey;
 };
 
 /**
- * Segunda (1) … domingo (7). Cada vídeo semanal aparece 1x no feed (seg a sex);
- * o resto do feed é formato de volume. No máximo um formato "você grava" por dia.
+ * Segunda (1) … domingo (7). O feed de todo dia são as 2 fotos (catálogo + IA); aqui ficam o vídeo
+ * semanal do feed e os stories. Nos stories cada formato aparece pelo menos 1x na semana.
  */
 const WEEK: Record<number, DayTemplate> = {
   1: {
-    theme: "Dia das camisetas",
-    themeTip: "Começa a semana lançando o vídeo novo de camisetas.",
-    reels: "giro_camisetas",
-    reels2: "fotos_ia",
+    theme: "Abre a vitrine",
+    themeTip: "Começa a semana com o feed cheio de fotos e você aparecendo nos stories.",
+    weeklyVideo: null,
     manha: "aparecendo",
     tarde: "giro_camisetas",
     noite: "catalogo_fundo",
   },
   2: {
-    theme: "Dia das bermudas",
-    themeTip: "Vídeo novo de bermudas no feed, tecido e conforto nos stories.",
-    reels: "puxando_bermudas",
-    reels2: "catalogo_fundo",
+    theme: "Dia das camisetas",
+    themeTip: "O vídeo girando camiseta vai pro feed hoje (1x na semana). Nos stories, a qualidade da malha.",
+    weeklyVideo: "giro_camisetas",
     manha: "giro_camisetas",
+    tarde: "qualidade_camisetas",
+    noite: "kits",
+  },
+  3: {
+    theme: "Meio de semana",
+    themeTip: "Fotos no feed, narração e bermudas nos stories.",
+    weeklyVideo: null,
+    manha: "narracao",
     tarde: "puxando_bermudas",
     noite: "catalogo_fundo",
   },
-  3: {
-    theme: "Dia dos kits",
-    themeTip: "Meio da semana é dia de aumentar o valor de cada venda.",
-    reels: "kits",
-    reels2: "video_editado",
-    manha: "puxando_bermudas",
-    tarde: "giro_camisetas",
-    noite: "kits",
-  },
   4: {
-    theme: "Dia da qualidade",
-    themeTip: "Quebre a objeção \"será que é bom?\" antes do fim de semana.",
-    reels: "qualidade_camisetas",
-    reels2: "narracao",
-    manha: "kits",
+    theme: "Dia das bermudas",
+    themeTip: "O vídeo puxando bermuda vai pro feed hoje (1x na semana). Nos stories, a qualidade do tecido.",
+    weeklyVideo: "puxando_bermudas",
+    manha: "puxando_bermudas",
     tarde: "qualidade_bermudas",
-    noite: "catalogo_fundo",
+    noite: "kits",
   },
   5: {
     theme: "Esquenta do fim de semana",
-    themeTip: "Sexta é dia de compra: último vídeo novo da semana e chamada forte.",
-    reels: "qualidade_bermudas",
-    reels2: "video_editado",
-    manha: "puxando_bermudas",
-    tarde: "kits",
+    themeTip: "Sexta é dia de compra: vitrine no feed e chamada forte nos stories.",
+    weeklyVideo: null,
+    manha: "video_editado",
+    tarde: "qualidade_camisetas",
     noite: "catalogo_fundo",
   },
   6: {
     theme: "Dia da conexão",
-    themeTip: "Sábado tem mais tempo: mostre quem está por trás da venda.",
-    reels: "fotos_ia",
-    reels2: "narracao",
+    themeTip: "Sábado tem mais tempo: apareça nos stories e mostre os kits.",
+    weeklyVideo: null,
     manha: "aparecendo",
-    tarde: "qualidade_camisetas",
+    tarde: "qualidade_bermudas",
     noite: "kits",
   },
   7: {
     theme: "Domingo leve",
-    themeTip: "Só o básico pra não sumir e já preparar a semana.",
-    reels: "catalogo_fundo",
-    reels2: null,
+    themeTip: "Só as fotos no feed e poucos stories pra não sumir.",
+    weeklyVideo: null,
     manha: null,
     tarde: "giro_camisetas",
-    noite: "catalogo_fundo",
+    noite: "fotos_ia",
   },
 };
 
-/** Nas semanas ímpares os formatos de volume trocam de lugar pra o feed não ficar repetitivo. */
-const ALT_WEEK_SWAP: Partial<Record<FormatKey, FormatKey>> = {
-  fotos_ia: "video_editado",
-  video_editado: "fotos_ia",
-};
+/**
+ * Formatos que vão pro feed só 1x por mês: [semana do mês (0 = dias 1–7), dia da semana, formato].
+ * Ficam na quarta e no sábado pra não cair junto com os vídeos semanais (terça e quinta).
+ */
+const MONTHLY_FEED: [number, number, FormatKey][] = [
+  [0, 3, "kits"],
+  [0, 6, "narracao"],
+  [1, 3, "qualidade_camisetas"],
+  [1, 6, "video_editado"],
+  [2, 3, "qualidade_bermudas"],
+  [2, 6, "aparecendo"],
+];
 
 const SLOT_META: Record<PlanSlotId, { when: string; purpose: string; purposeTip: string }> = {
   reels: {
@@ -302,7 +305,12 @@ const SLOT_META: Record<PlanSlotId, { when: string; purpose: string; purposeTip:
   "reels-2": {
     when: "11h–13h",
     purpose: "Post extra",
-    purposeTip: "Mais volume no feed: Reels, TikTok e feed de novo.",
+    purposeTip: "Segundo post do dia: Reels, TikTok e feed de novo.",
+  },
+  "reels-video": {
+    when: "15h–17h",
+    purpose: "Vídeo da semana",
+    purposeTip: "Esse vídeo vai pro feed só hoje. Nos stories ele pode repetir.",
   },
   "story-manha": {
     when: "8h–10h",
@@ -333,13 +341,17 @@ function weekdayOf(isoDate: string): number {
 export function buildDayPlan(isoDate: string): DayPlan {
   const weekday = weekdayOf(isoDate);
   const n = dayNumber(isoDate);
-  const altWeek = Math.floor((n - (weekday - 1)) / 7) % 2 === 1;
   const t = WEEK[weekday]!;
-  const pick = (k: FormatKey) => CONTENT_FORMATS[altWeek ? ALT_WEEK_SWAP[k] ?? k : k];
+  const weekOfMonth = Math.floor((Number(isoDate.slice(8, 10)) - 1) / 7);
+  const monthly = MONTHLY_FEED.find(([w, d]) => w === weekOfMonth && d === weekday)?.[2] ?? null;
+
+  // Alterna qual foto é o post principal pra o feed não ficar igual todo dia.
+  const [main, extra]: FormatKey[] = n % 2 === 0 ? ["catalogo_fundo", "fotos_ia"] : ["fotos_ia", "catalogo_fundo"];
 
   const raw: [PlanSlotId, FormatKey | null][] = [
-    ["reels", t.reels],
-    ["reels-2", t.reels2],
+    ["reels", main],
+    ["reels-2", extra],
+    ["reels-video", t.weeklyVideo ?? monthly],
     ["story-manha", t.manha],
     ["story-tarde", t.tarde],
     ["story-noite", t.noite],
@@ -347,15 +359,21 @@ export function buildDayPlan(isoDate: string): DayPlan {
   const slots: PlanSlot[] = [];
   raw.forEach(([id, key], i) => {
     if (!key) return;
-    const format = pick(key);
+    const format = CONTENT_FORMATS[key];
     const story = id.startsWith("story");
+    const meta = SLOT_META[id];
+    const isMonthly = id === "reels-video" && !t.weeklyVideo;
     slots.push({
       id,
       channel: story ? "story" : "reels",
-      ...SLOT_META[id],
+      ...meta,
+      ...(isMonthly
+        ? { purpose: "Post do mês", purposeTip: "Esse formato vai pro feed só 1 vez por mês. Nos stories ele aparece toda semana." }
+        : null),
       format,
       text: story ? format.stories[(n + i) % format.stories.length]! : "",
       essential: ESSENTIAL_SLOTS.includes(id),
+      cadence: id === "reels-video" ? (isMonthly ? "mes" : "semana") : null,
     });
   });
 
