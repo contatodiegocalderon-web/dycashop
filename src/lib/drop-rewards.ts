@@ -65,7 +65,7 @@ export const SPEND_MILESTONES: SpendMilestone[] = [
     at: 5000,
     title: "Pulseira de membro",
     desc: "A pulseira oficial de quem faz parte.",
-    image: "/comunidade/recompensas/pulseira-v3.jpg",
+    image: "/comunidade/recompensas/pulseira-v4.jpg",
     claim: "bracelet",
   },
   {

@@ -21,6 +21,7 @@ import {
 } from "@/lib/dropshipping";
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
 import { CommunityShowcase } from "@/components/drop-landing-showcase";
+import { FREE_PIECE_EVERY, PIECE_MILESTONES, SPEND_MILESTONES } from "@/lib/drop-rewards";
 
 const EXAMPLE_SALE_BRL = 60;
 const PROFIT_EACH = EXAMPLE_SALE_BRL - DROP_WHOLESALE_UNIT_BRL;
@@ -876,7 +877,80 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 9. Oferta */}
+        {/* 9. Jornada de recompensas */}
+        <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 sm:pb-24">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between" data-reveal>
+            <div>
+              <Eyebrow>Jornada de recompensas</Eyebrow>
+              <SectionTitle>Quanto mais você vende, mais você ganha.</SectionTitle>
+              <p className="mt-4 max-w-xl text-base text-stone-400">
+                Todo pedido confirmado conta sozinho na sua jornada. Esse é o caminho:
+              </p>
+            </div>
+            <p className="inline-flex shrink-0 items-center gap-2 self-start rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-200 lg:self-auto">
+              🎁 A cada {FREE_PIECE_EVERY} peças: 1 grátis + 1 vídeo exclusivo
+            </p>
+          </div>
+
+          <ol className="relative mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <span
+              className="absolute left-[8%] right-[8%] top-[22px] hidden h-px bg-gradient-to-r from-emerald-400/60 via-emerald-400/25 to-amber-300/50 lg:block"
+              aria-hidden
+            />
+            {PIECE_MILESTONES.map((m, i) => (
+              <li
+                key={m.at}
+                className="relative lg:text-center"
+                data-reveal
+                style={{ "--reveal-delay": `${i * 70}ms` } as CSSProperties}
+              >
+                <span
+                  className={`relative z-10 flex h-11 w-11 items-center justify-center rounded-full font-mono text-sm font-bold lg:mx-auto ${
+                    i === 0
+                      ? "bg-emerald-400 text-zinc-950 shadow-[0_0_24px_rgba(16,185,129,0.55)]"
+                      : "border border-emerald-400/40 bg-[#0c0f0e] text-emerald-300"
+                  }`}
+                >
+                  {i + 1}
+                </span>
+                <p className="mt-3 font-mono text-xs font-semibold uppercase tracking-wider text-emerald-400">
+                  {m.at === 0 ? "Início" : `${m.at} peças`}
+                </p>
+                <p className="mt-1 text-base font-semibold tracking-tight text-stone-50">
+                  {m.at === 0 ? `R$ ${m.price} por peça` : m.title}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-stone-500">
+                  {m.at === 0 ? "Sua primeira venda já começa a contar." : m.desc}
+                </p>
+              </li>
+            ))}
+          </ol>
+
+          <div className="mt-12 grid gap-3 md:grid-cols-3">
+            {SPEND_MILESTONES.map((m, i) => (
+              <article
+                key={m.at}
+                className="drop-card overflow-hidden"
+                data-reveal
+                style={{ "--reveal-delay": `${i * 90}ms` } as CSSProperties}
+              >
+                <div className="relative aspect-[4/3]">
+                  <Image src={m.image} alt={m.title} fill sizes="(min-width: 768px) 33vw, 100vw" className="object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#111113] via-transparent to-transparent" />
+                </div>
+                <div className="-mt-6 p-5 pt-0">
+                  <p className="relative font-mono text-xs font-semibold text-emerald-400">
+                    {money(m.at).replace(",00", "")} em compras
+                  </p>
+                  <p className="mt-1 text-lg font-semibold tracking-tight text-stone-50">{m.title}</p>
+                  <p className="mt-1 text-sm text-stone-400">{m.desc}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {/* 10. Oferta */}
         <section
           id="assinar"
           className="scroll-mt-24 border-y border-white/[0.06] py-20 sm:py-24"
@@ -940,7 +1014,7 @@ export function DropLanding({
           </div>
         </section>
 
-        {/* 10. Dúvidas */}
+        {/* 11. Dúvidas */}
         <section className="mx-auto max-w-3xl px-4 py-20 sm:px-6 sm:py-24">
           <div className="text-center" data-reveal>
             <Eyebrow>Dúvidas</Eyebrow>

@@ -101,7 +101,7 @@ export function CommunityShowcase() {
       </div>
 
       {day !== today.weekday ? (
-        <LockedDay weekday={WEEKDAY_LABELS[day - 1]} onBack={() => setDay(today.weekday)} />
+        <LockedDay weekday={WEEKDAY_LABELS[day - 1]} />
       ) : (
       <div className="jr-hero relative overflow-hidden rounded-3xl p-5 sm:p-6">
         <div>
@@ -208,7 +208,7 @@ const LOCKED_ROWS = [
 ];
 
 /** Os outros dias aparecem só como prévia embaçada (sem o conteúdo real) até a pessoa assinar. */
-function LockedDay({ weekday, onBack }: { weekday: string; onBack: () => void }) {
+function LockedDay({ weekday }: { weekday: string }) {
   return (
     <div className="jr-hero relative overflow-hidden rounded-3xl p-5 sm:p-6">
       <div>
@@ -235,7 +235,7 @@ function LockedDay({ weekday, onBack }: { weekday: string; onBack: () => void })
         </span>
         <p className="mt-4 text-lg font-black uppercase tracking-tight text-white">Liberado só pra parceiros</p>
         <p className="mt-1 max-w-xs text-sm text-stone-300">
-          Assine e receba o cronograma da semana inteira, com o que postar em cada dia.
+          Assine e receba o cronograma do que postar todos os dias.
         </p>
         <a
           href={DROP_CHECKOUT_URL}
@@ -245,9 +245,6 @@ function LockedDay({ weekday, onBack }: { weekday: string; onBack: () => void })
         >
           Quero liberar a semana
         </a>
-        <button type="button" onClick={onBack} className="mt-3 text-xs text-stone-400 underline hover:text-white">
-          Voltar pro dia de hoje
-        </button>
       </div>
       </div>
     </div>
