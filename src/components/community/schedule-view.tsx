@@ -317,13 +317,18 @@ export function ScheduleView({
             no seu fundo e fotos feitas com IA.
           </li>
           <li>
-            O <strong className="text-amber-200">vídeo girando camiseta</strong> e o{" "}
-            <strong className="text-amber-200">vídeo puxando bermuda</strong> vão pro feed 1 vez por semana.
+            O <strong className="text-amber-200">vídeo girando camiseta</strong>, o{" "}
+            <strong className="text-amber-200">vídeo puxando bermuda</strong> e os{" "}
+            <strong className="text-amber-200">outros produtos</strong> (kit de cuecas, tênis…) vão pro feed 1 vez
+            por semana. Kits, qualidade, cortes, narração e vídeo aparecendo vão pro feed só 1 vez por mês.
           </li>
           <li>
-            Kits, qualidade, cortes, narração e vídeo aparecendo vão pro feed só{" "}
-            <strong className="text-stone-200">1 vez por mês</strong>. Nos stories eles aparecem toda semana e pode
-            repetir à vontade.
+            Nos stories os vídeos da semana repetem, mas <strong className="text-stone-200">nunca em 2 dias
+            seguidos</strong>. Sempre em sequência: girando camiseta e depois a qualidade da camiseta; puxando
+            bermuda e depois a qualidade da bermuda. Nos outros dias entram narração, cortes e fotos.
+          </li>
+          <li>
+            Você não precisa pensar em nada: é só abrir o dia, fazer o que está na lista e dar o check.
           </li>
           <li>
             Sem tempo? Faça só o <strong className="text-emerald-300">★ Essencial</strong>: o post principal e o

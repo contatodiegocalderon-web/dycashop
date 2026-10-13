@@ -1,9 +1,9 @@
 /**
  * Cronograma automático de conteúdo da comunidade.
  *
- * Feed (Reels/TikTok/feed): todo dia 2 posts de fotos (catálogo no fundo + IA). Girando camiseta e
- * puxando bermuda vão pro feed 1 vez por semana; os outros formatos (kits, qualidade, cortes, narração,
- * aparecendo) vão pro feed só 1 vez por mês. Nos stories todos os formatos aparecem toda semana.
+ * Feed (Reels/TikTok/feed): todo dia 2 posts de fotos (catálogo no fundo + IA). Girando camiseta,
+ * puxando bermuda e outros produtos vão pro feed 1 vez por semana; os demais formatos (kits, qualidade,
+ * cortes, narração, aparecendo) vão pro feed só 1 vez por mês. Regras dos stories: ver `WEEK`.
  *
  * O plano é calculado só a partir da data. O essencial do dia é o post principal + o story da noite.
  */
@@ -18,7 +18,8 @@ export type FormatKey =
   | "fotos_ia"
   | "video_editado"
   | "narracao"
-  | "aparecendo";
+  | "aparecendo"
+  | "outros_produtos";
 
 export type ContentGoal = "alcance" | "confianca" | "venda";
 
@@ -98,8 +99,8 @@ export const CONTENT_FORMATS: Record<FormatKey, ContentFormat> = {
     supply: "semanal",
     how: "Use o vídeo de detalhe da bermuda da semana: costura, tecido, cordão e etiqueta de perto.",
     stories: [
-      "Escreva \"Olha a qualidade dessa costura 👇\" em cima do vídeo.",
-      "Poste o vídeo com a caixa de perguntas \"Ficou com alguma dúvida?\".",
+      "Escreva \"Olha a qualidade dessa costura 👇\" em cima do vídeo e coloque o link do seu WhatsApp.",
+      "Poste o vídeo com a caixa de perguntas \"Qual tamanho você usa?\" e o link do WhatsApp.",
     ],
   },
   qualidade_camisetas: {
@@ -110,8 +111,8 @@ export const CONTENT_FORMATS: Record<FormatKey, ContentFormat> = {
     supply: "semanal",
     how: "Use o vídeo de detalhe da camiseta da semana: malha, gola, costura e estampa de perto.",
     stories: [
-      "Escreva \"Passa o dedo na tela pra sentir essa malha 😅\" em cima do vídeo.",
-      "Enquete: \"Você já comprou camiseta que desbotou?\" Sim / Nunca mais.",
+      "Escreva \"Passa o dedo na tela pra sentir essa malha 😅\" e coloque o link do seu WhatsApp.",
+      "Enquete: \"Você já comprou camiseta que desbotou?\" Sim / Nunca mais. Depois coloque o link do WhatsApp.",
     ],
   },
   catalogo_fundo: {
@@ -174,6 +175,18 @@ export const CONTENT_FORMATS: Record<FormatKey, ContentFormat> = {
       "Mostre você usando a peça e coloque a enquete \"Ficou bom?\".",
     ],
   },
+  outros_produtos: {
+    key: "outros_produtos",
+    label: "Outros produtos (kit de cuecas, tênis…)",
+    effort: 1,
+    goal: "venda",
+    supply: "volume",
+    how: "Escolha 1 produto que não é camiseta nem bermuda (kit de cuecas, tênis…) e poste o vídeo ou as fotos dele que estão no material. Mostra pro cliente que você tem mais coisa pra vender.",
+    stories: [
+      "Escreva \"Também tenho kit de cuecas 👀\" com o preço e o link do seu WhatsApp.",
+      "Escreva \"Chegou tênis 🔥\" com o preço e a caixa de perguntas \"Qual seu número?\".",
+    ],
+  },
 };
 
 export const FORMAT_KEYS = Object.keys(CONTENT_FORMATS) as FormatKey[];
@@ -221,79 +234,92 @@ type DayTemplate = {
 };
 
 /**
- * Segunda (1) … domingo (7). O feed de todo dia são as 2 fotos (catálogo + IA); aqui ficam o vídeo
- * semanal do feed e os stories. Nos stories cada formato aparece pelo menos 1x na semana.
+ * Segunda (1) … domingo (7). O feed de todo dia são as 2 fotos (catálogo + IA); aqui ficam o post
+ * semanal do feed e os stories.
+ *
+ * Regras dos stories:
+ * - Os vídeos da semana (camisetas e bermudas) repetem, mas nunca em 2 dias seguidos (nada repete em
+ *   menos de 24h). Cada um aparece 2x na semana.
+ * - Sempre em sequência: girando camiseta → qualidade da camiseta; puxando bermuda → qualidade da bermuda.
+ * - Nos dias sem vídeo da semana entram os formatos alternativos (narração, cortes, aparecendo, fotos, kits).
+ * - Outros produtos (kit de cuecas, tênis…) 1x por semana, no sábado.
  */
 const WEEK: Record<number, DayTemplate> = {
   1: {
-    theme: "Abre a vitrine",
-    themeTip: "Começa a semana com o feed cheio de fotos e você aparecendo nos stories.",
-    weeklyVideo: null,
+    theme: "Dia das camisetas",
+    themeTip: "Vídeo novo girando camiseta no feed. Nos stories: giro à tarde e a qualidade da camiseta à noite.",
+    weeklyVideo: "giro_camisetas",
     manha: "aparecendo",
     tarde: "giro_camisetas",
-    noite: "catalogo_fundo",
+    noite: "qualidade_camisetas",
   },
   2: {
-    theme: "Dia das camisetas",
-    themeTip: "O vídeo girando camiseta vai pro feed hoje (1x na semana). Nos stories, a qualidade da malha.",
-    weeklyVideo: "giro_camisetas",
-    manha: "giro_camisetas",
-    tarde: "qualidade_camisetas",
-    noite: "kits",
-  },
-  3: {
-    theme: "Meio de semana",
-    themeTip: "Fotos no feed, narração e bermudas nos stories.",
-    weeklyVideo: null,
+    theme: "Dia das bermudas",
+    themeTip: "Vídeo novo puxando bermuda no feed. Nos stories: puxando à tarde e a qualidade da bermuda à noite.",
+    weeklyVideo: "puxando_bermudas",
     manha: "narracao",
     tarde: "puxando_bermudas",
-    noite: "catalogo_fundo",
+    noite: "qualidade_bermudas",
   },
-  4: {
-    theme: "Dia das bermudas",
-    themeTip: "O vídeo puxando bermuda vai pro feed hoje (1x na semana). Nos stories, a qualidade do tecido.",
-    weeklyVideo: "puxando_bermudas",
-    manha: "puxando_bermudas",
-    tarde: "qualidade_bermudas",
+  3: {
+    theme: "Dia da vitrine",
+    themeTip: "Hoje não repete vídeo da semana: fotos, cortes de vídeos antigos e kits.",
+    weeklyVideo: null,
+    manha: "catalogo_fundo",
+    tarde: "video_editado",
     noite: "kits",
   },
-  5: {
-    theme: "Esquenta do fim de semana",
-    themeTip: "Sexta é dia de compra: vitrine no feed e chamada forte nos stories.",
+  4: {
+    theme: "Camisetas de novo",
+    themeTip: "Repete o giro e a qualidade das camisetas nos stories (já passaram 3 dias, pode repetir).",
     weeklyVideo: null,
-    manha: "video_editado",
-    tarde: "qualidade_camisetas",
-    noite: "catalogo_fundo",
+    manha: "narracao",
+    tarde: "giro_camisetas",
+    noite: "qualidade_camisetas",
+  },
+  5: {
+    theme: "Bermudas de novo",
+    themeTip: "Sexta é dia de compra: repete o puxando e a qualidade das bermudas nos stories.",
+    weeklyVideo: null,
+    manha: "fotos_ia",
+    tarde: "puxando_bermudas",
+    noite: "qualidade_bermudas",
   },
   6: {
-    theme: "Dia da conexão",
-    themeTip: "Sábado tem mais tempo: apareça nos stories e mostre os kits.",
-    weeklyVideo: null,
+    theme: "Dia dos outros produtos",
+    themeTip: "1x por semana mostre o que mais você vende (kit de cuecas, tênis…) no feed e nos stories.",
+    weeklyVideo: "outros_produtos",
     manha: "aparecendo",
-    tarde: "qualidade_bermudas",
+    tarde: "outros_produtos",
     noite: "kits",
   },
   7: {
     theme: "Domingo leve",
-    themeTip: "Só as fotos no feed e poucos stories pra não sumir.",
+    themeTip: "Só as fotos no feed e 2 stories rápidos pra não sumir.",
     weeklyVideo: null,
     manha: null,
-    tarde: "giro_camisetas",
-    noite: "fotos_ia",
+    tarde: "video_editado",
+    noite: "catalogo_fundo",
   },
+};
+
+/** Story de qualidade que vem logo depois do vídeo da mesma peça no mesmo dia. */
+const STORY_FOLLOW_UP: Partial<Record<FormatKey, FormatKey>> = {
+  qualidade_camisetas: "giro_camisetas",
+  qualidade_bermudas: "puxando_bermudas",
 };
 
 /**
  * Formatos que vão pro feed só 1x por mês: [semana do mês (0 = dias 1–7), dia da semana, formato].
- * Ficam na quarta e no sábado pra não cair junto com os vídeos semanais (terça e quinta).
+ * Ficam na quarta e na sexta, que não têm post semanal no feed.
  */
 const MONTHLY_FEED: [number, number, FormatKey][] = [
   [0, 3, "kits"],
-  [0, 6, "narracao"],
+  [0, 5, "narracao"],
   [1, 3, "qualidade_camisetas"],
-  [1, 6, "video_editado"],
+  [1, 5, "video_editado"],
   [2, 3, "qualidade_bermudas"],
-  [2, 6, "aparecendo"],
+  [2, 5, "aparecendo"],
 ];
 
 const SLOT_META: Record<PlanSlotId, { when: string; purpose: string; purposeTip: string }> = {
@@ -309,8 +335,8 @@ const SLOT_META: Record<PlanSlotId, { when: string; purpose: string; purposeTip:
   },
   "reels-video": {
     when: "15h–17h",
-    purpose: "Vídeo da semana",
-    purposeTip: "Esse vídeo vai pro feed só hoje. Nos stories ele pode repetir.",
+    purpose: "Post da semana",
+    purposeTip: "Esse vai pro feed só hoje, 1 vez na semana.",
   },
   "story-manha": {
     when: "8h–10h",
@@ -357,18 +383,24 @@ export function buildDayPlan(isoDate: string): DayPlan {
     ["story-noite", t.noite],
   ];
   const slots: PlanSlot[] = [];
+  let prevStory: FormatKey | null = null;
   raw.forEach(([id, key], i) => {
     if (!key) return;
     const format = CONTENT_FORMATS[key];
     const story = id.startsWith("story");
     const meta = SLOT_META[id];
     const isMonthly = id === "reels-video" && !t.weeklyVideo;
+    const followUp = story && prevStory !== null && STORY_FOLLOW_UP[key] === prevStory;
+    if (story) prevStory = key;
     slots.push({
       id,
       channel: story ? "story" : "reels",
       ...meta,
       ...(isMonthly
         ? { purpose: "Post do mês", purposeTip: "Esse formato vai pro feed só 1 vez por mês. Nos stories ele aparece toda semana." }
+        : null),
+      ...(followUp
+        ? { purposeTip: "Continua o story anterior: mesma peça, agora de perto, com o link do WhatsApp." }
         : null),
       format,
       text: story ? format.stories[(n + i) % format.stories.length]! : "",
