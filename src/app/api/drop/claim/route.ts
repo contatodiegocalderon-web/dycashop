@@ -29,7 +29,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { email?: string; phone?: string; password?: string; fullName?: string };
+  let body: {
+    email?: string;
+    phone?: string;
+    password?: string;
+    fullName?: string;
+    /** `"verify"` só confere a compra (1ª etapa); sem isso cria o acesso. */
+    step?: string;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -41,16 +48,11 @@ export async function POST(request: NextRequest) {
     .toLowerCase();
   const phone = normalizeWhatsappDigits(String(body.phone ?? ""));
   const password = String(body.password ?? "");
+  const verifyOnly = body.step === "verify";
 
   if (!email.includes("@") || phone.length < 12) {
     return NextResponse.json(
       { error: "Informe o email e o celular usados na compra." },
-      { status: 400 }
-    );
-  }
-  if (password.length < 6) {
-    return NextResponse.json(
-      { error: "A senha precisa ter pelo menos 6 caracteres." },
       { status: 400 }
     );
   }
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Não encontramos uma compra com esse email. Use o mesmo email da Kiwify — se acabou de pagar, aguarde 1 minuto e tente de novo.",
+          "Não encontramos uma assinatura com esse email. Esta página é só para quem já assinou: use o mesmo email da Kiwify — se acabou de pagar, aguarde 1 minuto e tente de novo.",
       },
       { status: 404 }
     );
@@ -104,9 +106,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Você já criou seu acesso. Entre com seu email e senha em \"Já sou parceiro\". Esqueceu a senha? Fale com a equipe.",
+          "Você já criou seu acesso. Entre com seu email e senha na página de login. Esqueceu a senha? Fale com a equipe.",
       },
       { status: 409 }
+    );
+  }
+
+  if (verifyOnly) {
+    return NextResponse.json({ ok: true, fullName: latest.full_name?.trim() || null });
+  }
+  if (password.length < 6) {
+    return NextResponse.json(
+      { error: "A senha precisa ter pelo menos 6 caracteres." },
+      { status: 400 }
     );
   }
 

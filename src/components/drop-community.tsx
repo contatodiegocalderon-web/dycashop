@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import type { CSSProperties } from "react";
 import {
   DROP_CATALOG_DRIVE_URL,
   DROP_MEMBER_PRICE_ROWS,
@@ -17,7 +16,6 @@ import {
   type CommunityTopic,
 } from "@/lib/drop-community";
 import { CommunityLoading, CommunityShell } from "@/components/community/community-shell";
-import { TopicIcon } from "@/components/community/topic-icon";
 import { useCommunity, type CommunityData, type Lesson } from "@/components/community/use-community";
 
 function money(n: number) {
@@ -45,7 +43,7 @@ function topicMeta(t: CommunityTopic, data: CommunityData): { label: string; pro
   };
 }
 
-function TopicPoster({ topic, data, index }: { topic: CommunityTopic; data: CommunityData; index: number }) {
+function TopicPoster({ topic, data, priority }: { topic: CommunityTopic; data: CommunityData; priority: boolean }) {
   const meta = topicMeta(topic, data);
   const external = topic.kind === "link";
   return (
@@ -54,24 +52,26 @@ function TopicPoster({ topic, data, index }: { topic: CommunityTopic; data: Comm
       target={external ? "_blank" : undefined}
       rel={external ? "noopener noreferrer" : undefined}
       className="cm-poster group"
-      style={{ "--accent": topic.accent } as CSSProperties}
+      aria-label={topic.title}
     >
-      <span className="cm-poster-num" aria-hidden>
-        {index + 1}
-      </span>
-      <span className="cm-poster-icon">
-        <TopicIcon slug={topic.slug} size={30} />
-      </span>
-      <span className="relative mt-auto block">
-        <span className="block text-[15px] font-extrabold uppercase leading-[1.1] tracking-tight text-white sm:text-base">
-          {topic.title}
+      <Image
+        src={topic.cover}
+        alt=""
+        fill
+        priority={priority}
+        sizes="(min-width: 1024px) 16vw, (min-width: 640px) 28vw, 44vw"
+        className="cm-poster-art object-cover object-top"
+      />
+      <span className="relative mt-auto block text-center">
+        <span className="block text-[9px] font-semibold uppercase tracking-[0.22em] text-stone-200 sm:text-[10px]">
+          {topic.posterEyebrow}
         </span>
-        <span className="mt-1.5 block text-[11px] leading-snug text-stone-300">{topic.tagline}</span>
-        <span className="mt-3 block text-[11px] font-semibold text-[color:var(--accent)]">{meta.label}</span>
+        <span className="cm-poster-title mt-1 block">{topic.posterTitle}</span>
+        <span className="mt-2.5 block text-[10px] font-semibold text-emerald-300 sm:text-[11px]">{meta.label}</span>
         {meta.progress !== null ? (
-          <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-white/15">
+          <span className="mx-auto mt-1.5 block h-1 w-4/5 overflow-hidden rounded-full bg-white/15">
             <span
-              className="block h-full rounded-full bg-[color:var(--accent)]"
+              className="block h-full rounded-full bg-emerald-400"
               style={{ width: `${Math.round(meta.progress * 100)}%` }}
             />
           </span>
@@ -205,7 +205,7 @@ export function DropCommunity() {
         <h2 className="text-lg font-bold text-white sm:text-xl">Seus tópicos</h2>
         <div className="cm-row -mx-4 mt-1 grid auto-cols-[44vw] grid-flow-col gap-3 overflow-x-auto px-4 py-3 sm:-mx-8 sm:auto-cols-[28vw] sm:px-8 lg:grid-flow-row lg:grid-cols-6 lg:overflow-visible">
           {COMMUNITY_TOPICS.map((t, i) => (
-            <TopicPoster key={t.slug} topic={t} data={data} index={i} />
+            <TopicPoster key={t.slug} topic={t} data={data} priority={i < 4} />
           ))}
         </div>
 
@@ -236,8 +236,10 @@ export function DropCommunity() {
 
         <section className="mt-12 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
           <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 sm:p-6">
-            <h2 className="text-base font-bold text-white">Sua tabela de custo</h2>
-            <p className="mt-1 text-xs text-stone-500">A partir de 1 peça. Quanto mais você vende, mais o preço cai.</p>
+            <h2 className="text-base font-bold uppercase tracking-wide text-white">Dropshipping</h2>
+            <p className="mt-1 text-xs text-stone-400">
+              A partir de 1 peça. Quanto mais você vender, mais vamos diminuir o preço pra você.
+            </p>
             <table className="mt-4 w-full text-left text-sm">
               <tbody>
                 {DROP_MEMBER_PRICE_ROWS.map((row) => (
@@ -250,8 +252,8 @@ export function DropCommunity() {
             </table>
           </div>
           <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-5 sm:p-6">
-            <h2 className="text-base font-bold text-white">Estoque próprio</h2>
-            <p className="mt-1 text-xs text-stone-500">Tabela exclusiva de parceiro.</p>
+            <h2 className="text-base font-bold uppercase tracking-wide text-white">Atacado</h2>
+            <p className="mt-1 text-xs text-stone-400">Preço exclusivo de atacado.</p>
             <div className="mt-4 grid grid-cols-3 gap-2">
               {DROP_STOCK_TIERS.map((t) => (
                 <div key={t.qty} className="rounded-xl border border-white/[0.06] px-3 py-4 text-center">
@@ -260,6 +262,9 @@ export function DropCommunity() {
                 </div>
               ))}
             </div>
+            <p className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2.5 text-xs leading-relaxed text-emerald-200">
+              Pedidos na grade por estampa: conseguimos negociar preços melhores ainda.
+            </p>
           </div>
         </section>
       </main>

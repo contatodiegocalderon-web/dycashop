@@ -8,29 +8,22 @@ export type CommunityTopic = {
   tagline: string;
   kind: "lessons" | "link" | "schedule";
   accent: string;
+  /** Capa estilo pôster em `public/comunidade/capas`. */
+  cover: string;
+  posterEyebrow: string;
+  posterTitle: string;
 };
 
 export const COMMUNITY_TOPICS: CommunityTopic[] = [
   {
-    slug: "atacado",
-    title: "Atacado",
-    tagline: "Aulas de como vender no atacado",
-    kind: "lessons",
-    accent: "#eab308",
-  },
-  {
-    slug: "varejo",
-    title: "Varejo",
-    tagline: "Aulas de como vender no varejo",
-    kind: "lessons",
-    accent: "#f43f5e",
-  },
-  {
-    slug: "etiqueta",
-    title: "Como gerar etiqueta de envio / calcular frete",
-    tagline: "Passo a passo no SuperFrete",
-    kind: "lessons",
-    accent: "#a78bfa",
+    slug: "cronograma",
+    title: "Cronograma de conteúdo",
+    tagline: "O que postar em cada dia — dê o check",
+    kind: "schedule",
+    accent: "#10b981",
+    cover: "/comunidade/capas/cronograma.jpg",
+    posterEyebrow: "Poste todo dia",
+    posterTitle: "Cronograma de conteúdo",
   },
   {
     slug: "catalogo",
@@ -38,6 +31,19 @@ export const COMMUNITY_TOPICS: CommunityTopic[] = [
     tagline: "+10 mil itens sem marca, prontos pra divulgar",
     kind: "link",
     accent: "#38bdf8",
+    cover: "/comunidade/capas/catalogo.jpg",
+    posterEyebrow: "100% atualizado",
+    posterTitle: "Catálogo do Drive",
+  },
+  {
+    slug: "etiqueta",
+    title: "Como gerar etiqueta de envio / calcular frete",
+    tagline: "Passo a passo no SuperFrete",
+    kind: "lessons",
+    accent: "#a78bfa",
+    cover: "/comunidade/capas/etiqueta.jpg",
+    posterEyebrow: "Calcular frete e",
+    posterTitle: "Gerar etiqueta",
   },
   {
     slug: "pedido",
@@ -45,13 +51,29 @@ export const COMMUNITY_TOPICS: CommunityTopic[] = [
     tagline: "Vendeu? Veja como pedir pra gente",
     kind: "lessons",
     accent: "#f59e0b",
+    cover: "/comunidade/capas/pedido.jpg",
+    posterEyebrow: "Vendeu? Então",
+    posterTitle: "Faça seu pedido",
   },
   {
-    slug: "cronograma",
-    title: "Cronograma de conteúdo",
-    tagline: "O que postar em cada dia — dê o check",
-    kind: "schedule",
-    accent: "#10b981",
+    slug: "atacado",
+    title: "Atacado",
+    tagline: "Aulas de como vender no atacado",
+    kind: "lessons",
+    accent: "#eab308",
+    cover: "/comunidade/capas/atacado.jpg",
+    posterEyebrow: "Aprenda a vender no",
+    posterTitle: "Atacado",
+  },
+  {
+    slug: "varejo",
+    title: "Varejo",
+    tagline: "Aulas de como vender no varejo",
+    kind: "lessons",
+    accent: "#f43f5e",
+    cover: "/comunidade/capas/varejo.jpg",
+    posterEyebrow: "Aprenda a vender no",
+    posterTitle: "Varejo",
   },
 ];
 

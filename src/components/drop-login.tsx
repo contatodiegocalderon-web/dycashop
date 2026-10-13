@@ -3,11 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
-import {
-  DROP_CLAIM_PATH,
-  DROP_COMMUNITY_PATH,
-  DROP_LANDING_PATH,
-} from "@/lib/dropshipping";
+import { DROP_COMMUNITY_PATH, DROP_LANDING_PATH } from "@/lib/dropshipping";
 
 export const dropFieldClass =
   "w-full rounded-xl border border-white/10 bg-zinc-950/80 px-4 py-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-white/25";
@@ -114,13 +110,14 @@ export function DropLogin() {
       <div className="mt-10 border-t border-white/[0.08] pt-8">
         <h2 className="text-sm font-semibold text-stone-200">Acabei de assinar</h2>
         <p className="mt-1 text-sm text-stone-500">
-          Crie seu acesso agora com o email e o celular que você usou na compra.
+          Logo depois do pagamento a Kiwify te leva para a página de criar seu acesso.
+          Não conseguiu? Fale com a equipe DYCASHOP que a gente libera pra você.
         </p>
         <Link
-          href={DROP_CLAIM_PATH}
-          className="mt-4 flex w-full items-center justify-center rounded-xl bg-emerald-500 py-3 text-sm font-bold uppercase tracking-[0.12em] text-zinc-950 hover:bg-emerald-400"
+          href={DROP_LANDING_PATH}
+          className="mt-4 inline-block text-sm text-stone-300 underline"
         >
-          Criar meu acesso
+          Ainda não assinei
         </Link>
       </div>
     </DropAuthShell>
