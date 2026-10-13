@@ -16,6 +16,7 @@ import {
   type CommunityTopic,
 } from "@/lib/drop-community";
 import { CommunityLoading, CommunityShell } from "@/components/community/community-shell";
+import { JourneyBanner } from "@/components/community/journey";
 import {
   currentStreak,
   planDayProgress,
@@ -210,7 +211,9 @@ export function DropCommunity() {
       </section>
 
       <main className="mx-auto max-w-7xl px-4 pb-20 sm:px-8">
-        <h2 className="text-lg font-bold text-white sm:text-xl">Seus tópicos</h2>
+        <JourneyBanner />
+
+        <h2 className="mt-10 text-lg font-bold text-white sm:text-xl">Seus tópicos</h2>
         <div className="cm-row -mx-4 mt-1 grid auto-cols-[44vw] grid-flow-col gap-3 overflow-x-auto px-4 py-3 sm:-mx-8 sm:auto-cols-[28vw] sm:px-8 lg:grid-flow-row lg:grid-cols-6 lg:overflow-visible">
           {COMMUNITY_TOPICS.map((t, i) => (
             <TopicPoster key={t.slug} topic={t} data={data} priority={i < 4} />

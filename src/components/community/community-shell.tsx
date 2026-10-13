@@ -54,13 +54,21 @@ export function CommunityShell({
               </span>
             </Link>
           </div>
-          <button
-            type="button"
-            onClick={() => void logout()}
-            className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400 hover:text-white"
-          >
-            Sair
-          </button>
+          <div className="flex items-center gap-4 sm:gap-6">
+            <Link
+              href="/comunidade/jornada"
+              className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-300 hover:bg-emerald-400/20"
+            >
+              Jornada
+            </Link>
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-400 hover:text-white"
+            >
+              Sair
+            </button>
+          </div>
         </div>
       </header>
       {children}

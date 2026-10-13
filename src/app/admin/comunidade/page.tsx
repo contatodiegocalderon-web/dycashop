@@ -12,15 +12,26 @@ import {
 } from "@/lib/drop-community";
 import { DROP_CLAIM_PATH } from "@/lib/dropshipping";
 import { CONTENT_FORMATS, EFFORT_LABELS, FORMAT_KEYS, type FormatKey } from "@/lib/drop-content-plan";
+import { REWARD_KIND_LABELS, type RewardKind } from "@/lib/drop-rewards";
 
 type FormatLink = { format_key: string; material_url: string | null; lesson_id: string | null };
 
-type Tab = "aulas" | "formatos" | "cronograma";
+type Tab = "aulas" | "formatos" | "cronograma" | "recompensas";
 
 const TAB_LABELS: Record<Tab, string> = {
   aulas: "Aulas",
   formatos: "Material do cronograma",
   cronograma: "Extras da semana",
+  recompensas: "Recompensas",
+};
+
+type Claim = {
+  id: string;
+  kind: RewardKind;
+  note: string | null;
+  status: "pending" | "done";
+  created_at: string;
+  drop_members: { full_name: string | null; email: string; whatsapp: string | null } | null;
 };
 
 type Lesson = {
@@ -58,6 +69,24 @@ export default function AdminComunidadePage() {
   const [tab, setTab] = useState<Tab>("aulas");
   const [formats, setFormats] = useState<FormatLink[]>([]);
   const [savedFormat, setSavedFormat] = useState<string | null>(null);
+  const [claims, setClaims] = useState<Claim[] | null>(null);
+
+  const loadClaims = useCallback(async () => {
+    const res = await adminFetch("/api/admin/drop-rewards");
+    const data = (await res.json()) as { claims?: Claim[]; error?: string };
+    if (!res.ok) setError(data.error ?? "Falha ao carregar recompensas");
+    else setClaims(data.claims ?? []);
+  }, [adminFetch]);
+
+  async function markClaim(id: string, done: boolean) {
+    setBusy(true);
+    try {
+      await adminFetch("/api/admin/drop-rewards", { method: "PATCH", body: JSON.stringify({ id, done }) });
+      await loadClaims();
+    } finally {
+      setBusy(false);
+    }
+  }
   const [mod, setMod] = useState<LessonModule>("atacado");
   const [week, setWeek] = useState<string | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -264,6 +293,7 @@ export default function AdminComunidadePage() {
             onClick={() => {
               setTab(t);
               setEditing(null);
+              if (t === "recompensas") void loadClaims();
             }}
             className={`rounded-lg px-4 py-2 text-sm font-semibold ${
               tab === t ? "bg-violet-600 text-white" : "border border-white/15 text-violet-200"
@@ -399,6 +429,63 @@ export default function AdminComunidadePage() {
               Adicionar aula
             </button>
           </form>
+        </section>
+      ) : tab === "recompensas" ? (
+        <section className="mt-6">
+          <p className="text-sm text-violet-200/70">
+            Pedidos de peça grátis, vídeo exclusivo, pulseira e placa feitos na Jornada. A jornada conta sozinha os
+            pedidos PAGOS no WhatsApp da assinatura de cada parceiro.
+          </p>
+          {!claims ? (
+            <p className="mt-6 text-sm text-violet-200/60">Carregando…</p>
+          ) : !claims.length ? (
+            <p className="mt-6 rounded-xl border border-dashed border-white/15 px-4 py-10 text-center text-sm text-violet-200/60">
+              Nenhum pedido de recompensa ainda.
+            </p>
+          ) : (
+            <ul className="mt-5 space-y-2">
+              {claims.map((c) => {
+                const m = c.drop_members;
+                const wa = m?.whatsapp?.replace(/\D/g, "");
+                return (
+                  <li
+                    key={c.id}
+                    className={`flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
+                      c.status === "pending" ? "border-amber-400/30 bg-amber-400/[0.04]" : "border-white/10 opacity-70"
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-white">
+                        {REWARD_KIND_LABELS[c.kind]}
+                        <span className="ml-2 text-xs text-violet-300/60">
+                          {new Date(c.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                        </span>
+                      </p>
+                      <p className="text-xs text-violet-200/70">
+                        {m?.full_name || m?.email} · {m?.email}
+                        {wa ? (
+                          <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" className="ml-2 text-emerald-300 hover:underline">
+                            WhatsApp {wa}
+                          </a>
+                        ) : null}
+                      </p>
+                      {c.note ? <p className="mt-1 whitespace-pre-line text-sm text-violet-100">{c.note}</p> : null}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void markClaim(c.id, c.status === "pending")}
+                      className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                        c.status === "pending" ? "bg-emerald-600 text-white" : "border border-white/15 text-violet-200"
+                      }`}
+                    >
+                      {c.status === "pending" ? "Marcar como entregue" : "Reabrir"}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
       ) : tab === "formatos" ? (
         <section className="mt-6">
