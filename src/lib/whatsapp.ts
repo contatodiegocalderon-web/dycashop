@@ -19,6 +19,7 @@ export function buildOrderWhatsAppText(
     orderDisplayNumber?: number;
     shippingQuote?: ShippingQuotePayload | null;
     selectedShipping?: ShippingQuoteOption | null;
+    isMember?: boolean;
   }
 ): string {
   const totals = totalsByCategoryFromCartLines(lines);
@@ -31,6 +32,9 @@ export function buildOrderWhatsAppText(
     : "*Novo pedido*";
 
   const parts: string[] = [header, ""];
+  if (opts?.isMember) {
+    parts.push("⭐ *MEMBRO DA COMUNIDADE*", "");
+  }
 
   if (receiptUrl) {
     parts.push(`  📎 Ver sua seleção com fotos: ${receiptUrl}`);

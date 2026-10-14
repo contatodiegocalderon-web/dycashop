@@ -28,6 +28,24 @@ import { totalsByCategoryFromCartLines } from "@/lib/order-category-totals";
 import type { WholesaleTier } from "@/lib/category-showcase";
 import type { ShippingQuotePayload, ShippingQuoteOption } from "@/lib/shipping-quote-types";
 
+/** Membros da comunidade fecham o pedido direto com o Diego, sem Mercado Pago. */
+const MEMBER_SELLER =
+  WHATSAPP_SELLERS.find((s) => s.name === "Diego") ?? WHATSAPP_SELLERS[0] ?? null;
+
+async function fetchIsMember(waDigits: string, signal?: AbortSignal): Promise<boolean> {
+  try {
+    const r = await fetch(
+      `/api/drop/member-check?whatsapp=${encodeURIComponent(waDigits)}`,
+      { signal }
+    );
+    if (!r.ok) return false;
+    const j = (await r.json()) as { member?: boolean };
+    return j.member === true;
+  } catch {
+    return false;
+  }
+}
+
 function splitCartGroups(lines: CartLine[]) {
   const kits: CartLine[] = [];
   const m = new Map<string, CartLine[]>();
@@ -119,6 +137,7 @@ export default function CarrinhoPage() {
     useCart();
   const [customerName, setCustomerName] = useState("");
   const [customerWhatsApp, setCustomerWhatsApp] = useState("+55 ");
+  const [isMember, setIsMember] = useState(false);
   const [cep, setCep] = useState("");
   const [shippingQuote, setShippingQuote] = useState<ShippingQuotePayload | null>(
     null
@@ -291,6 +310,35 @@ export default function CarrinhoPage() {
     };
   }, [customerWhatsApp]);
 
+  useEffect(() => {
+    setIsMember(false);
+    const digits = normalizeCheckoutWaDigits(customerWhatsApp);
+    if (digits.length < 12 || !MEMBER_SELLER) return;
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      void fetchIsMember(digits, ac.signal).then((member) => {
+        if (!ac.signal.aborted) setIsMember(member);
+      });
+    }, 450);
+    return () => {
+      ac.abort();
+      window.clearTimeout(timer);
+    };
+  }, [customerWhatsApp]);
+
+  const memberCheckout = isMember && MEMBER_SELLER != null;
+  const mpCheckout = isVarejoCheckout && !memberCheckout;
+
+  function submitMemberOrder() {
+    setErr(null);
+    if (!lines.length || !MEMBER_SELLER) return;
+    setShowFieldErrors(true);
+    const waDigits = normalizeCheckoutWaDigits(customerWhatsApp);
+    const cepOk = (normalizeCepDigits(cep) ?? "").length === 8;
+    if (waDigits.length < 10 || !customerName.trim() || !cepOk) return;
+    void submitOrderToSeller(MEMBER_SELLER.phone, true);
+  }
+
   const openSellerModal = useCallback(() => {
     setErr(null);
     if (!lines.length) return;
@@ -339,6 +387,12 @@ export default function CarrinhoPage() {
       !shippingAddress ||
       cartPricing.subtotal == null
     ) {
+      return;
+    }
+
+    if (MEMBER_SELLER && (await fetchIsMember(waDigits))) {
+      setIsMember(true);
+      await submitOrderToSeller(MEMBER_SELLER.phone, true);
       return;
     }
 
@@ -419,7 +473,7 @@ export default function CarrinhoPage() {
     }
   }
 
-  async function submitOrderToSeller(sellerPhone: string) {
+  async function submitOrderToSeller(sellerPhone: string, member = false) {
     const phone = sellerPhone.replace(/\D/g, "");
     if (!phone.length) {
       setErr("Telefone do vendedor inválido.");
@@ -497,6 +551,7 @@ export default function CarrinhoPage() {
         customerName: trimmedName,
         shippingQuote,
         selectedShipping,
+        isMember: member,
         orderDisplayNumber:
           typeof data.orderDisplayNumber === "number"
             ? data.orderDisplayNumber
@@ -832,17 +887,24 @@ export default function CarrinhoPage() {
                 categoryTotals={categoryTotals}
                 pricing={cartPricing}
                 shippingPrice={
-                  isVarejoCheckout ? selectedShipping?.price ?? null : null
+                  mpCheckout ? selectedShipping?.price ?? null : null
                 }
               />
 
               <div className="max-w-xs">
-                <label
-                  htmlFor="checkout-customer-whatsapp"
-                  className="text-sm font-medium text-stone-300"
-                >
-                  WhatsApp <span className="text-red-400">*</span>
-                </label>
+                <div className="flex items-center gap-2">
+                  <label
+                    htmlFor="checkout-customer-whatsapp"
+                    className="text-sm font-medium text-stone-300"
+                  >
+                    WhatsApp <span className="text-red-400">*</span>
+                  </label>
+                  {memberCheckout ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-violet-400/40 bg-violet-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-violet-200">
+                      ★ Membro
+                    </span>
+                  ) : null}
+                </div>
                 <div className="relative mt-2">
                   <input
                     id="checkout-customer-whatsapp"
@@ -887,6 +949,12 @@ export default function CarrinhoPage() {
                     normalizeCheckoutWaDigits(customerWhatsApp).length < 10
                   }
                 />
+                {memberCheckout ? (
+                  <p className="mt-2 text-xs leading-relaxed text-violet-200/80">
+                    Você é membro da comunidade: seu pedido vai direto pro
+                    WhatsApp do {MEMBER_SELLER?.name}.
+                  </p>
+                ) : null}
               </div>
 
               <div className="max-w-xs">
@@ -965,18 +1033,18 @@ export default function CarrinhoPage() {
                 <CartShippingQuote
                   lines={lines}
                   cep={cep}
-                  checkoutMode={isVarejoCheckout ? "varejo" : "atacado"}
+                  checkoutMode={mpCheckout ? "varejo" : "atacado"}
                   onQuoteChange={setShippingQuote}
                   onSelectionChange={setSelectedShipping}
                 />
-                {isVarejoCheckout &&
+                {mpCheckout &&
                 showFieldErrors &&
                 !selectedShipping ? (
                   <p className="mt-2 text-center text-xs text-red-500" role="alert">
                     Este campo deve ser preenchido
                   </p>
                 ) : null}
-                {isVarejoCheckout &&
+                {mpCheckout &&
                 (selectedShipping || showFieldErrors) ? (
                   <CartVarejoShippingAddress
                     cep={cep}
@@ -988,7 +1056,18 @@ export default function CarrinhoPage() {
               </div>
 
               <div className={isVarejoCheckout ? "space-y-3" : "flex flex-wrap gap-3"}>
-                {isVarejoCheckout ? (
+                {memberCheckout ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={submitMemberOrder}
+                    className={`rounded-xl bg-emerald-700 px-5 py-3.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50 ${
+                      isVarejoCheckout ? "w-full" : ""
+                    }`}
+                  >
+                    {busy ? "A processar…" : `Enviar pedido pro ${MEMBER_SELLER?.name} no WhatsApp`}
+                  </button>
+                ) : isVarejoCheckout ? (
                   <>
                     <button
                       type="button"
