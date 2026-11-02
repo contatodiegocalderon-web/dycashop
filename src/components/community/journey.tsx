@@ -15,6 +15,8 @@ import {
   type RewardsState,
 } from "@/lib/drop-rewards";
 import { DROP_LOGIN_PATH } from "@/lib/dropshipping";
+import { WHATSAPP_SELLERS } from "@/lib/sellers";
+import { saoPauloToday } from "@/lib/drop-community";
 
 type JourneyOrder = { id: string; number: number | null; amount: number; pieces: number; confirmedAt: string };
 
@@ -24,6 +26,8 @@ export type JourneyData = {
   since: string;
   pieces: number;
   spent: number;
+  todayPieces?: number;
+  todaySpent?: number;
   orders: JourneyOrder[];
   claims: RewardClaim[];
 };
@@ -113,6 +117,17 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
 
 const MILESTONE_ICON: Record<PieceMilestone["icon"], string> = { start: "start", price: "price", staff: "staff" };
 
+const DIEGO_PHONE = WHATSAPP_SELLERS.find((s) => s.name === "Diego")?.phone ?? "5511958936770";
+
+const WHATSAPP_CLAIM: Partial<Record<RewardKind, string>> = {
+  free_piece: "Oi Diego! Quero resgatar minha peça grátis da jornada DYCASHOP.",
+  video: "Oi Diego! Quero pedir um vídeo exclusivo da jornada DYCASHOP.",
+};
+
+function diegoWhatsapp(text: string) {
+  return `https://wa.me/${DIEGO_PHONE}?text=${encodeURIComponent(text)}`;
+}
+
 /* ---------- pedido de recompensa ---------- */
 
 function ClaimButton({
@@ -135,29 +150,48 @@ function ClaimButton({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  async function send() {
-    if (demo) {
-      setMsg("No modo demonstração o pedido não é enviado.");
-      return;
-    }
+  async function register(noteText: string) {
     setBusy(true);
     setMsg(null);
     const res = await fetch("/api/drop/rewards", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, note }),
+      body: JSON.stringify({ kind, note: noteText }),
     });
     const json = (await res.json()) as { error?: string };
     setBusy(false);
     if (!res.ok) {
       setMsg(json.error ?? "Não deu pra enviar");
-      return;
+      return false;
     }
     setOpen(false);
     setNote("");
-    setMsg("✓ Pedido enviado! A equipe vai te chamar no WhatsApp.");
     onDone();
+    return true;
+  }
+
+  function request() {
+    if (demo) {
+      setMsg("No modo demonstração o pedido não é enviado.");
+      return;
+    }
+    const text = WHATSAPP_CLAIM[kind];
+    if (text) {
+      window.open(diegoWhatsapp(text), "_blank", "noopener,noreferrer");
+      void register(text);
+      return;
+    }
+    setOpen(true);
+  }
+
+  async function send() {
+    if (demo) {
+      setMsg("No modo demonstração o pedido não é enviado.");
+      return;
+    }
+    const ok = await register(note);
+    if (ok) setMsg("✓ Pedido enviado! A equipe vai te chamar no WhatsApp.");
   }
 
   return (
@@ -189,7 +223,7 @@ function ClaimButton({
         <button
           type="button"
           disabled={disabled}
-          onClick={() => setOpen(true)}
+          onClick={request}
           className="jr-cta rounded-lg px-4 py-2.5 text-xs font-extrabold uppercase tracking-wider text-zinc-950 disabled:cursor-not-allowed disabled:opacity-35 disabled:shadow-none"
         >
           {label}
@@ -285,7 +319,7 @@ function Hero({ r, data }: { r: RewardsState; data: { spent: number; orders: num
 
           <div className="mt-6 grid grid-cols-3 gap-2 sm:gap-3">
             <HeroStat label="Em compras" value={money(spent)} />
-            <HeroStat label="Seu preço" value={`R$ ${r.unitPrice}`} accent />
+            <HeroStat label="Preço de custo" value={`R$ ${r.unitPrice}`} accent />
             <HeroStat label="Pedidos" value={String(data.orders)} />
           </div>
 
@@ -633,6 +667,26 @@ function History({ data }: { data: JourneyData }) {
   );
 }
 
+const DEMO_KEY = "dycashop-journey-demo";
+const DEMO_DEFAULT = { pieces: 37, spent: 3200, enabled: false };
+
+function readDemo() {
+  try {
+    const raw = localStorage.getItem(DEMO_KEY);
+    if (!raw) return DEMO_DEFAULT;
+    const parsed = JSON.parse(raw) as { pieces?: unknown; spent?: unknown; enabled?: unknown };
+    const pieces = Number(parsed.pieces);
+    const spent = Number(parsed.spent);
+    return {
+      pieces: Number.isFinite(pieces) ? pieces : DEMO_DEFAULT.pieces,
+      spent: Number.isFinite(spent) ? spent : DEMO_DEFAULT.spent,
+      enabled: Boolean(parsed.enabled),
+    };
+  } catch {
+    return DEMO_DEFAULT;
+  }
+}
+
 function DemoPanel({
   pieces,
   spent,
@@ -668,7 +722,16 @@ function DemoPanel({
 
 export function JourneyView() {
   const { data, error, reload } = useJourney();
-  const [demo, setDemo] = useState({ pieces: 37, spent: 3200, enabled: false });
+  const [demo, setDemo] = useState(DEMO_DEFAULT);
+
+  useEffect(() => {
+    setDemo(readDemo());
+  }, []);
+
+  function updateDemo(next: { pieces: number; spent: number; enabled: boolean }) {
+    setDemo(next);
+    localStorage.setItem(DEMO_KEY, JSON.stringify(next));
+  }
 
   if (!data) {
     return <p className="py-24 text-center text-sm text-stone-500">{error ?? "Carregando sua jornada…"}</p>;
@@ -682,7 +745,7 @@ export function JourneyView() {
 
   return (
     <main className="mx-auto max-w-6xl space-y-10 px-4 pb-24 pt-6 sm:px-8">
-      {data.isOwner ? <DemoPanel {...demo} onChange={setDemo} /> : null}
+      {data.isOwner ? <DemoPanel {...demo} onChange={updateDemo} /> : null}
       {!data.hasPhone && !isDemo ? (
         <p className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-stone-300">
           Não achamos o WhatsApp da sua assinatura. Fale com a equipe DYCASHOP pra ligar seus pedidos à sua jornada.
@@ -705,42 +768,83 @@ export function JourneyView() {
   );
 }
 
-/** Chamada da jornada na home da comunidade. */
+function todayFromOrders(orders: JourneyOrder[]) {
+  const today = saoPauloToday().date;
+  let pieces = 0;
+  let spent = 0;
+  for (const o of orders) {
+    const day = new Date(o.confirmedAt).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    if (day !== today) continue;
+    pieces += o.pieces;
+    spent += o.amount;
+  }
+  return { pieces, spent };
+}
+
+function PrintStat({
+  label,
+  pieces,
+  spent,
+}: {
+  label: string;
+  pieces: number | null;
+  spent: number | null;
+}) {
+  return (
+    <div className="min-w-0 text-center">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-dygold-300">{label}</p>
+      <p className="mt-2 font-mono text-4xl font-black tabular-nums leading-none tracking-tight text-white sm:text-5xl">
+        {pieces === null ? "–" : pieces}
+        <span className="ml-2 align-baseline text-sm font-semibold uppercase tracking-[0.16em] text-dygold-200">
+          peças
+        </span>
+      </p>
+      <p className="mt-2 font-mono text-2xl font-bold tabular-nums text-dygold-300 sm:text-3xl">
+        {spent === null ? "–" : money(spent)}
+      </p>
+    </div>
+  );
+}
+
+/** Cartão da jornada na home, feito para o parceiro postar o print. */
 export function JourneyBanner() {
   const { data } = useJourney();
-  const r = computeRewards(data?.pieces ?? 0, data?.spent ?? 0, data?.claims ?? []);
+  const [demo, setDemo] = useState(DEMO_DEFAULT);
+  const fallback = todayFromOrders(data?.orders ?? []);
+  const todayPieces = data ? (data.todayPieces ?? fallback.pieces) : null;
+  const todaySpent = data ? (data.todaySpent ?? fallback.spent) : null;
+  const demoOn = Boolean(data?.isOwner && demo.enabled);
+
+  useEffect(() => {
+    setDemo(readDemo());
+  }, []);
+
   return (
-    <Link href="/comunidade/jornada" className="jr-hero jr-banner group relative block overflow-hidden rounded-3xl p-5 sm:p-7">
-      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:gap-8">
-        <div className="flex items-center gap-4">
-          <span className="jr-node-reached flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-zinc-950">
-            <Icon name="crown" size={28} />
+    <Link
+      href="/comunidade/jornada"
+      className="jr-hero jr-banner group relative block overflow-hidden rounded-3xl px-5 py-7 sm:px-10 sm:py-8"
+    >
+      <div className="relative flex flex-col items-center gap-8 sm:flex-row sm:justify-center sm:gap-14">
+        <span className="flex flex-col items-center gap-3">
+          <span className="jr-node-reached flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center rounded-2xl text-zinc-950 shadow-[0_0_32px_rgba(201,162,39,0.35)]">
+            <Icon name="crown" size={34} />
           </span>
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-dygold-400">Jornada · recompensas</p>
-            <p className="text-2xl font-black uppercase tracking-tight sm:text-3xl">
-              <span className="jr-shimmer">Nível {r.rank}</span>
-            </p>
-          </div>
-        </div>
-        <div className="flex-1">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-xs text-stone-400">
-            <span>
-              <strong className="font-mono text-lg text-white">{data ? r.pieces : "–"}</strong> peças ·{" "}
-              <strong className="text-white">{money(r.spent)}</strong>
+          <span className="flex items-center gap-2 text-[10px] font-medium tracking-[0.22em] text-dygold-200/55 transition group-hover:text-dygold-200/90">
+            <span className="h-px w-5 bg-current opacity-60" aria-hidden />
+            Sua jornada
+            <span className="transition-transform group-hover:translate-x-0.5" aria-hidden>
+              →
             </span>
-            <span>{r.next ? `${r.next.at} pç: ${r.next.title}` : "Nível máximo"}</span>
-          </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-            <div className="jr-bar h-full rounded-full transition-[width] duration-1000" style={{ width: `${Math.round(r.progressToNext * 100)}%` }} />
-          </div>
-          <p className="mt-2 text-xs text-stone-500">
-            Peça grátis a cada 10 · preço cai até R$ 20 · pulseira, placa e preço de sócio
-          </p>
-        </div>
-        <span className="jr-cta inline-flex shrink-0 items-center justify-center rounded-xl px-5 py-3 text-xs font-extrabold uppercase tracking-wider text-zinc-950">
-          Ver minha jornada →
+          </span>
         </span>
+        <div className="grid w-full max-w-xl grid-cols-2 gap-6 sm:gap-12">
+          <PrintStat label="Hoje" pieces={todayPieces} spent={todaySpent} />
+          <PrintStat
+            label="Total"
+            pieces={data ? (demoOn ? demo.pieces : data.pieces) : null}
+            spent={data ? (demoOn ? demo.spent : data.spent) : null}
+          />
+        </div>
       </div>
     </Link>
   );

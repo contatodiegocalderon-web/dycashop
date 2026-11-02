@@ -22,6 +22,34 @@ type AccessReq = {
   created_at: string;
 };
 
+type Progress = {
+  pieces: number;
+  spent: number;
+  todayPieces: number;
+  todaySpent: number;
+  hasPhone: boolean;
+  rank: string;
+  unitPrice: number;
+  cycle: number;
+  freeEvery: number;
+  freeAvailable: number;
+  videosAvailable: number;
+  hasSupport: boolean;
+  next: { at: number; title: string } | null;
+  lessonsDone: number;
+  lessonsTotal: number;
+  claims: { id: string; kind: string; status: string; createdAt: string }[];
+  orders: { id: string; number: number | null; pieces: number; amount: number; confirmedAt: string }[];
+};
+
+function brl(n: number) {
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function day(iso: string) {
+  return new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
+
 export default function AdminParceirosPage() {
   const router = useRouter();
   const { adminFetch, isOwner } = useAdminAuth();
@@ -34,6 +62,8 @@ export default function AdminParceirosPage() {
   const [whatsapp, setWhatsapp] = useState("");
   const [saving, setSaving] = useState(false);
   const [revealed, setRevealed] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<Record<string, Progress | "loading" | string>>({});
 
   const load = useCallback(async () => {
     setError(null);
@@ -112,6 +142,25 @@ export default function AdminParceirosPage() {
       setOkMsg("Nova senha gerada. Copie e envie agora.");
     }
     await load();
+  }
+
+  async function toggleProgress(id: string) {
+    if (openId === id) {
+      setOpenId(null);
+      return;
+    }
+    setOpenId(id);
+    const cached = progress[id];
+    if (cached && cached !== "loading" && typeof cached !== "string") return;
+    setProgress((p) => ({ ...p, [id]: "loading" }));
+    try {
+      const res = await adminFetch(`/api/admin/drop-members/${id}/progress`);
+      const data = (await res.json()) as Progress & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Falha ao carregar progresso");
+      setProgress((p) => ({ ...p, [id]: data }));
+    } catch (e) {
+      setProgress((p) => ({ ...p, [id]: e instanceof Error ? e.message : "Erro" }));
+    }
   }
 
   if (!isOwner) return null;
@@ -220,43 +269,144 @@ export default function AdminParceirosPage() {
         </button>
       </form>
 
-      <ul className="mt-8 space-y-2">
-        {members.map((m) => (
-          <li
-            key={m.id}
-            className="flex flex-col gap-2 rounded-xl border border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div>
-              <p className="font-medium text-white">
-                {m.full_name || m.email}
-                {!m.active ? (
-                  <span className="ml-2 text-xs text-red-300">inativo</span>
-                ) : null}
-              </p>
-              <p className="text-xs text-violet-200/60">
-                {m.email}
-                {m.whatsapp ? ` · ${m.whatsapp}` : ""}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => void patch({ id: m.id, resetPassword: true })}
-                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-violet-100"
-              >
-                Nova senha
-              </button>
-              <button
-                type="button"
-                onClick={() => void patch({ id: m.id, active: !m.active })}
-                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-violet-100"
-              >
-                {m.active ? "Desativar" : "Ativar"}
-              </button>
-            </div>
-          </li>
-        ))}
+      <h2 className="mt-10 text-sm font-semibold uppercase tracking-wider text-violet-200">
+        Membros
+      </h2>
+      <p className="mt-1 text-xs text-violet-300/50">Clique no nome para ver o progresso.</p>
+      <ul className="mt-3 space-y-2">
+        {members.map((m) => {
+          const open = openId === m.id;
+          const row = progress[m.id];
+          return (
+            <li key={m.id} className="rounded-xl border border-white/10 px-4 py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <button
+                  type="button"
+                  onClick={() => void toggleProgress(m.id)}
+                  className="text-left"
+                >
+                  <p className="font-medium text-white">
+                    {m.full_name || m.email}
+                    {!m.active ? (
+                      <span className="ml-2 text-xs text-red-300">inativo</span>
+                    ) : null}
+                    <span className="ml-2 text-[10px] font-normal tracking-wide text-violet-300/50">
+                      {open ? "fechar" : "ver progresso"}
+                    </span>
+                  </p>
+                  <p className="text-xs text-violet-200/60">
+                    {m.email}
+                    {m.whatsapp ? ` · ${m.whatsapp}` : ""}
+                  </p>
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void patch({ id: m.id, resetPassword: true })}
+                    className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-violet-100"
+                  >
+                    Nova senha
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void patch({ id: m.id, active: !m.active })}
+                    className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-violet-100"
+                  >
+                    {m.active ? "Desativar" : "Ativar"}
+                  </button>
+                </div>
+              </div>
+              {open ? (
+                <div className="mt-4 border-t border-white/10 pt-4">
+                  {row === "loading" || !row ? (
+                    <p className="text-sm text-violet-200/60">Carregando progresso…</p>
+                  ) : typeof row === "string" ? (
+                    <p className="text-sm text-red-300">{row}</p>
+                  ) : (
+                    <ProgressPanel data={row} />
+                  )}
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
+    </div>
+  );
+}
+
+function ProgressPanel({ data }: { data: Progress }) {
+  const stats = [
+    { label: "Peças", value: String(data.pieces) },
+    { label: "Investido", value: brl(data.spent) },
+    { label: "Hoje", value: `${data.todayPieces} · ${brl(data.todaySpent)}` },
+    { label: "Preço de custo", value: brl(data.unitPrice) },
+    { label: "Aulas", value: `${data.lessonsDone}/${data.lessonsTotal}` },
+    {
+      label: "Próxima meta",
+      value: data.next ? `${data.next.at} peças` : "Concluída",
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <p className="text-sm font-semibold text-white">{data.rank}</p>
+        <p className="text-xs text-violet-200/60">
+          {data.cycle}/{data.freeEvery} para a próxima peça grátis
+          {data.freeAvailable > 0 ? ` · ${data.freeAvailable} para resgatar` : ""}
+          {data.videosAvailable > 0 ? ` · ${data.videosAvailable} vídeo(s)` : ""}
+          {data.hasSupport ? " · suporte exclusivo" : ""}
+        </p>
+      </div>
+      {!data.hasPhone ? (
+        <p className="text-xs text-amber-200/80">
+          Sem WhatsApp salvo. Os pedidos pagos não entram nessa conta.
+        </p>
+      ) : null}
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-lg bg-black/25 px-3 py-2">
+            <dt className="text-[10px] uppercase tracking-wider text-violet-300/50">{s.label}</dt>
+            <dd className="mt-0.5 text-sm font-semibold text-white">{s.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {data.next ? (
+        <p className="text-xs text-violet-200/55">{data.next.title}</p>
+      ) : null}
+      {data.orders.length > 0 ? (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-violet-300/50">Pedidos recentes</p>
+          <ul className="mt-2 space-y-1">
+            {data.orders.map((o) => (
+              <li key={o.id} className="flex justify-between gap-3 text-xs text-violet-100/80">
+                <span>
+                  #{o.number ?? "—"} · {o.pieces} peças
+                </span>
+                <span>
+                  {brl(o.amount)} · {day(o.confirmedAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {data.claims.length > 0 ? (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-violet-300/50">Resgates</p>
+          <ul className="mt-2 space-y-1">
+            {data.claims.map((c) => (
+              <li key={c.id} className="flex justify-between gap-3 text-xs text-violet-100/80">
+                <span>{c.kind}</span>
+                <span>
+                  {c.status === "done" ? "feito" : "pendente"} · {day(c.createdAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
 import {
   DROP_CATALOG_DRIVE_URL,
   DROP_MEMBER_PRICE_ROWS,
@@ -9,7 +10,6 @@ import {
 } from "@/lib/dropshipping";
 import {
   COMMUNITY_TOPICS,
-  getTopic,
   lessonStill,
   type CommunityTopic,
 } from "@/lib/drop-community";
@@ -27,6 +27,83 @@ import {
 
 function money(n: number) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function DropPriceTable() {
+  const [hover, setHover] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const open = hover || pinned;
+
+  return (
+    <section className="mt-12">
+      <div className="cm-slot mx-auto max-w-2xl rounded-2xl p-5 sm:p-6">
+        <h2 className="text-base font-bold uppercase tracking-wide text-white">Dropshipping</h2>
+        <p className="mt-1 text-xs text-stone-400">
+          A partir de 1 peça. Quanto mais você vender, mais vamos diminuir o preço pra você.
+        </p>
+        <table className="mt-4 w-full text-left text-sm">
+          <tbody>
+            {DROP_MEMBER_PRICE_ROWS.map((row) => {
+              const shirt = row.label.toLowerCase() === "camisetas";
+              if (!shirt) {
+                return (
+                  <tr key={row.label} className="border-b border-white/[0.05] last:border-0">
+                    <td className="py-2 text-stone-300">{row.label}</td>
+                    <td className="py-2 text-right font-mono tabular-nums text-stone-100">{money(row.price)}</td>
+                  </tr>
+                );
+              }
+              return (
+                <tr key={row.label} className="border-b border-white/[0.05]">
+                  <td colSpan={2} className="p-0">
+                    <div
+                      onMouseEnter={() => setHover(true)}
+                      onMouseLeave={() => setHover(false)}
+                    >
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        onClick={() => setPinned((v) => !v)}
+                        className="flex w-full items-center justify-between gap-3 rounded-lg bg-dygold-400/10 px-3 py-2.5 text-left"
+                      >
+                        <span>
+                          <span className="block font-semibold text-dygold-200">Camisetas</span>
+                          <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.14em] text-dygold-300/80">
+                            {open ? "Atacado" : "Ver atacado"}
+                          </span>
+                        </span>
+                        <span className="font-mono text-base font-semibold tabular-nums text-dygold-300">
+                          {money(row.price)}
+                        </span>
+                      </button>
+                      {open ? (
+                        <div className="px-1 pb-3 pt-3">
+                          <p className="text-xs text-stone-400">Preço exclusivo de atacado.</p>
+                          <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                            {DROP_STOCK_TIERS.map((t) => (
+                              <div key={t.qty} className="rounded-xl border border-white/[0.06] px-2 py-3 text-center">
+                                <p className="text-[10px] uppercase tracking-wider text-stone-500">{t.qty} peças</p>
+                                <p className="mt-1 font-mono text-sm font-semibold tabular-nums text-dygold-400 sm:text-base">
+                                  {money(t.unit)}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="mt-3 rounded-xl border border-dygold-500/20 bg-dygold-500/[0.06] px-3 py-2.5 text-xs leading-relaxed text-dygold-200">
+                            Pedidos na grade por estampa: conseguimos negociar preços melhores ainda.
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 }
 
 function topicHref(t: CommunityTopic): string {
@@ -149,7 +226,6 @@ export function DropCommunity() {
     .slice()
     .sort((a, b) => a.position - b.position);
   const upNext = nextLesson(data);
-  const upNextTopic = upNext ? getTopic(upNext.module) : null;
   const upNextThumb = upNext ? lessonStill(upNext.youtube_url) : null;
   return (
     <CommunityShell>
@@ -173,15 +249,11 @@ export function DropCommunity() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-dygold-400">
               Olá, {first}
             </p>
-            {upNext && upNextTopic ? (
+            {upNext ? (
               <>
                 <h1 className="mt-3 max-w-2xl text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
                   {upNext.title}
                 </h1>
-                <p className="mt-3 text-sm text-stone-300">
-                  Continue em <strong className="text-white">{upNextTopic.title}</strong>
-                  {upNext.description ? ` — ${upNext.description}` : ""}
-                </p>
                 <div className="mt-6 flex flex-wrap gap-3">
                   <Link
                     href={`/comunidade/${upNext.module}?aula=${upNext.id}`}
@@ -242,39 +314,7 @@ export function DropCommunity() {
           </section>
         ) : null}
 
-        <section className="mt-12 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-          <div className="cm-slot rounded-2xl p-5 sm:p-6">
-            <h2 className="text-base font-bold uppercase tracking-wide text-white">Dropshipping</h2>
-            <p className="mt-1 text-xs text-stone-400">
-              A partir de 1 peça. Quanto mais você vender, mais vamos diminuir o preço pra você.
-            </p>
-            <table className="mt-4 w-full text-left text-sm">
-              <tbody>
-                {DROP_MEMBER_PRICE_ROWS.map((row) => (
-                  <tr key={row.label} className="border-b border-white/[0.05] last:border-0">
-                    <td className="py-2 text-stone-300">{row.label}</td>
-                    <td className="py-2 text-right font-mono tabular-nums text-stone-100">{money(row.price)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="cm-slot rounded-2xl p-5 sm:p-6">
-            <h2 className="text-base font-bold uppercase tracking-wide text-white">Atacado</h2>
-            <p className="mt-1 text-xs text-stone-400">Preço exclusivo de atacado.</p>
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              {DROP_STOCK_TIERS.map((t) => (
-                <div key={t.qty} className="rounded-xl border border-white/[0.06] px-3 py-4 text-center">
-                  <p className="text-[10px] uppercase tracking-wider text-stone-500">{t.qty} peças</p>
-                  <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-dygold-400">{money(t.unit)}</p>
-                </div>
-              ))}
-            </div>
-            <p className="mt-4 rounded-xl border border-dygold-500/20 bg-dygold-500/[0.06] px-3 py-2.5 text-xs leading-relaxed text-dygold-200">
-              Pedidos na grade por estampa: conseguimos negociar preços melhores ainda.
-            </p>
-          </div>
-        </section>
+        <DropPriceTable />
       </main>
     </CommunityShell>
   );
