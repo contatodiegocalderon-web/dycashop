@@ -70,7 +70,7 @@ export function WelcomeVideo({
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
       <div className="flex w-full max-w-sm flex-col items-center">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-300">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-dygold-300">
           Boas-vindas
         </p>
         <h2 className="mt-2 text-center text-2xl font-extrabold text-white">Antes de começar</h2>

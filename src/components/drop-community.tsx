@@ -77,7 +77,7 @@ function TopicPoster({ topic, data, priority }: { topic: CommunityTopic; data: C
         />
       ) : (
         <span
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(37,211,102,0.38),transparent_58%)]"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(228,193,90,0.38),transparent_58%)]"
           aria-hidden
         />
       )}
@@ -86,11 +86,11 @@ function TopicPoster({ topic, data, priority }: { topic: CommunityTopic; data: C
           {topic.posterEyebrow}
         </span>
         <span className="cm-poster-title mt-1 block">{topic.posterTitle}</span>
-        <span className="mt-2.5 block text-[10px] font-semibold text-emerald-300 sm:text-[11px]">{meta.label}</span>
+        <span className="mt-2.5 block text-[10px] font-semibold text-dygold-300 sm:text-[11px]">{meta.label}</span>
         {meta.progress !== null ? (
           <span className="mx-auto mt-1.5 block h-1 w-4/5 overflow-hidden rounded-full bg-white/15">
             <span
-              className="block h-full rounded-full bg-emerald-400"
+              className="block h-full rounded-full bg-dygold-400"
               style={{ width: `${Math.round(meta.progress * 100)}%` }}
             />
           </span>
@@ -118,7 +118,7 @@ function LessonThumb({ lesson, done, number }: { lesson: Lesson; done: boolean; 
           Aula {number}
         </span>
         {done ? (
-          <span className="absolute right-2 top-2 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-zinc-950">
+          <span className="absolute right-2 top-2 rounded-full bg-dygold-500 px-2 py-0.5 text-[10px] font-bold text-zinc-950">
             ✓ Assistida
           </span>
         ) : null}
@@ -164,13 +164,13 @@ export function DropCommunity() {
         {upNextThumb ? (
           <>
             <Image src={upNextThumb} alt="" fill unoptimized priority className="object-cover opacity-30 blur-[2px]" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#050706] via-[#050706]/85 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#050706] to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#100e0a] via-[#100e0a]/85 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#100e0a] to-transparent" />
           </>
         ) : null}
         <div className="relative mx-auto grid max-w-7xl items-center gap-8 px-4 pb-12 pt-8 sm:px-8 sm:pb-16 sm:pt-12 lg:grid-cols-[1fr_440px]">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-emerald-400">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-dygold-400">
               Olá, {first}
             </p>
             {upNext && upNextTopic ? (
@@ -266,11 +266,11 @@ export function DropCommunity() {
               {DROP_STOCK_TIERS.map((t) => (
                 <div key={t.qty} className="rounded-xl border border-white/[0.06] px-3 py-4 text-center">
                   <p className="text-[10px] uppercase tracking-wider text-stone-500">{t.qty} peças</p>
-                  <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-emerald-400">{money(t.unit)}</p>
+                  <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-dygold-400">{money(t.unit)}</p>
                 </div>
               ))}
             </div>
-            <p className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2.5 text-xs leading-relaxed text-emerald-200">
+            <p className="mt-4 rounded-xl border border-dygold-500/20 bg-dygold-500/[0.06] px-3 py-2.5 text-xs leading-relaxed text-dygold-200">
               Pedidos na grade por estampa: conseguimos negociar preços melhores ainda.
             </p>
           </div>

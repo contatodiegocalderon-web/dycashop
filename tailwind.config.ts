@@ -11,6 +11,12 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        dygold: {
+          200: "#f8ebc4",
+          300: "#f3d78a",
+          400: "#e4c15a",
+          500: "#c9a227",
+        },
       },
     },
   },

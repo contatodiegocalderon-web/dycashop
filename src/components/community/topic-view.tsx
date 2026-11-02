@@ -31,7 +31,7 @@ function Linkified({ text }: { text: string }) {
         href={part}
         target="_blank"
         rel="noopener noreferrer"
-        className="break-all font-medium text-emerald-300 underline decoration-emerald-400/40 underline-offset-2 hover:text-emerald-200"
+        className="break-all font-medium text-dygold-300 underline decoration-dygold-400/40 underline-offset-2 hover:text-dygold-200"
       >
         {part}
       </a>
@@ -164,7 +164,7 @@ function LessonsView({ topic, data, toggle }: { topic: CommunityTopic; data: Com
                   onClick={markAndNext}
                   className={`shrink-0 rounded-md px-5 py-3 text-sm font-bold transition ${
                     done
-                      ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40"
+                      ? "bg-dygold-500/15 text-dygold-300 ring-1 ring-dygold-500/40"
                       : "bg-white text-zinc-950 hover:bg-white/85"
                   }`}
                 >
@@ -193,13 +193,13 @@ function LessonsView({ topic, data, toggle }: { topic: CommunityTopic; data: Com
                         <Image src={still} alt="" fill unoptimized className="object-cover" />
                       ) : null}
                       {isDone ? (
-                        <span className="absolute inset-x-0 bottom-0 h-1 bg-emerald-500" />
+                        <span className="absolute inset-x-0 bottom-0 h-1 bg-dygold-500" />
                       ) : null}
                     </span>
                     <span className="min-w-0">
                       <span className="block text-[11px] font-semibold uppercase tracking-wider text-stone-500">
                         Aula {i + 1}
-                        {isDone ? <span className="ml-1.5 text-emerald-400">✓</span> : null}
+                        {isDone ? <span className="ml-1.5 text-dygold-400">✓</span> : null}
                       </span>
                       <span className="mt-0.5 line-clamp-2 block text-sm font-medium text-stone-100">
                         {l.title}

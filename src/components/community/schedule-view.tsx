@@ -43,8 +43,8 @@ function CheckButton({
       aria-label={checked ? "Desmarcar" : "Marcar como postado"}
       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 transition disabled:cursor-not-allowed disabled:opacity-30 ${
         checked
-          ? "border-emerald-400 bg-emerald-400 text-zinc-950 shadow-[0_0_18px_rgba(16,185,129,0.55)]"
-          : "border-stone-500 text-transparent hover:border-emerald-400"
+          ? "border-dygold-400 bg-dygold-400 text-zinc-950 shadow-[0_0_18px_rgba(201,162,39,0.55)]"
+          : "border-stone-500 text-transparent hover:border-dygold-400"
       }`}
     >
       <svg viewBox="0 0 16 16" width={15} height={15} fill="none" aria-hidden>
@@ -59,7 +59,7 @@ function EffortDots({ effort }: { effort: 1 | 2 | 3 }) {
     <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold text-stone-300">
       <span className="flex gap-0.5" aria-hidden>
         {[1, 2, 3].map((n) => (
-          <span key={n} className={`h-1.5 w-1.5 rounded-full ${n <= effort ? "bg-emerald-400" : "bg-white/15"}`} />
+          <span key={n} className={`h-1.5 w-1.5 rounded-full ${n <= effort ? "bg-dygold-400" : "bg-white/15"}`} />
         ))}
       </span>
       {EFFORT_LABELS[effort]}
@@ -92,11 +92,11 @@ function SlotCard({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
           <span className="font-mono text-stone-400">{slot.when}</span>
-          <span className="rounded-full border border-emerald-400/30 px-2 py-0.5 uppercase tracking-wider text-emerald-300">
+          <span className="rounded-full border border-dygold-400/30 px-2 py-0.5 uppercase tracking-wider text-dygold-300">
             {slot.purpose}
           </span>
           {slot.essential ? (
-            <span className="rounded-full bg-emerald-400 px-2 py-0.5 uppercase tracking-wider text-zinc-950">
+            <span className="rounded-full bg-dygold-400 px-2 py-0.5 uppercase tracking-wider text-zinc-950">
               ★ Essencial
             </span>
           ) : null}
@@ -112,7 +112,7 @@ function SlotCard({
           </span>
           <span
             className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
-              weekly ? "bg-amber-400/15 text-amber-200" : "bg-emerald-400/10 text-emerald-200"
+              weekly ? "bg-amber-400/15 text-amber-200" : "bg-dygold-400/10 text-dygold-200"
             }`}
           >
             {slot.cadence === "semana"
@@ -130,7 +130,7 @@ function SlotCard({
             <p className="mt-3 text-sm leading-relaxed text-stone-300">{slot.format.how}</p>
             {slot.text ? (
               <p className="mt-2 text-sm leading-relaxed text-stone-100">
-                <span className="mr-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-400">No story:</span>
+                <span className="mr-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-dygold-400">No story:</span>
                 {slot.text}
               </p>
             ) : null}
@@ -143,7 +143,7 @@ function SlotCard({
                     href={material}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-bold text-zinc-950 hover:bg-emerald-400"
+                    className="inline-flex rounded-md bg-dygold-500 px-3 py-1.5 text-xs font-bold text-zinc-950 hover:bg-dygold-400"
                   >
                     Pegar material ↗
                   </a>
@@ -176,7 +176,7 @@ export function TodayTasks({ data, toggle }: { data: CommunityData; toggle: Togg
       <div>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-emerald-400">Tarefas de hoje</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-dygold-400">Tarefas de hoje</p>
             <h2 className="mt-1 text-xl font-black uppercase tracking-tight text-white sm:text-2xl">{plan.theme}</h2>
           </div>
           <div className="text-right">
@@ -200,7 +200,7 @@ export function TodayTasks({ data, toggle }: { data: CommunityData; toggle: Togg
               <li
                 key={s.id}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
-                  checked ? "bg-emerald-400/[0.08]" : "bg-white/[0.04]"
+                  checked ? "bg-dygold-400/[0.08]" : "bg-white/[0.04]"
                 }`}
               >
                 <CheckButton checked={checked} onClick={() => void toggle("plan", `${date}|${s.id}`, !checked)} />
@@ -208,7 +208,7 @@ export function TodayTasks({ data, toggle }: { data: CommunityData; toggle: Togg
                   <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
                     <span className="font-mono normal-case">{s.when}</span>
                     {s.channel === "story" ? "Story · Status" : "Reels · TikTok · Feed"}
-                    {s.essential ? <span className="text-emerald-300">★</span> : null}
+                    {s.essential ? <span className="text-dygold-300">★</span> : null}
                   </p>
                   <p className={`truncate text-sm font-semibold ${checked ? "text-stone-500 line-through" : "text-white"}`}>
                     {s.format.label}
@@ -292,7 +292,7 @@ export function ScheduleView({
       {header(
         <div className="flex items-center gap-5 text-right">
           <div>
-            <p className="font-mono text-2xl font-semibold text-emerald-400">🔥 {streak}</p>
+            <p className="font-mono text-2xl font-semibold text-dygold-400">🔥 {streak}</p>
             <p className="text-[11px] text-stone-500">{streak === 1 ? "dia seguido" : "dias seguidos"}</p>
           </div>
           <div>
@@ -331,7 +331,7 @@ export function ScheduleView({
             Você não precisa pensar em nada: é só abrir o dia, fazer o que está na lista e dar o check.
           </li>
           <li>
-            Sem tempo? Faça só o <strong className="text-emerald-300">★ Essencial</strong>: o post principal e o
+            Sem tempo? Faça só o <strong className="text-dygold-300">★ Essencial</strong>: o post principal e o
             story da noite, que é o que mais gera pedido.
           </li>
           <li>Dê o check quando postar e mantenha a sequência 🔥. Constância é o que faz vender.</li>
@@ -358,7 +358,7 @@ export function ScheduleView({
               </span>
               <span
                 className={`mx-auto mt-1 block h-1.5 w-1.5 rounded-full ${
-                  d.complete ? "bg-emerald-400" : d.done ? "bg-amber-400" : "bg-stone-600"
+                  d.complete ? "bg-dygold-400" : d.done ? "bg-amber-400" : "bg-stone-600"
                 }`}
               />
             </button>
@@ -368,7 +368,7 @@ export function ScheduleView({
 
       <div className="mt-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-emerald-400">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-dygold-400">
             {WEEKDAY_LABELS[day - 1]}
             {day === todayWeekday ? " · hoje" : ""}
           </p>
@@ -386,7 +386,7 @@ export function ScheduleView({
           <button
             type="button"
             onClick={() => setMode(true)}
-            className={`rounded-full px-3 py-1.5 transition ${essentialOnly ? "bg-emerald-400 text-zinc-950" : "text-stone-300"}`}
+            className={`rounded-full px-3 py-1.5 transition ${essentialOnly ? "bg-dygold-400 text-zinc-950" : "text-stone-300"}`}
           >
             ★ Só o essencial
           </button>

@@ -22,7 +22,9 @@ import {
 import { WHATSAPP_SELLERS } from "@/lib/sellers";
 import { CommunityShowcase, scrollToPlanOnMobile } from "@/components/drop-landing-showcase";
 import { FREE_PIECE_EVERY, PIECE_MILESTONES } from "@/lib/drop-rewards";
+import { youtubeEmbedUrl } from "@/lib/youtube-embed";
 
+const DROP_HERO_VIDEO_ID = "4n-ctjkjpwM";
 const CNPJ = "65.888.954/0001-28";
 const INSTAGRAM_URL = "https://www.instagram.com/dyfontecamisetas/";
 
@@ -140,7 +142,7 @@ function HeroPillars() {
 
   return (
     <ul
-      className="mt-6 grid max-w-xl grid-cols-2 gap-2.5 sm:gap-3"
+      className="grid grid-cols-2 items-stretch gap-2.5 sm:gap-3 lg:grid-cols-4 lg:gap-4"
       onMouseLeave={() => setPaused(false)}
     >
       {HERO_PILLARS.map((p, i) => {
@@ -153,11 +155,11 @@ function HeroPillars() {
               setActive(i);
               setPaused(true);
             }}
-            className={`relative overflow-hidden rounded-2xl border transition-[opacity,transform,border-color,background-color,box-shadow] duration-700 ease-out ${
+            className={`relative h-full overflow-hidden rounded-2xl border transition-[opacity,transform,border-color,background-color,box-shadow] duration-700 ease-out ${
               shown ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
             } ${
               on
-                ? "border-emerald-400/50 bg-emerald-400/[0.08] shadow-[0_0_32px_-8px_rgba(16,185,129,0.55)]"
+                ? "border-dygold-400/50 bg-dygold-400/[0.08] shadow-[0_0_32px_-8px_rgba(201,162,39,0.55)]"
                 : "border-white/[0.07] bg-white/[0.02]"
             }`}
           >
@@ -171,11 +173,11 @@ function HeroPillars() {
                 setPaused(true);
                 el.scrollIntoView({ behavior: motion ? "smooth" : "auto", block: "start" });
               }}
-              className="block h-full rounded-[inherit] p-3 outline-none sm:p-4 focus-visible:ring-2 focus-visible:ring-emerald-400/60"
+              className="flex h-full flex-col rounded-[inherit] p-3 outline-none sm:p-4 focus-visible:ring-2 focus-visible:ring-dygold-400/60"
             >
             <span
               className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-500 ${
-                on ? "scale-110 bg-emerald-400 text-zinc-950" : "bg-emerald-400/10 text-emerald-300"
+                on ? "scale-110 bg-dygold-400 text-zinc-950" : "bg-dygold-400/10 text-dygold-300"
               }`}
             >
               <svg
@@ -199,12 +201,12 @@ function HeroPillars() {
             >
               {p.title}
             </p>
-            <p className="mt-1 text-xs leading-relaxed text-stone-500">{p.desc}</p>
+            <p className="mt-auto pt-2 text-xs leading-relaxed text-stone-500">{p.desc}</p>
             </a>
             {on && motion && !paused && cycling ? (
               <span
                 key={`bar-${active}`}
-                className="drop-pillar-bar absolute inset-x-0 bottom-0 h-0.5 origin-left bg-emerald-400"
+                className="drop-pillar-bar absolute inset-x-0 bottom-0 h-0.5 origin-left bg-dygold-400"
                 style={{ "--pillar-ms": `${PILLAR_MS}ms` } as CSSProperties}
                 aria-hidden
               />
@@ -298,7 +300,7 @@ function Tilt({
 
 function Eyebrow({ children }: { children: ReactNode }) {
   return (
-    <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+    <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-dygold-400">
       {children}
     </p>
   );
@@ -314,7 +316,7 @@ function SectionTitle({ children }: { children: ReactNode }) {
 
 function Check() {
   return (
-    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-dygold-500/15 text-dygold-400">
       <svg viewBox="0 0 16 16" width={11} height={11} fill="none" aria-hidden>
         <path
           d="M3 8.5l3 3 7-7"
@@ -343,7 +345,7 @@ function PrimaryCta({
       target="_blank"
       rel="noopener noreferrer"
       onClick={checkout ? undefined : scrollToPlanOnMobile}
-      className={`drop-cta-glow inline-flex items-center justify-center whitespace-nowrap rounded-full bg-emerald-500 px-7 py-4 text-sm font-bold uppercase tracking-[0.12em] text-zinc-950 transition hover:bg-emerald-400 ${className}`}
+      className={`drop-cta-glow inline-flex items-center justify-center whitespace-nowrap rounded-full bg-dygold-500 px-7 py-4 text-sm font-bold uppercase tracking-[0.12em] text-zinc-950 transition hover:bg-dygold-400 ${className}`}
     >
       {children}
     </a>
@@ -355,9 +357,9 @@ const HERO_QUOTES = [
   "Quando eu vendia eu já lucrei quase 600 reais no dia",
 ];
 
-function HeroProof({ shots }: { shots: string[] }) {
+function HeroProof({ shots, className = "" }: { shots: string[]; className?: string }) {
   return (
-    <div className="mx-auto w-full max-w-md">
+    <div className={`mx-auto w-full max-w-md ${className}`}>
       <Tilt max={6}>
         <a href="#feedbacks" className="drop-proof-scene block" aria-label="Ver feedbacks dos parceiros">
           <div className="drop-proof-glow" aria-hidden />
@@ -397,7 +399,7 @@ function HeroProof({ shots }: { shots: string[] }) {
             <dt className="mt-0.5 text-[10px] leading-tight text-stone-500 sm:text-[11px]">
               {s.label}
             </dt>
-            <dd className="font-mono text-lg font-semibold text-emerald-400 sm:text-xl">
+            <dd className="font-mono text-lg font-semibold text-dygold-400 sm:text-xl">
               {s.value}
             </dd>
           </div>
@@ -598,14 +600,30 @@ export function DropLanding({
         {/* 1. Promessa */}
         <section
           id="topo"
-          className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-16 pt-12 sm:px-6 sm:pt-20 lg:grid-cols-[1.1fr_0.9fr]"
+          className="mx-auto grid max-w-6xl gap-8 px-4 pb-16 pt-12 sm:px-6 sm:gap-12 sm:pt-20 lg:grid-cols-[1.1fr_0.9fr] lg:gap-x-12 lg:gap-y-10"
         >
-          <div>
+          <div className="order-1 lg:col-start-1 lg:row-start-1">
             <Eyebrow>Pra quem quer vender roupa sem ter que investir em estoque</Eyebrow>
             <h1 className="mt-4 text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.05em] text-stone-50 sm:text-6xl">
               Monte sua loja de roupas{" "}
-              <span className="text-emerald-400">sem comprar uma peça antes.</span>
+              <span className="text-dygold-400">sem comprar uma peça antes.</span>
             </h1>
+            <div className="mt-6 overflow-hidden rounded-2xl border border-dygold-400/25 bg-black shadow-[0_0_48px_-16px_rgba(201,162,39,0.55)]">
+              <div className="relative aspect-video w-full">
+                <iframe
+                  title="Vídeo da DYCASHOP"
+                  className="absolute inset-0 h-full w-full"
+                  src={youtubeEmbedUrl(DROP_HERO_VIDEO_ID)}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="order-2 lg:col-span-2 lg:row-start-2">
             <HeroPillars />
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <PrimaryCta>Quero ser parceiro</PrimaryCta>
@@ -613,9 +631,9 @@ export function DropLanding({
           </div>
 
           {heroShots.length > 0 ? (
-            <HeroProof shots={heroShots} />
+            <HeroProof shots={heroShots} className="order-4 lg:col-start-2 lg:row-start-1 lg:self-center" />
           ) : (
-          <Tilt max={7} className="mx-auto w-full max-w-sm">
+          <Tilt max={7} className="order-4 mx-auto w-full max-w-sm lg:col-start-2 lg:row-start-1 lg:self-center">
             <div className="drop-card drop-receipt p-6 sm:p-7">
               <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-500">
                 Quem está por trás de você
@@ -627,7 +645,7 @@ export function DropLanding({
                 {PROOF_STATS.map((s) => (
                   <div key={s.label} className="bg-[#111113] px-4 py-4">
                     <dt className="sr-only">{s.label}</dt>
-                    <dd className="font-mono text-2xl font-semibold tracking-tight text-emerald-400">
+                    <dd className="font-mono text-2xl font-semibold tracking-tight text-dygold-400">
                       {s.value}
                     </dd>
                     <dd className="mt-1 text-[11px] leading-tight text-stone-400">
@@ -682,7 +700,7 @@ export function DropLanding({
             <div className="mt-10 overflow-hidden rounded-2xl border border-white/[0.08]" data-reveal>
               <div className="hidden grid-cols-2 border-b border-white/[0.08] bg-white/[0.03] text-[11px] font-semibold uppercase tracking-[0.2em] sm:grid">
                 <p className="px-5 py-3 text-stone-500">Sozinho</p>
-                <p className="px-5 py-3 text-emerald-400">Com a DYCASHOP</p>
+                <p className="px-5 py-3 text-dygold-400">Com a DYCASHOP</p>
               </div>
               {BLOCKERS.map((b) => (
                 <div
@@ -718,7 +736,7 @@ export function DropLanding({
               href={INSTAGRAM_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 text-sm font-semibold text-emerald-400 hover:text-emerald-300"
+              className="shrink-0 text-sm font-semibold text-dygold-400 hover:text-dygold-300"
             >
               Mais feedbacks no Instagram →
             </a>
@@ -818,7 +836,7 @@ export function DropLanding({
                 href={DROP_CATALOG_DRIVE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="shrink-0 text-sm font-semibold text-emerald-400 hover:text-emerald-300"
+                className="shrink-0 text-sm font-semibold text-dygold-400 hover:text-dygold-300"
               >
                 Ver o catálogo completo →
               </a>
@@ -958,7 +976,7 @@ export function DropLanding({
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-2">
             <div className="drop-card p-6" data-reveal>
-              <p className="text-sm font-semibold text-emerald-400">É pra você se…</p>
+              <p className="text-sm font-semibold text-dygold-400">É pra você se…</p>
               <ul className="mt-4 space-y-3 text-sm text-stone-200">
                 {[
                   "quer começar a vender roupa com pouco dinheiro",
@@ -999,14 +1017,14 @@ export function DropLanding({
                 Todo pedido confirmado conta sozinho na sua jornada. Esse é o caminho:
               </p>
             </div>
-            <p className="inline-flex shrink-0 items-center gap-2 self-start rounded-full border border-emerald-400/30 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-200 lg:self-auto">
+            <p className="inline-flex shrink-0 items-center gap-2 self-start rounded-full border border-dygold-400/30 bg-dygold-400/10 px-4 py-2 text-sm font-semibold text-dygold-200 lg:self-auto">
               🎁 A cada {FREE_PIECE_EVERY} peças vendidas: você ganha 1 grátis
             </p>
           </div>
 
           <ol className="relative mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
             <span
-              className="absolute left-[8%] right-[8%] top-[22px] hidden h-px bg-gradient-to-r from-emerald-400/60 via-emerald-400/25 to-amber-300/50 lg:block"
+              className="absolute left-[8%] right-[8%] top-[22px] hidden h-px bg-gradient-to-r from-dygold-400/60 via-dygold-400/25 to-dygold-200/50 lg:block"
               aria-hidden
             />
             {PIECE_MILESTONES.map((m, i) => (
@@ -1020,8 +1038,8 @@ export function DropLanding({
                   <span
                     className={`relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full font-mono text-sm font-bold ${
                       i === 0
-                        ? "bg-emerald-400 text-zinc-950 shadow-[0_0_24px_rgba(16,185,129,0.55)]"
-                        : "border border-emerald-400/40 bg-[#0c0f0e] text-emerald-300"
+                        ? "bg-dygold-400 text-zinc-950 shadow-[0_0_24px_rgba(201,162,39,0.55)]"
+                        : "border border-dygold-400/40 bg-[#12110c] text-dygold-300"
                     }`}
                   >
                     {i + 1}
@@ -1030,14 +1048,14 @@ export function DropLanding({
                     {m.rank}
                   </span>
                 </div>
-                <p className="mt-3 font-mono text-xs font-semibold uppercase tracking-wider text-emerald-400">
+                <p className="mt-3 font-mono text-xs font-semibold uppercase tracking-wider text-dygold-400">
                   {m.at === 0 ? "Início" : `${m.at} peças vendidas`}
                 </p>
                 <p className="mt-1 text-base font-semibold tracking-tight text-stone-50">
                   {m.at === 0 ? `R$ ${m.price} por peça` : m.title}
                 </p>
                 {m.price != null ? (
-                  <p className="mt-0.5 text-xs font-semibold text-emerald-300/90">mesmo levando só 1</p>
+                  <p className="mt-0.5 text-xs font-semibold text-dygold-300/90">mesmo levando só 1</p>
                 ) : null}
                 <p className="mt-1 text-xs leading-relaxed text-stone-500">
                   {m.at === 0 ? "Sua primeira venda já começa a contar." : m.desc}
@@ -1074,7 +1092,7 @@ export function DropLanding({
                     R${DROP_MONTHLY_PRICE_BRL}
                   </p>
                   <p className="mt-1 text-sm text-stone-400">por mês</p>
-                  <p className="mt-4 text-sm font-medium text-emerald-300">
+                  <p className="mt-4 text-sm font-medium text-dygold-300">
                     Garantia de 7 dias · cancele quando quiser
                   </p>
                   <PrimaryCta checkout className="mt-6 w-full !px-4">Quero ser parceiro</PrimaryCta>
@@ -1097,7 +1115,7 @@ export function DropLanding({
                     href={sellerLink(s.phone)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-full border border-emerald-500/30 px-4 py-2 text-xs font-semibold text-emerald-300 hover:border-emerald-400"
+                    className="rounded-full border border-dygold-500/30 px-4 py-2 text-xs font-semibold text-dygold-300 hover:border-dygold-400"
                   >
                     Falar com {s.name}
                   </a>

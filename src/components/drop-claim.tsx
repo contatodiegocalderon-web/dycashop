@@ -62,7 +62,7 @@ export function DropClaim() {
 
   return (
     <DropAuthShell>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-dygold-400">
         {verified ? "Assinatura confirmada" : "Exclusivo para assinantes"}
       </p>
       <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-50">
@@ -84,7 +84,7 @@ export function DropClaim() {
 
       {verified ? (
         <form onSubmit={create} className="mt-8 space-y-3">
-          <p className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.07] px-4 py-3 text-sm text-emerald-200">
+          <p className="rounded-xl border border-dygold-500/25 bg-dygold-500/[0.07] px-4 py-3 text-sm text-dygold-200">
             ✓ {email.trim().toLowerCase()}
           </p>
           <input
@@ -118,7 +118,7 @@ export function DropClaim() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-xl bg-emerald-500 py-3 text-sm font-bold uppercase tracking-[0.12em] text-zinc-950 hover:bg-emerald-400 disabled:opacity-60"
+            className="w-full rounded-xl bg-dygold-500 py-3 text-sm font-bold uppercase tracking-[0.12em] text-zinc-950 hover:bg-dygold-400 disabled:opacity-60"
           >
             {busy ? "Criando…" : "Criar acesso e entrar"}
           </button>
@@ -147,7 +147,7 @@ export function DropClaim() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-xl bg-emerald-500 py-3 text-sm font-bold uppercase tracking-[0.12em] text-zinc-950 hover:bg-emerald-400 disabled:opacity-60"
+            className="w-full rounded-xl bg-dygold-500 py-3 text-sm font-bold uppercase tracking-[0.12em] text-zinc-950 hover:bg-dygold-400 disabled:opacity-60"
           >
             {busy ? "Conferindo…" : "Confirmar minha assinatura"}
           </button>

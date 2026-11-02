@@ -50,14 +50,14 @@ export function CommunityShell({
                 unoptimized
               />
               <span className="text-[11px] font-bold uppercase tracking-[0.28em] text-stone-100">
-                DYCASHOP <span className="text-emerald-400">Comunidade</span>
+                DYCASHOP <span className="text-dygold-400">Comunidade</span>
               </span>
             </Link>
           </div>
           <div className="flex items-center gap-4 sm:gap-6">
             <Link
               href="/comunidade/jornada"
-              className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-300 hover:bg-emerald-400/20"
+              className="rounded-full border border-dygold-400/40 bg-dygold-400/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-dygold-300 hover:bg-dygold-400/20"
             >
               Jornada
             </Link>
@@ -78,7 +78,7 @@ export function CommunityShell({
 
 export function CommunityLoading({ error }: { error?: string | null }) {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[#050706] px-6 text-center text-sm text-stone-500">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#100e0a] px-6 text-center text-sm text-stone-500">
       {error ?? "Abrindo a comunidade…"}
     </div>
   );

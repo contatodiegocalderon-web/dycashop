@@ -169,7 +169,7 @@ function ClaimButton({
             onChange={(e) => setNote(e.target.value)}
             rows={2}
             placeholder={placeholder}
-            className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-sm text-white placeholder:text-stone-500 focus:border-emerald-400/60 focus:outline-none"
+            className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-sm text-white placeholder:text-stone-500 focus:border-dygold-400/60 focus:outline-none"
           />
           <div className="flex gap-2">
             <button
@@ -195,7 +195,7 @@ function ClaimButton({
           {label}
         </button>
       )}
-      {msg ? <p className="mt-2 text-xs text-emerald-300">{msg}</p> : null}
+      {msg ? <p className="mt-2 text-xs text-dygold-300">{msg}</p> : null}
     </div>
   );
 }
@@ -214,9 +214,9 @@ function ProgressRing({ r, pieces }: { r: RewardsState; pieces: number }) {
       <svg viewBox={`0 0 ${size} ${size}`} className="relative h-full w-full -rotate-90">
         <defs>
           <linearGradient id="jr-ring" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#6ee7b7" />
-            <stop offset="55%" stopColor="#10b981" />
-            <stop offset="100%" stopColor="#047857" />
+            <stop offset="0%" stopColor="#f6e3a1" />
+            <stop offset="55%" stopColor="#c9a227" />
+            <stop offset="100%" stopColor="#8a6a1f" />
           </linearGradient>
         </defs>
         <circle cx={size / 2} cy={size / 2} r={radius} stroke="rgba(255,255,255,0.07)" strokeWidth={16} fill="none" />
@@ -238,16 +238,16 @@ function ProgressRing({ r, pieces }: { r: RewardsState; pieces: number }) {
           const y1 = size / 2 + Math.sin(a) * 136;
           const x2 = size / 2 + Math.cos(a) * (i % 5 === 0 ? 128 : 132);
           const y2 = size / 2 + Math.sin(a) * (i % 5 === 0 ? 128 : 132);
-          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={i / 40 <= pct ? "#34d399" : "rgba(255,255,255,0.12)"} strokeWidth={1.5} />;
+          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={i / 40 <= pct ? "#e4c15a" : "rgba(255,255,255,0.12)"} strokeWidth={1.5} />;
         })}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-emerald-300/80">Peças vendidas</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.3em] text-dygold-300/80">Peças vendidas</span>
         <span className="jr-number mt-1 font-black tabular-nums leading-none text-white">{Math.round(shown)}</span>
         <span className="mt-2 text-xs text-stone-400">
           {r.next ? (
             <>
-              faltam <strong className="text-emerald-300">{r.next.at - pieces}</strong> pro nível {r.next.rank}
+              faltam <strong className="text-dygold-300">{r.next.at - pieces}</strong> pro nível {r.next.rank}
             </>
           ) : (
             "nível máximo atingido"
@@ -262,7 +262,7 @@ function HeroStat({ label, value, accent }: { label: string; value: string; acce
   return (
     <div className="jr-glass rounded-2xl px-4 py-3">
       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-500">{label}</p>
-      <p className={`mt-1 font-mono text-xl font-bold tabular-nums sm:text-2xl ${accent ? "text-emerald-300" : "text-white"}`}>{value}</p>
+      <p className={`mt-1 font-mono text-xl font-bold tabular-nums sm:text-2xl ${accent ? "text-dygold-300" : "text-white"}`}>{value}</p>
     </div>
   );
 }
@@ -273,7 +273,7 @@ function Hero({ r, data }: { r: RewardsState; data: { spent: number; orders: num
     <section className="jr-hero relative overflow-hidden rounded-[28px] p-6 sm:p-10">
       <div className="relative grid items-center gap-8 lg:grid-cols-[1.15fr_1fr]">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-emerald-400">Sua jornada DYCASHOP</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-dygold-400">Sua jornada DYCASHOP</p>
           <h1 className="mt-3 text-4xl font-black uppercase leading-[0.92] tracking-tight sm:text-6xl">
             <span className="block text-stone-300/80 text-lg font-bold tracking-[0.2em] sm:text-xl">Nível</span>
             <span className="jr-shimmer">{r.rank}</span>
@@ -291,7 +291,7 @@ function Hero({ r, data }: { r: RewardsState; data: { spent: number; orders: num
 
           {r.next ? (
             <div className="jr-glass mt-4 flex items-center gap-3 rounded-2xl px-4 py-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-dygold-400/15 text-dygold-300">
                 <Icon name={MILESTONE_ICON[r.next.icon]} />
               </span>
               <div className="min-w-0 flex-1">
@@ -316,11 +316,11 @@ function CycleCards({ r, demo, reload }: { r: RewardsState; demo: boolean; reloa
       <div className="jr-card relative overflow-hidden rounded-3xl p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-400">A cada {FREE_PIECE_EVERY} peças</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-dygold-400">A cada {FREE_PIECE_EVERY} peças</p>
             <h3 className="mt-1 text-2xl font-black uppercase tracking-tight text-white">1 peça grátis</h3>
           </div>
           <div className="text-right">
-            <p className="jr-number-sm font-black tabular-nums text-emerald-300">{r.freeAvailable}</p>
+            <p className="jr-number-sm font-black tabular-nums text-dygold-300">{r.freeAvailable}</p>
             <p className="text-[10px] uppercase tracking-wider text-stone-500">pra resgatar</p>
           </div>
         </div>
@@ -342,7 +342,7 @@ function CycleCards({ r, demo, reload }: { r: RewardsState; demo: boolean; reloa
         </div>
         <p className="mt-3 text-xs text-stone-400">
           <strong className="text-white">{r.cycle}</strong> de {FREE_PIECE_EVERY} · faltam{" "}
-          <strong className="text-emerald-300">{FREE_PIECE_EVERY - r.cycle}</strong> peças pra próxima grátis
+          <strong className="text-dygold-300">{FREE_PIECE_EVERY - r.cycle}</strong> peças pra próxima grátis
           {r.freeEarned ? ` · ${r.freeEarned} ganhas até agora` : ""}
         </p>
         <ClaimButton
@@ -358,18 +358,18 @@ function CycleCards({ r, demo, reload }: { r: RewardsState; demo: boolean; reloa
       <div className="jr-card relative overflow-hidden rounded-3xl p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-400">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-dygold-400">
               {r.hasSupport ? "Suporte exclusivo liberado" : `A cada ${FREE_PIECE_EVERY} peças`}
             </p>
             <h3 className="mt-1 text-2xl font-black uppercase tracking-tight text-white">Vídeo exclusivo</h3>
           </div>
           {r.hasSupport ? (
-            <span className="rounded-full bg-emerald-400 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-950">
+            <span className="rounded-full bg-dygold-400 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-950">
               Sem limite
             </span>
           ) : (
             <div className="text-right">
-              <p className="jr-number-sm font-black tabular-nums text-emerald-300">{r.videosAvailable}</p>
+              <p className="jr-number-sm font-black tabular-nums text-dygold-300">{r.videosAvailable}</p>
               <p className="text-[10px] uppercase tracking-wider text-stone-500">pra pedir</p>
             </div>
           )}
@@ -379,7 +379,7 @@ function CycleCards({ r, demo, reload }: { r: RewardsState; demo: boolean; reloa
         </p>
         {r.hasSupport ? (
           <div className="jr-glass mt-4 flex items-center gap-3 rounded-2xl px-4 py-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-dygold-400/15 text-dygold-300">
               <Icon name="staff" />
             </span>
             <p className="text-sm text-stone-200">
@@ -396,7 +396,7 @@ function CycleCards({ r, demo, reload }: { r: RewardsState; demo: boolean; reloa
               <span className="font-mono text-xs text-stone-400">{r.pieces}/100</span>
             </div>
             <p className="mt-2 text-xs text-stone-400">
-              Com <strong className="text-emerald-300">100 peças</strong> você libera o suporte exclusivo e pede
+              Com <strong className="text-dygold-300">100 peças</strong> você libera o suporte exclusivo e pede
               vídeos sem limite.
             </p>
           </>
@@ -420,11 +420,11 @@ function PriceLadder({ r }: { r: RewardsState }) {
     <section className="jr-card rounded-3xl p-6 sm:p-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-400">Quanto mais você vende</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-dygold-400">Quanto mais você vende</p>
           <h2 className="mt-1 text-2xl font-black uppercase tracking-tight text-white sm:text-3xl">Mais barato fica</h2>
         </div>
         <p className="text-sm text-stone-400">
-          Seu preço por peça hoje: <strong className="font-mono text-lg text-emerald-300">R$ {r.unitPrice},00</strong>
+          Seu preço por peça hoje: <strong className="font-mono text-lg text-dygold-300">R$ {r.unitPrice},00</strong>
         </p>
       </div>
       <div className="mt-8 flex h-56 items-end gap-2 sm:gap-4">
@@ -434,7 +434,7 @@ function PriceLadder({ r }: { r: RewardsState }) {
           const h = 40 + ((s.price! - 19) / 6) * 60;
           return (
             <div key={s.at} className="flex h-full flex-1 flex-col items-center justify-end">
-              <span className={`mb-2 font-mono text-sm font-bold sm:text-lg ${current ? "text-emerald-300" : reached ? "text-white" : "text-stone-500"}`}>
+              <span className={`mb-2 font-mono text-sm font-bold sm:text-lg ${current ? "text-dygold-300" : reached ? "text-white" : "text-stone-500"}`}>
                 R$ {s.price}
               </span>
               <div
@@ -442,7 +442,7 @@ function PriceLadder({ r }: { r: RewardsState }) {
                 style={{ height: `${h}%` }}
               >
                 {current ? (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-emerald-400 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-zinc-950">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-dygold-400 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-zinc-950">
                     Você
                   </span>
                 ) : null}
@@ -466,7 +466,7 @@ function PriceLadder({ r }: { r: RewardsState }) {
 function Trail({ r }: { r: RewardsState }) {
   return (
     <section>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-400">Trilha de peças</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-dygold-400">Trilha de peças</p>
       <h2 className="mt-1 text-2xl font-black uppercase tracking-tight text-white sm:text-3xl">Suas conquistas</h2>
       <ol className="relative mt-6 space-y-4 pl-14 sm:pl-16">
         <span className="absolute bottom-6 left-[22px] top-6 w-[3px] rounded-full bg-white/[0.07] sm:left-[26px]" aria-hidden />
@@ -488,21 +488,21 @@ function Trail({ r }: { r: RewardsState }) {
             <li key={m.at} className="relative">
               <span
                 className={`absolute -left-14 top-3 flex h-11 w-11 items-center justify-center rounded-full sm:-left-16 sm:h-[52px] sm:w-[52px] ${
-                  reached ? "jr-node-reached text-zinc-950" : isNext ? "jr-node-next text-emerald-300" : "bg-zinc-900 text-stone-600 ring-1 ring-white/10"
+                  reached ? "jr-node-reached text-zinc-950" : isNext ? "jr-node-next text-dygold-300" : "bg-zinc-900 text-stone-600 ring-1 ring-white/10"
                 }`}
               >
                 <Icon name={reached ? MILESTONE_ICON[m.icon] : isNext ? MILESTONE_ICON[m.icon] : "lock"} size={20} />
               </span>
               <div className={`rounded-2xl p-4 sm:p-5 ${reached ? "jr-card" : isNext ? "jr-card jr-card-next" : "jr-card-locked"}`}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`font-mono text-xs font-bold ${reached ? "text-emerald-300" : "text-stone-500"}`}>
+                  <span className={`font-mono text-xs font-bold ${reached ? "text-dygold-300" : "text-stone-500"}`}>
                     {m.at === 0 ? "INÍCIO" : `${m.at} PEÇAS`}
                   </span>
                   <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-stone-300">
                     Nível {m.rank}
                   </span>
                   {reached ? (
-                    <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                    <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-dygold-300">
                       <Icon name="check" size={12} /> Desbloqueado
                     </span>
                   ) : isNext ? (
@@ -530,7 +530,7 @@ function Trail({ r }: { r: RewardsState }) {
 function SpendRewards({ r, demo, reload }: { r: RewardsState; demo: boolean; reload: () => void }) {
   return (
     <section>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-400">Trilha de compras</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-dygold-400">Trilha de compras</p>
       <h2 className="mt-1 text-2xl font-black uppercase tracking-tight text-white sm:text-3xl">Prêmios de membro</h2>
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {SPEND_MILESTONES.map((m) => {
@@ -544,7 +544,7 @@ function SpendRewards({ r, demo, reload }: { r: RewardsState; demo: boolean; rel
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
                 <span
                   className={`absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${
-                    unlocked ? "bg-emerald-400 text-zinc-950" : "bg-black/70 text-stone-300 ring-1 ring-white/15"
+                    unlocked ? "bg-dygold-400 text-zinc-950" : "bg-black/70 text-stone-300 ring-1 ring-white/15"
                   }`}
                 >
                   <Icon name={unlocked ? "check" : "lock"} size={12} />
@@ -552,7 +552,7 @@ function SpendRewards({ r, demo, reload }: { r: RewardsState; demo: boolean; rel
                 </span>
               </div>
               <div className="relative -mt-10 p-5">
-                <p className="font-mono text-xs font-bold text-emerald-300">{money(m.at)} em compras</p>
+                <p className="font-mono text-xs font-bold text-dygold-300">{money(m.at)} em compras</p>
                 <h3 className="mt-1 text-xl font-black uppercase tracking-tight text-white">{m.title}</h3>
                 <p className="mt-1 text-sm text-stone-400">{m.desc}</p>
                 {!unlocked ? (
@@ -564,7 +564,7 @@ function SpendRewards({ r, demo, reload }: { r: RewardsState; demo: boolean; rel
                   </>
                 ) : m.claim ? (
                   claimed ? (
-                    <p className="mt-4 text-xs font-semibold text-emerald-300">✓ Pedido feito, a equipe vai te chamar</p>
+                    <p className="mt-4 text-xs font-semibold text-dygold-300">✓ Pedido feito, a equipe vai te chamar</p>
                   ) : (
                     <ClaimButton
                       kind={m.claim}
@@ -576,7 +576,7 @@ function SpendRewards({ r, demo, reload }: { r: RewardsState; demo: boolean; rel
                     />
                   )
                 ) : (
-                  <p className="mt-4 text-xs font-semibold text-emerald-300">✓ Ativo nos seus pedidos</p>
+                  <p className="mt-4 text-xs font-semibold text-dygold-300">✓ Ativo nos seus pedidos</p>
                 )}
               </div>
             </article>
@@ -619,7 +619,7 @@ function History({ data }: { data: JourneyData }) {
                 <span className="text-stone-300">
                   {REWARD_KIND_LABELS[c.kind]} · <span className="text-stone-500">{shortDate(c.created_at)}</span>
                 </span>
-                <span className={`text-xs font-bold uppercase tracking-wider ${c.status === "done" ? "text-emerald-300" : "text-amber-300"}`}>
+                <span className={`text-xs font-bold uppercase tracking-wider ${c.status === "done" ? "text-dygold-300" : "text-amber-300"}`}>
                   {c.status === "done" ? "Entregue" : "Em andamento"}
                 </span>
               </li>
@@ -654,11 +654,11 @@ function DemoPanel({
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="block text-xs text-amber-100/80">
             Peças: <strong>{pieces}</strong>
-            <input type="range" min={0} max={600} value={pieces} onChange={(e) => onChange({ pieces: Number(e.target.value), spent, enabled })} className="mt-1 w-full accent-emerald-400" />
+            <input type="range" min={0} max={600} value={pieces} onChange={(e) => onChange({ pieces: Number(e.target.value), spent, enabled })} className="mt-1 w-full accent-dygold-400" />
           </label>
           <label className="block text-xs text-amber-100/80">
             Compras: <strong>{money(spent)}</strong>
-            <input type="range" min={0} max={60000} step={250} value={spent} onChange={(e) => onChange({ pieces, spent: Number(e.target.value), enabled })} className="mt-1 w-full accent-emerald-400" />
+            <input type="range" min={0} max={60000} step={250} value={spent} onChange={(e) => onChange({ pieces, spent: Number(e.target.value), enabled })} className="mt-1 w-full accent-dygold-400" />
           </label>
         </div>
       ) : null}
@@ -717,7 +717,7 @@ export function JourneyBanner() {
             <Icon name="crown" size={28} />
           </span>
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-emerald-400">Jornada · recompensas</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-dygold-400">Jornada · recompensas</p>
             <p className="text-2xl font-black uppercase tracking-tight sm:text-3xl">
               <span className="jr-shimmer">Nível {r.rank}</span>
             </p>

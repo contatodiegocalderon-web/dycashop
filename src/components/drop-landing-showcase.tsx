@@ -45,7 +45,7 @@ function Tick({ size = 15 }: { size?: number }) {
 
 function BrowserFrame({ url, children }: { url: string; children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-[22px] border border-white/10 bg-[#050807] shadow-[0_40px_120px_-30px_rgba(16,185,129,0.35)]">
+    <div className="overflow-hidden rounded-[22px] border border-white/10 bg-[#100e0a] shadow-[0_40px_120px_-30px_rgba(201,162,39,0.35)]">
       <div className="flex items-center gap-2 border-b border-white/[0.07] bg-white/[0.03] px-4 py-2.5">
         <span className="h-2.5 w-2.5 rounded-full bg-white/15" />
         <span className="h-2.5 w-2.5 rounded-full bg-white/15" />
@@ -109,10 +109,10 @@ export function CommunityShowcase() {
               className={`inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
                 active
                   ? wd === today.weekday
-                    ? "bg-emerald-400 text-zinc-950"
+                    ? "bg-dygold-400 text-zinc-950"
                     : "bg-white/15 text-white"
                   : wd === today.weekday
-                    ? "bg-emerald-400/15 text-emerald-200"
+                    ? "bg-dygold-400/15 text-dygold-200"
                     : "bg-white/[0.04] text-stone-500 hover:text-stone-300"
               }`}
             >
@@ -131,7 +131,7 @@ export function CommunityShowcase() {
         <div>
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-emerald-400">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-dygold-400">
                 {day === today.weekday ? "Tarefas de hoje" : `Tarefas de ${WEEKDAY_LABELS[day - 1]}`}
               </p>
               <h3 className="mt-1 text-xl font-black uppercase tracking-tight text-white sm:text-2xl">{plan.theme}</h3>
@@ -158,8 +158,8 @@ export function CommunityShowcase() {
               return (
                 <li
                   key={s.id}
-                  className={`rounded-xl transition ${isOn ? "bg-emerald-400/[0.08]" : "bg-white/[0.04]"} ${
-                    isOpen ? "ring-1 ring-emerald-400/40" : ""
+                  className={`rounded-xl transition ${isOn ? "bg-dygold-400/[0.08]" : "bg-white/[0.04]"} ${
+                    isOpen ? "ring-1 ring-dygold-400/40" : ""
                   }`}
                 >
                   <div className="flex items-center gap-3 px-3 py-2.5">
@@ -170,8 +170,8 @@ export function CommunityShowcase() {
                       onClick={() => setChecked((c) => ({ ...c, [key(s.id)]: !isOn }))}
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 transition ${
                         isOn
-                          ? "border-emerald-400 bg-emerald-400 text-zinc-950 shadow-[0_0_18px_rgba(16,185,129,0.55)]"
-                          : "border-stone-500 text-transparent hover:border-emerald-400"
+                          ? "border-dygold-400 bg-dygold-400 text-zinc-950 shadow-[0_0_18px_rgba(201,162,39,0.55)]"
+                          : "border-stone-500 text-transparent hover:border-dygold-400"
                       }`}
                     >
                       <Tick />
@@ -183,7 +183,7 @@ export function CommunityShowcase() {
                     >
                       <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
                         {s.channel === "story" ? "Story · Status" : "Reels · TikTok · Feed"}
-                        {s.essential ? <span className="text-emerald-300">★ essencial</span> : null}
+                        {s.essential ? <span className="text-dygold-300">★ essencial</span> : null}
                       </p>
                       <p className={`truncate text-sm font-semibold ${isOn ? "text-stone-500 line-through" : "text-white"}`}>
                         {s.format.label}
@@ -198,13 +198,13 @@ export function CommunityShowcase() {
                       <p className="text-stone-300">{openSlot.format.how}</p>
                       {openSlot.text ? (
                         <p className="mt-2 text-stone-100">
-                          <span className="mr-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-400">
+                          <span className="mr-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-dygold-400">
                             No story:
                           </span>
                           {openSlot.text}
                         </p>
                       ) : null}
-                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-200">
+                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-dygold-400/10 px-2.5 py-1 text-[10px] font-semibold text-dygold-200">
                         Material pronto na comunidade
                       </p>
                     </div>
@@ -230,7 +230,7 @@ export function CommunityShowcase() {
                 ))}
               </ul>
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 px-6 text-center">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300 ring-1 ring-emerald-400/30">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-dygold-400/15 text-dygold-300 ring-1 ring-dygold-400/30">
                   <Lock size={20} />
                 </span>
                 <p className="mt-3 text-base font-black uppercase tracking-tight text-white">
@@ -270,7 +270,7 @@ function LockedDay({ weekday }: { weekday: string }) {
     <div className="jr-hero relative overflow-hidden rounded-3xl p-5 sm:p-6">
       <div>
       <div className="pointer-events-none select-none blur-[6px]" aria-hidden>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-emerald-400">Tarefas de {weekday}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-dygold-400">Tarefas de {weekday}</p>
         <div className="mt-2 h-6 w-2/3 rounded-md bg-white/25" />
         <div className="mt-2 h-3 w-5/6 rounded bg-white/10" />
         <div className="mt-4 h-1.5 rounded-full bg-white/10" />
@@ -287,7 +287,7 @@ function LockedDay({ weekday }: { weekday: string }) {
         </ul>
       </div>
       <div className="absolute -inset-5 flex flex-col items-center justify-center bg-black/40 px-6 text-center sm:-inset-6">
-        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-300 ring-1 ring-emerald-400/30">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-dygold-400/15 text-dygold-300 ring-1 ring-dygold-400/30">
           <Lock size={26} />
         </span>
         <p className="mt-4 text-lg font-black uppercase tracking-tight text-white">Liberado só pra parceiros</p>
