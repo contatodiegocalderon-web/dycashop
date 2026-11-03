@@ -29,6 +29,91 @@ function isNotFoundError(e: unknown): boolean {
   return msg.includes("not found") || msg.includes("file not found");
 }
 
+function isInsufficientPermissionError(e: unknown): boolean {
+  return googleErrMessage(e).toLowerCase().includes("insufficient permission");
+}
+
+type DriveClient = ReturnType<typeof google.drive>;
+
+/** Pasta fora do catálogo. Editor consegue mover; só o dono consegue apagar. */
+const ARCHIVE_FOLDER_NAME = "Vendidos - arquivo de terceiros";
+const KNOWN_ARCHIVE_FOLDER_ID = "1brMTi9rkxzhF_OR_hwJ31a4MWnnNEsVP";
+let cachedArchiveFolderId: string | null = null;
+
+async function resolveArchiveFolderId(drive: DriveClient): Promise<string> {
+  if (cachedArchiveFolderId) return cachedArchiveFolderId;
+  try {
+    const known = await drive.files.get({
+      fileId: KNOWN_ARCHIVE_FOLDER_ID,
+      fields: "id,trashed,mimeType",
+      supportsAllDrives: true,
+    });
+    if (
+      known.data.id &&
+      known.data.trashed !== true &&
+      known.data.mimeType === "application/vnd.google-apps.folder"
+    ) {
+      cachedArchiveFolderId = known.data.id;
+      return known.data.id;
+    }
+  } catch {
+    // A pasta conhecida não está acessível. Cria outra na raiz do Drive.
+  }
+  const created = await drive.files.create({
+    requestBody: {
+      name: ARCHIVE_FOLDER_NAME,
+      mimeType: "application/vnd.google-apps.folder",
+    },
+    fields: "id",
+  });
+  if (!created.data.id) {
+    throw new Error("Não foi possível criar a pasta de arquivo no Drive");
+  }
+  cachedArchiveFolderId = created.data.id;
+  return created.data.id;
+}
+
+async function moveUndeletableFileOutOfCatalog(
+  drive: DriveClient,
+  fileId: string
+): Promise<void> {
+  const meta = await drive.files.get({
+    fileId,
+    fields: "parents",
+    supportsAllDrives: true,
+  });
+  const parents = (meta.data.parents ?? []).filter(
+    (id): id is string => typeof id === "string" && id.length > 0
+  );
+  const archiveId = await resolveArchiveFolderId(drive);
+  if (parents.length === 1 && parents[0] === archiveId) return;
+  await drive.files.update({
+    fileId,
+    addParents: archiveId,
+    removeParents: parents.length > 0 ? parents.join(",") : undefined,
+    supportsAllDrives: true,
+    fields: "id",
+  });
+}
+
+/** Apaga se a conta for dona. Se for só editor, tira o ficheiro da pasta do catálogo. */
+async function removeFileFromCatalog(
+  drive: DriveClient,
+  fileId: string
+): Promise<"deleted" | "archived"> {
+  try {
+    await drive.files.delete({
+      fileId,
+      supportsAllDrives: true,
+    });
+    return "deleted";
+  } catch (e) {
+    if (!isInsufficientPermissionError(e)) throw e;
+    await moveUndeletableFileOutOfCatalog(drive, fileId);
+    return "archived";
+  }
+}
+
 function uniqueSuffixFromFileId(fileId: string): string {
   const alnum = fileId.replace(/[^a-zA-Z0-9]/g, "");
   return alnum.slice(-6) || "id";
@@ -59,20 +144,21 @@ export function isDriveNameSyncedToStock(
 type RenameRollback = {
   kind: "rename";
   productId: string;
+  productIds: string[];
   fileId: string;
   previousDriveName: string;
   previousOriginalFileName: string;
 };
 
-type DeleteRollback = {
-  kind: "delete";
+type RemoveRollback = {
+  kind: "delete" | "archive";
   productId: string;
   fileId: string;
   previousDriveName: string;
   previousOriginalFileName: string;
 };
 
-type DriveOp = RenameRollback | DeleteRollback;
+type DriveOp = RenameRollback | RemoveRollback;
 
 async function rollbackDriveOps(
   drive: ReturnType<typeof google.drive>,
@@ -91,9 +177,12 @@ async function rollbackDriveOps(
         await admin
           .from("products")
           .update({ original_file_name: op.previousOriginalFileName })
-          .eq("id", op.productId);
+          .in("id", op.productIds);
+      } else if (op.kind === "archive") {
+        rollbackErrors.push(
+          `Produto ${op.productId}: ficheiro saiu da pasta do catálogo e não pode ser restaurado automaticamente (ID ${op.fileId}).`
+        );
       } else {
-        // Restaura ficheiro apagado com o mesmo ID não é possível via API padrão.
         rollbackErrors.push(
           `Produto ${op.productId}: ficheiro foi apagado no Drive e não pode ser restaurado automaticamente (ID ${op.fileId}).`
         );
@@ -110,7 +199,7 @@ async function rollbackDriveOps(
 /**
  * Após venda:
  * - stock > 0: alinha o nome do ficheiro no Drive ao stock atual (MARCA COR N)
- * - stock <= 0: remove o ficheiro do Drive (produto esgotado)
+ * - stock <= 0: apaga o ficheiro. Se a conta da loja não for a dona, move para fora do catálogo.
  *
  * Em falha parcial, reverte renomeações já feitas (não reverte apagamentos).
  */
@@ -249,12 +338,9 @@ export async function renameDriveFilesToCurrentStock(
       );
 
       if (!nextBase) {
-        await drive.files.delete({
-          fileId: sourceId,
-          supportsAllDrives: true,
-        });
+        const removed = await removeFileFromCatalog(drive, sourceId);
         completedOps.push({
-          kind: "delete",
+          kind: removed === "archived" ? "archive" : "delete",
           productId: lead.id,
           fileId: sourceId,
           previousDriveName: currentFullName,
@@ -271,14 +357,15 @@ export async function renameDriveFilesToCurrentStock(
           requestBody: { name: newFullName },
           supportsAllDrives: true,
         });
+        const siblingIds = touched.map((p) => p.id);
         completedOps.push({
           kind: "rename",
           productId: lead.id,
+          productIds: siblingIds,
           fileId: sourceId,
           previousDriveName: currentFullName,
           previousOriginalFileName: lead.original_file_name,
         });
-        const siblingIds = touched.map((p) => p.id);
         await admin
           .from("products")
           .update({ original_file_name: nextBase })
@@ -340,6 +427,7 @@ export async function renameDriveFilesToCurrentStock(
       completedOps.push({
         kind: "rename",
         productId: product.id,
+        productIds: [product.id],
         fileId: product.drive_file_id,
         previousDriveName: currentFullName,
         previousOriginalFileName,
@@ -376,13 +464,13 @@ export async function renameDriveFilesToCurrentStock(
         continue;
       }
 
-      await drive.files.delete({
-        fileId: product.drive_file_id,
-        supportsAllDrives: true,
-      });
+      const removed = await removeFileFromCatalog(
+        drive,
+        product.drive_file_id
+      );
 
       completedOps.push({
-        kind: "delete",
+        kind: removed === "archived" ? "archive" : "delete",
         productId: product.id,
         fileId: product.drive_file_id,
         previousDriveName,
@@ -393,6 +481,11 @@ export async function renameDriveFilesToCurrentStock(
     } catch (e) {
       const msg = googleErrMessage(e);
       const rollbackErrors = await rollbackDriveOps(drive, admin, completedOps);
+      const reverted = new Set(
+        completedOps
+          .filter((op) => op.kind === "rename")
+          .flatMap((op) => op.productIds)
+      );
       errors.push({ productId: product.id, message: msg });
       if (rollbackErrors.length > 0) {
         errors.push({
@@ -400,7 +493,7 @@ export async function renameDriveFilesToCurrentStock(
           message: rollbackErrors.join(" | "),
         });
       }
-      return { ok, errors };
+      return { ok: ok.filter((id) => !reverted.has(id)), errors };
     }
   }
 
