@@ -20,6 +20,8 @@ export async function loadMemberJourney(admin: Admin, memberId: string) {
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
+  const subscribedAt =
+    (firstPurchase?.created_at as string | undefined) ?? (member.created_at as string);
   const since = [member.created_at as string, firstPurchase?.created_at as string | undefined]
     .filter(Boolean)
     .sort()[0]!;
@@ -75,6 +77,8 @@ export async function loadMemberJourney(admin: Admin, memberId: string) {
     hasPhone: phones.length > 0,
     isOwner: member.source === "owner",
     since,
+    subscribedAt,
+    hasSubscription: Boolean(firstPurchase?.created_at),
     pieces: list.reduce((s, o) => s + o.pieces, 0),
     spent: Math.round(list.reduce((s, o) => s + o.amount, 0) * 100) / 100,
     todayPieces: today.reduce((s, o) => s + o.pieces, 0),

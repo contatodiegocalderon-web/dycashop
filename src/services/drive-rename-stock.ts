@@ -30,7 +30,27 @@ function isNotFoundError(e: unknown): boolean {
 }
 
 function isInsufficientPermissionError(e: unknown): boolean {
-  return googleErrMessage(e).toLowerCase().includes("insufficient permission");
+  const err = e as {
+    code?: number;
+    response?: {
+      status?: number;
+      data?: { error?: { errors?: { reason?: string }[] } };
+    };
+  };
+  const status = err.response?.status ?? err.code;
+  const reason = (
+    err.response?.data?.error?.errors?.[0]?.reason ?? ""
+  ).toLowerCase();
+  // A API varia o texto ("Insufficient Permission" ou
+  // "The user does not have sufficient permissions for this file.")
+  // e o reason estável é insufficientFilePermissions. Qualquer 403
+  // neste ficheiro significa que a conta da loja não é a dona.
+  if (status === 403) return true;
+  if (reason.includes("insufficient") || reason.includes("forbidden")) {
+    return true;
+  }
+  const msg = googleErrMessage(e).toLowerCase();
+  return msg.includes("permission") || msg.includes("permiss");
 }
 
 type DriveClient = ReturnType<typeof google.drive>;
@@ -96,21 +116,61 @@ async function moveUndeletableFileOutOfCatalog(
   });
 }
 
-/** Apaga se a conta for dona. Se for só editor, tira o ficheiro da pasta do catálogo. */
+/**
+ * Apaga se a conta for dona. Se for só editor, tira o ficheiro da pasta do catálogo.
+ * Não depende do texto do erro: a conta da loja renomeia e move fotos de terceiros,
+ * e o Google recusa o apagamento. Se a mudança de pasta também falhar, o nome fica
+ * com stock 0 para a próxima sincronização não repor a peça como disponível.
+ */
 async function removeFileFromCatalog(
   drive: DriveClient,
-  fileId: string
-): Promise<"deleted" | "archived"> {
+  fileId: string,
+  soldOutName?: string
+): Promise<"deleted" | "archived" | "renamed"> {
+  let ownedByStore: boolean | null = null;
   try {
-    await drive.files.delete({
+    const meta = await drive.files.get({
       fileId,
+      fields: "ownedByMe,capabilities(canTrash,canDelete)",
       supportsAllDrives: true,
     });
-    return "deleted";
+    if (meta.data.ownedByMe === true) ownedByStore = true;
+    else if (
+      meta.data.capabilities?.canTrash === true ||
+      meta.data.capabilities?.canDelete === true
+    ) {
+      ownedByStore = true;
+    } else if (meta.data.ownedByMe === false) {
+      ownedByStore = false;
+    }
   } catch (e) {
-    if (!isInsufficientPermissionError(e)) throw e;
+    if (isNotFoundError(e)) throw e;
+  }
+
+  if (ownedByStore !== false) {
+    try {
+      await drive.files.delete({
+        fileId,
+        supportsAllDrives: true,
+      });
+      return "deleted";
+    } catch (e) {
+      if (isNotFoundError(e)) throw e;
+      if (!isInsufficientPermissionError(e)) throw e;
+    }
+  }
+
+  try {
     await moveUndeletableFileOutOfCatalog(drive, fileId);
     return "archived";
+  } catch (e) {
+    if (!soldOutName || !isInsufficientPermissionError(e)) throw e;
+    await drive.files.update({
+      fileId,
+      requestBody: { name: soldOutName },
+      supportsAllDrives: true,
+    });
+    return "renamed";
   }
 }
 
@@ -151,7 +211,7 @@ type RenameRollback = {
 };
 
 type RemoveRollback = {
-  kind: "delete" | "archive";
+  kind: "delete" | "archive" | "rename_sold_out";
   productId: string;
   fileId: string;
   previousDriveName: string;
@@ -178,6 +238,12 @@ async function rollbackDriveOps(
           .from("products")
           .update({ original_file_name: op.previousOriginalFileName })
           .in("id", op.productIds);
+      } else if (op.kind === "rename_sold_out") {
+        await drive.files.update({
+          fileId: op.fileId,
+          requestBody: { name: op.previousDriveName },
+          supportsAllDrives: true,
+        });
       } else if (op.kind === "archive") {
         rollbackErrors.push(
           `Produto ${op.productId}: ficheiro saiu da pasta do catálogo e não pode ser restaurado automaticamente (ID ${op.fileId}).`
@@ -338,9 +404,24 @@ export async function renameDriveFilesToCurrentStock(
       );
 
       if (!nextBase) {
-        const removed = await removeFileFromCatalog(drive, sourceId);
+        const zeroBody = Array.from(stockBySize.keys())
+          .sort((a, b) => Number(a) - Number(b))
+          .map((size) => `${size}-0`)
+          .join("/");
+        const prefix = currentGrid.labelPrefix?.trim();
+        const zeroBase = prefix ? `${prefix} ${zeroBody}` : zeroBody;
+        const removed = await removeFileFromCatalog(
+          drive,
+          sourceId,
+          zeroBase ? `${zeroBase}${ext}` : undefined
+        );
         completedOps.push({
-          kind: removed === "archived" ? "archive" : "delete",
+          kind:
+            removed === "archived"
+              ? "archive"
+              : removed === "renamed"
+                ? "rename_sold_out"
+                : "delete",
           productId: lead.id,
           fileId: sourceId,
           previousDriveName: currentFullName,
@@ -464,13 +545,21 @@ export async function renameDriveFilesToCurrentStock(
         continue;
       }
 
+      const extMatch = previousDriveName.match(IMAGE_FILENAME_EXT);
+      const ext = extMatch ? extMatch[0].toLowerCase() : ".jpg";
       const removed = await removeFileFromCatalog(
         drive,
-        product.drive_file_id
+        product.drive_file_id,
+        `${expectedDriveFileName(product, 0)}${ext}`
       );
 
       completedOps.push({
-        kind: removed === "archived" ? "archive" : "delete",
+        kind:
+          removed === "archived"
+            ? "archive"
+            : removed === "renamed"
+              ? "rename_sold_out"
+              : "delete",
         productId: product.id,
         fileId: product.drive_file_id,
         previousDriveName,
@@ -482,9 +571,11 @@ export async function renameDriveFilesToCurrentStock(
       const msg = googleErrMessage(e);
       const rollbackErrors = await rollbackDriveOps(drive, admin, completedOps);
       const reverted = new Set(
-        completedOps
-          .filter((op) => op.kind === "rename")
-          .flatMap((op) => op.productIds)
+        completedOps.flatMap((op) => {
+          if (op.kind === "rename") return op.productIds;
+          if (op.kind === "rename_sold_out") return [op.productId];
+          return [];
+        })
       );
       errors.push({ productId: product.id, message: msg });
       if (rollbackErrors.length > 0) {

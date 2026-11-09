@@ -39,7 +39,42 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: rErr.message }, { status: 500 });
   }
 
-  return NextResponse.json({ members: members ?? [], requests: requests ?? [] });
+  const list = members ?? [];
+  const firstPaid = new Map<string, string>();
+  const emails = list
+    .map((m) => String(m.email ?? "").trim().toLowerCase())
+    .filter(Boolean);
+  for (let i = 0; i < emails.length; i += 80) {
+    const slice = emails.slice(i, i + 80);
+    const { data: purchases, error: pErr } = await admin
+      .from("drop_purchases")
+      .select("email, created_at")
+      .eq("status", "paid")
+      .in("email", slice);
+    if (pErr) {
+      return NextResponse.json({ error: pErr.message }, { status: 500 });
+    }
+    for (const row of purchases ?? []) {
+      const email = String(row.email ?? "").trim().toLowerCase();
+      const at = String(row.created_at ?? "");
+      if (!email || !at) continue;
+      const prev = firstPaid.get(email);
+      if (!prev || at < prev) firstPaid.set(email, at);
+    }
+  }
+
+  return NextResponse.json({
+    members: list.map((m) => {
+      const email = String(m.email ?? "").trim().toLowerCase();
+      const paidAt = firstPaid.get(email);
+      return {
+        ...m,
+        subscribed_at: paidAt ?? m.created_at,
+        has_subscription: Boolean(paidAt),
+      };
+    }),
+    requests: requests ?? [],
+  });
 }
 
 export async function POST(request: NextRequest) {

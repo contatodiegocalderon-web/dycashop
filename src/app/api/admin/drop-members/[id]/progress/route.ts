@@ -34,6 +34,8 @@ export async function GET(request: NextRequest, { params }: Ctx) {
       todayPieces: journey.todayPieces,
       todaySpent: journey.todaySpent,
       hasPhone: journey.hasPhone,
+      subscribedAt: journey.subscribedAt,
+      hasSubscription: journey.hasSubscription,
       rank: rewards.rank,
       unitPrice: rewards.unitPrice,
       cycle: rewards.cycle,
