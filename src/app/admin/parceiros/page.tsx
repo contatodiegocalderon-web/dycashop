@@ -74,11 +74,6 @@ function daysIn(iso: string) {
   return days === 1 ? "1 dia no time" : `${days} dias no time`;
 }
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
-  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "DY";
-}
-
 function subscriptionLine(iso: string, hasSubscription: boolean) {
   return hasSubscription ? `Assinou em ${longDate(iso)}` : `No time desde ${longDate(iso)}`;
 }
@@ -236,7 +231,7 @@ export default function AdminParceirosPage() {
     });
   }, [members, progress, query, sort]);
 
-  const spotlight = members.find((m) => m.id === openId) ?? visible[0] ?? null;
+  const spotlight = openId ? members.find((m) => m.id === openId) ?? null : null;
   const spotlightProgress = spotlight ? progress[spotlight.id] : undefined;
   const pending = requests.filter((r) => r.status === "pending");
   const activeCount = members.filter((m) => m.active).length;
@@ -247,11 +242,9 @@ export default function AdminParceirosPage() {
     return (
       <Board
         members={visible}
-        progress={progress}
-        sort={sort}
         selectedId={spotlight?.id ?? null}
         onSelect={(id) => {
-          setOpenId(id);
+          setOpenId((current) => (current === id ? null : id));
           const row = progress[id];
           if (!row || typeof row === "string") void loadProgress(id);
         }}
@@ -324,11 +317,7 @@ export default function AdminParceirosPage() {
 
         {spotlight && spotlightProgress && typeof spotlightProgress !== "string" ? (
           <div className="mt-8">
-            <JourneyCard
-              member={spotlight}
-              data={spotlightProgress}
-              place={sort === "rank" ? visible.findIndex((m) => m.id === spotlight.id) + 1 : null}
-            />
+            <JourneyCard member={spotlight} data={spotlightProgress} />
           </div>
         ) : spotlight ? (
           <p className="mt-8 text-sm text-stone-500">Carregando a jornada de {spotlight.full_name || spotlight.email}…</p>
@@ -468,16 +457,10 @@ export default function AdminParceirosPage() {
                   </button>
                 </div>
                 {spotlight && spotlightProgress && typeof spotlightProgress !== "string" ? (
-                  <JourneyCard
-                    member={spotlight}
-                    data={spotlightProgress}
-                    place={sort === "rank" ? visible.findIndex((m) => m.id === spotlight.id) + 1 : null}
-                    cinematic
-                  />
+                  <JourneyCard member={spotlight} data={spotlightProgress} cinematic />
                 ) : (
                   <p className="text-sm text-stone-500">Escolha um parceiro antes de gravar.</p>
                 )}
-                <div className="mt-8">{renderBoard()}</div>
                 <p className="mt-10 text-center text-sm text-stone-400">
                   Preço que cai até R$ 20. Uma peça grátis a cada 10. Pulseira, placa e preço de sócio.
                 </p>
@@ -495,14 +478,10 @@ export default function AdminParceirosPage() {
 
 function Board({
   members,
-  progress,
-  sort,
   selectedId,
   onSelect,
 }: {
   members: Member[];
-  progress: Record<string, Progress | "loading" | string>;
-  sort: "rank" | "recent";
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -510,41 +489,24 @@ function Board({
     return <p className="text-sm text-stone-500">Nenhum parceiro encontrado.</p>;
   }
   return (
-    <ul className="grid gap-3 sm:grid-cols-2">
-      {members.map((m, index) => {
-        const row = progress[m.id];
-        const data = row && typeof row !== "string" ? row : null;
-        const place = sort === "rank" ? index + 1 : null;
+    <ul className="divide-y divide-white/10 overflow-hidden rounded-3xl border border-white/10">
+      {members.map((m) => {
         const selected = m.id === selectedId;
         return (
           <li key={m.id}>
             <button
               type="button"
               onClick={() => onSelect(m.id)}
-              className={`w-full rounded-3xl border px-4 py-4 text-left transition ${
-                selected
-                  ? "border-[#e4c15a]/70 bg-[#e4c15a]/10"
-                  : "border-white/10 bg-white/[0.03] hover:border-white/20"
+              className={`flex w-full flex-col items-start gap-1 px-5 py-4 text-left transition sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${
+                selected ? "bg-[#e4c15a]/10" : "hover:bg-white/[0.04]"
               }`}
             >
-              <div className="flex items-center gap-3">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#e4c15a] text-sm font-black text-zinc-950">
-                  {place && place <= 3 ? place : initials(m.full_name || m.email)}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate font-semibold">
-                    {m.full_name || m.email}
-                    {!m.active ? <span className="ml-2 text-xs font-normal text-red-300">inativo</span> : null}
-                  </span>
-                  <span className="mt-0.5 block truncate text-xs text-[#e4c15a]">
-                    {subscriptionLine(data?.subscribedAt ?? m.subscribed_at, data?.hasSubscription ?? m.has_subscription)}
-                  </span>
-                </span>
-              </div>
-              <span className="mt-4 grid grid-cols-3 gap-2 text-center">
-                <Mini label="Peças" value={data ? String(data.pieces) : "…"} />
-                <Mini label="Investido" value={data ? brl(data.spent) : "…"} />
-                <Mini label="Nível" value={data ? data.rank : "…"} />
+              <span className="min-w-0 truncate font-semibold">
+                {m.full_name || m.email}
+                {!m.active ? <span className="ml-2 text-xs font-normal text-red-300">inativo</span> : null}
+              </span>
+              <span className="shrink-0 text-xs text-[#e4c15a]">
+                {subscriptionLine(m.subscribed_at, m.has_subscription)}
               </span>
             </button>
           </li>
@@ -554,24 +516,13 @@ function Board({
   );
 }
 
-function Mini({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="rounded-2xl bg-black/30 px-2 py-2">
-      <span className="block text-[10px] uppercase tracking-[0.16em] text-stone-500">{label}</span>
-      <span className="mt-1 block truncate text-sm font-bold">{value}</span>
-    </span>
-  );
-}
-
 function JourneyCard({
   member,
   data,
-  place,
   cinematic,
 }: {
   member: Member;
   data: Progress;
-  place: number | null;
   cinematic?: boolean;
 }) {
   const signed = subscriptionLine(data.subscribedAt || member.subscribed_at, data.hasSubscription || member.has_subscription);
@@ -582,10 +533,7 @@ function JourneyCard({
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-[#e4c15a]">
-            {place ? `#${place} do ranking` : "Parceiro"} · {data.rank}
-          </p>
-          <h2 className={`mt-2 font-black tracking-tight ${cinematic ? "text-5xl sm:text-6xl" : "text-3xl sm:text-4xl"}`}>
+          <h2 className={`font-black tracking-tight ${cinematic ? "text-5xl sm:text-6xl" : "text-3xl sm:text-4xl"}`}>
             {member.full_name || member.email}
           </h2>
           <p className="mt-2 text-sm text-[#f6e3a1]">
