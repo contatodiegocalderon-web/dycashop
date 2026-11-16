@@ -52,7 +52,7 @@ function TierPrice({ price }: { price: number }) {
 
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
-      <span className="font-semibold text-red-500 line-through decoration-red-500 decoration-2">
+      <span className="font-semibold text-emerald-400 line-through decoration-red-500 decoration-2">
         {formatCurrency(price)}
       </span>
       <span className="font-semibold text-red-500">{formatCurrency(promo)}</span>
