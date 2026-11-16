@@ -33,6 +33,33 @@ function formatCurrency(value: number) {
   });
 }
 
+/** Black Friday: preço antigo riscado e o promocional ao lado. */
+const BLACK_FRIDAY_UNIT_PRICES: Record<number, number> = {
+  2700: 25,
+  2300: 20,
+};
+
+function blackFridayPromoPrice(price: number): number | null {
+  const cents = Math.round(price * 100);
+  return BLACK_FRIDAY_UNIT_PRICES[cents] ?? null;
+}
+
+function TierPrice({ price }: { price: number }) {
+  const promo = blackFridayPromoPrice(price);
+  if (promo == null) {
+    return <span className="text-emerald-400">{formatCurrency(price)}</span>;
+  }
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      <span className="font-semibold text-red-500 line-through decoration-red-500 decoration-2">
+        {formatCurrency(price)}
+      </span>
+      <span className="font-semibold text-red-500">{formatCurrency(promo)}</span>
+    </span>
+  );
+}
+
 function QualityVideo({
   categoryLabel,
   config,
@@ -140,8 +167,8 @@ export function CategoryShowcaseBanner({
                   <td className="px-3 py-2 text-stone-200">
                     {formatRange(tier.minQty, tier.maxQty)}
                   </td>
-                  <td className="px-3 py-2 font-semibold text-emerald-400">
-                    {formatCurrency(tier.price)}
+                  <td className="px-3 py-2 font-semibold">
+                    <TierPrice price={tier.price} />
                   </td>
                 </tr>
               ))}
