@@ -11,13 +11,13 @@ export type WhatsAppSeller = {
 
 export const WHATSAPP_SELLERS: WhatsAppSeller[] = [
   {
-    name: "Diego",
-    phone: "5511958936770",
-    photoUrl: "/vendedores/diego.jpg",
-  },
-  {
     name: "Paulo",
     phone: "5511916485901",
     photoUrl: "/vendedores/paulo.jpg",
+  },
+  {
+    name: "Diego",
+    phone: "5511958936770",
+    photoUrl: "/vendedores/diego.jpg",
   },
 ];
