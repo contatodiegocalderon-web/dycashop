@@ -67,6 +67,40 @@ function money(n: number) {
   });
 }
 
+function RevealProfit({
+  value,
+  className = "",
+}: {
+  value: number;
+  className?: string;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        setRevealed((v) => !v);
+      }}
+      aria-pressed={revealed}
+      title={revealed ? "Clique para embaçar" : "Clique para revelar"}
+      className={`group inline-block rounded-lg text-left text-inherit transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300/50 ${
+        revealed ? "" : "hover:bg-white/[0.04]"
+      } ${className}`}
+    >
+      <span
+        className={`inline-block tabular-nums transition-[filter,opacity] duration-300 ease-out ${
+          revealed
+            ? "blur-0 opacity-100"
+            : "blur-md opacity-75 saturate-50 group-hover:blur-sm group-hover:opacity-85"
+        }`}
+      >
+        {money(value)}
+      </span>
+    </button>
+  );
+}
+
 type SellerFilterOption = { value: string; label: string };
 
 export default function AdminMetricasPage() {
@@ -433,7 +467,7 @@ export default function AdminMetricasPage() {
           />
           <AdminPurpleStatCard
             label="Lucro estimado"
-            value={money(metrics.totalProfit)}
+            value={<RevealProfit value={metrics.totalProfit} />}
             sub="Com base nos custos"
           />
         </div>
@@ -452,6 +486,7 @@ export default function AdminMetricasPage() {
               <>
                 <SegmentPieChart data={segmentPieData} theme="purple" />
                 <SegmentPeriodStats
+                  concealLucro
                   stats={{
                     novos: {
                       faturamento: metrics.novoRevenue,
@@ -525,7 +560,7 @@ export default function AdminMetricasPage() {
                       {money(metrics.revenueByCategory[cat] ?? 0)}
                     </td>
                     <td className="px-6 py-3 font-medium text-violet-50/90">
-                      {money(metrics.profitByCategory[cat] ?? 0)}
+                      <RevealProfit value={metrics.profitByCategory[cat] ?? 0} />
                     </td>
                   </tr>
                 ))}
@@ -568,7 +603,7 @@ export default function AdminMetricasPage() {
                       {money(s.totalRevenue)}
                     </td>
                     <td className="px-6 py-3 font-medium text-violet-50/90">
-                      {money(s.totalProfit)}
+                      <RevealProfit value={s.totalProfit} />
                     </td>
                     <td className="px-6 py-3 font-medium text-violet-50/90">
                       {s.topCategory ? `${s.topCategory} (${s.topCategoryPieces})` : "—"}

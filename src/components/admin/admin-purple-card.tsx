@@ -37,7 +37,7 @@ export function AdminPurpleStatCard({
   footer,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   sub?: string;
   footer?: ReactNode;
 }) {
@@ -46,9 +46,9 @@ export function AdminPurpleStatCard({
       <p className="text-xs font-semibold uppercase tracking-wider text-violet-200/80">
         {label}
       </p>
-      <p className="mt-2 text-3xl font-extrabold tracking-tight text-white drop-shadow-[0_1px_12px_rgba(0,0,0,0.45)]">
+      <div className="mt-2 text-3xl font-extrabold tracking-tight text-white drop-shadow-[0_1px_12px_rgba(0,0,0,0.45)]">
         {value}
-      </p>
+      </div>
       {sub ? (
         <p className="mt-1 text-xs text-violet-100/70">{sub}</p>
       ) : null}
