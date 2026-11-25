@@ -3,6 +3,7 @@
  * KITs PRONTOS usam o custo das peças da composição (ex.: 5 bermudas + 5 camisetas), não 1× a categoria do kit.
  */
 import { readyKitLineCost } from "@/lib/kit-piece-cost";
+import { pricingGroupLabel } from "@/lib/plain-shirt-lines";
 
 export type CategoryCostMap = Record<string, number>;
 
@@ -160,7 +161,7 @@ export function aggregateSalesMetrics(
     const orderPieces = items.reduce((s, it) => s + it.quantity, 0) || 1;
     const qtyByCategory: Record<string, number> = {};
     for (const it of items) {
-      const cat = resolveCategory(it);
+      const cat = pricingGroupLabel(resolveCategory(it), it.snapshot_brand);
       const catKey = normalizeKey(cat);
       qtyByCategory[catKey] = (qtyByCategory[catKey] ?? 0) + it.quantity;
     }
@@ -198,7 +199,8 @@ export function aggregateSalesMetrics(
     let orderProfit = 0;
 
     for (const it of items) {
-      const cat = resolveCategory(it);
+      const folder = resolveCategory(it);
+      const cat = pricingGroupLabel(folder, it.snapshot_brand);
       const catKey = normalizeKey(cat);
       const qty = it.quantity;
 
@@ -208,7 +210,7 @@ export function aggregateSalesMetrics(
           ? categoryRevenue * (qtyByCategory[catKey] > 0 ? qty / qtyByCategory[catKey]! : 0)
           : orderRevenue * (qty / orderPieces);
       const unitCost =
-        normalizedCosts[catKey] ??
+        normalizedCosts[normalizeKey(folder)] ??
         normalizedCosts[normalizeKey("Sem categoria")] ??
         0;
       const kitCost = readyKitLineCost(it, normalizedCosts);

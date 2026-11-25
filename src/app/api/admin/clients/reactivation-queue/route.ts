@@ -299,7 +299,7 @@ export async function GET(request: NextRequest) {
     let cq: any = admin
       .from("orders")
       .select(
-        "id, customer_whatsapp, customer_name, requested_seller_name, created_at, order_items(quantity, snapshot_category)"
+        "id, customer_whatsapp, customer_name, requested_seller_name, created_at, order_items(quantity, snapshot_category, snapshot_brand)"
       )
       .eq("status", "CANCELADO")
       .not("customer_whatsapp", "is", null)

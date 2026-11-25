@@ -14,6 +14,7 @@ import {
 import { flagPendingOrdersAfterConfirm } from "@/lib/order-stock-conflict";
 import { upsertAutoBusinessProfileOnConfirm } from "@/lib/crm-auto-profile";
 import { settleAbandonedAfterPaidOrder } from "@/lib/crm-abandoned-query";
+import { pricingGroupLabel } from "@/lib/plain-shirt-lines";
 import type { CustomerSegment } from "@/types";
 
 export const runtime = "nodejs";
@@ -161,7 +162,7 @@ export async function POST(
 
     const { data: items, error: iErr } = await admin
       .from("order_items")
-      .select("product_id, quantity, snapshot_category")
+      .select("product_id, quantity, snapshot_category, snapshot_brand")
       .eq("order_id", orderId);
 
     if (iErr || !items?.length) {
@@ -207,7 +208,10 @@ export async function POST(
     const qtyByCategory: Record<string, number> = {};
     const totals = new Map<string, number>();
     for (const it of items) {
-      const cat = it.snapshot_category?.trim() || "Sem categoria";
+      const cat = pricingGroupLabel(
+        it.snapshot_category,
+        (it as { snapshot_brand?: string | null }).snapshot_brand
+      );
       categoriesInOrder.add(cat);
       qtyByCategory[cat] = (qtyByCategory[cat] ?? 0) + it.quantity;
       if (!it.product_id) continue;

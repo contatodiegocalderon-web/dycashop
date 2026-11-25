@@ -83,7 +83,7 @@ export async function loadCampaignRecipients(
     let q: any = admin
       .from("orders")
       .select(
-        "id, customer_whatsapp, customer_name, requested_seller_name, created_at, order_items(quantity, snapshot_category)"
+        "id, customer_whatsapp, customer_name, requested_seller_name, created_at, order_items(quantity, snapshot_category, snapshot_brand)"
       )
       .not("customer_whatsapp", "is", null)
       .order("created_at", { ascending: false })

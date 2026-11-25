@@ -9,6 +9,10 @@ import {
   sortCategoryLabelsForCatalog,
 } from "@/lib/catalog-categories";
 import { isKitsCategory } from "@/lib/kits-category";
+import {
+  isPlainShirtCategory,
+  PLAIN_SHIRT_LINES,
+} from "@/lib/plain-shirt-lines";
 import type { WholesaleTier } from "@/lib/category-showcase";
 
 type CostRow = {
@@ -646,7 +650,27 @@ export default function AdminCategoriasPage() {
                       placeholder="Ex.: 200 camiseta, 350 bermuda"
                     />
                   </label>
-                  {!isKitsCategory(label) && (
+                  {!isKitsCategory(label) && isPlainShirtCategory(label) && (
+                    <div className="text-sm text-stone-600 sm:col-span-2">
+                      <p>
+                        A vitrine separa esta categoria por tecido, cada um com tabela e vídeo próprios.
+                      </p>
+                      <ul className="mt-2 list-disc space-y-1 pl-4">
+                        {PLAIN_SHIRT_LINES.map((line) => (
+                          <li key={line.id}>
+                            {line.label}:{" "}
+                            {line.wholesaleTiers
+                              .map(
+                                (tier) =>
+                                  `${tier.minQty}${tier.maxQty == null ? "+" : `–${tier.maxQty}`} un. R$ ${tier.price}`
+                              )
+                              .join(", ")}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {!isKitsCategory(label) && !isPlainShirtCategory(label) && (
                     <>
                   <label className="text-sm text-stone-700">
                     URL do vídeo
@@ -678,7 +702,7 @@ export default function AdminCategoriasPage() {
                   )}
                 </div>
 
-                {!isKitsCategory(label) && (
+                {!isKitsCategory(label) && !isPlainShirtCategory(label) && (
                 <label className="mt-3 block text-sm text-stone-700">
                   Tabela atacado (uma linha por faixa no formato `min-max=preço` e `min-+=preço`)
                   <textarea

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { normalizeWhatsappDigits } from "@/lib/whatsapp-normalize";
 import { useAdminAuth } from "@/contexts/admin-auth";
+import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
+import { plainShirtUnitPriceForGroup } from "@/lib/plain-shirt-lines";
 import { orderedProductSizes } from "@/lib/product-sizes";
 import type {
   CustomerSegment,
@@ -46,24 +48,12 @@ function waLinkFromDigits(raw: string | null | undefined): string | null {
 
 function categoriesInOrder(order: OrderRow | undefined): string[] {
   if (!order?.order_items?.length) return [];
-  const set = new Set<string>();
-  for (const it of order.order_items) {
-    const cat = it.snapshot_category?.trim() || "Sem categoria";
-    set.add(cat);
-  }
-  return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  return totalsByCategoryFromOrderItems(order.order_items).map((row) => row.label);
 }
 
 /** Igual ao histórico: totais por categoria (snapshot) para o resumo no cartão. */
 function aggregateByCategory(items: OrderItemRow[]): Array<{ label: string; qty: number }> {
-  const m = new Map<string, number>();
-  for (const it of items) {
-    const cat = it.snapshot_category?.trim() || "Sem categoria";
-    m.set(cat, (m.get(cat) ?? 0) + it.quantity);
-  }
-  return Array.from(m.entries())
-    .sort((a, b) => a[0].localeCompare(b[0], "pt-BR"))
-    .map(([label, qty]) => ({ label, qty }));
+  return totalsByCategoryFromOrderItems(items);
 }
 
 function isDriveConfirmLocked(order: OrderRow): boolean {
@@ -298,8 +288,15 @@ export default function AdminPedidosClient() {
   function openConfirmModal(orderId: string) {
     setConfirmSuccessMsg(null);
     const found = orders.find((o) => o.id === orderId);
-    const cats = categoriesInOrder(found);
-    setCategoryAmounts(Object.fromEntries(cats.map((c) => [c, ""])));
+    const totals = totalsByCategoryFromOrderItems(found?.order_items ?? []);
+    setCategoryAmounts(
+      Object.fromEntries(
+        totals.map((row) => {
+          const suggested = plainShirtUnitPriceForGroup(row.label, row.qty);
+          return [row.label, suggested != null ? String(suggested) : ""];
+        })
+      )
+    );
     setCustomerName(found?.customer_name?.trim() ?? "");
     setCustomerWhatsApp(found?.customer_whatsapp?.trim() ?? "");
     setCustomerSegment("NOVO");

@@ -19,6 +19,10 @@ import {
   type WizardGuidedFilter,
 } from "@/lib/catalog-guided-wizard";
 import type { CategoryShowcaseConfig } from "@/lib/category-showcase";
+import {
+  isPlainShirtCategory,
+  PLAIN_SHIRT_LINES,
+} from "@/lib/plain-shirt-lines";
 import { isKitsStorefront } from "@/lib/kits-category";
 import { jeansCatalogSize } from "@/lib/jeans-size";
 import { orderedProductSizes } from "@/lib/product-sizes";
@@ -72,6 +76,7 @@ export function CatalogClient({
       slug: activeCategorySlug,
       pathname,
     });
+  const plainShirtMode = isPlainShirtCategory(categoryFixed);
   const guidedMode =
     Boolean(categoryFixed?.trim()) &&
     ENABLE_GUIDED_CATEGORY_WIZARD &&
@@ -360,7 +365,24 @@ export function CatalogClient({
         <p className="text-center text-sm text-stone-400">A retomar a seleção…</p>
       )}
 
-      {showcaseConfig && categoryFixed && !kitsMode ? (
+      {plainShirtMode && categoryFixed ? (
+        <div className="space-y-6">
+          {PLAIN_SHIRT_LINES.map((line) => (
+            <CategoryShowcaseBanner
+              key={line.id}
+              categoryLabel={categoryFixed}
+              lineLabel={line.label}
+              config={{
+                videoUrl: line.videoUrl,
+                wholesaleTiers: line.wholesaleTiers,
+              }}
+              showVideoOnMobile
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {showcaseConfig && categoryFixed && !kitsMode && !plainShirtMode ? (
         <CategoryShowcaseBanner
           categoryLabel={categoryFixed}
           config={showcaseConfig}

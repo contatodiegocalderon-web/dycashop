@@ -8,6 +8,8 @@ import {
 } from "@/components/admin/order-day-section-header";
 import { useAdminAuth } from "@/contexts/admin-auth";
 import { readyKitLineCost } from "@/lib/kit-piece-cost";
+import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
+import { catalogCategoryFromPricingGroup } from "@/lib/plain-shirt-lines";
 import { groupOrdersByLocalDay } from "@/lib/order-day-groups";
 import type { OrderItemRow, OrderRow } from "@/types";
 
@@ -43,14 +45,7 @@ function todayYmd(): string {
 }
 
 function aggregateByCategory(items: OrderItemRow[]): Array<{ label: string; qty: number }> {
-  const m = new Map<string, number>();
-  for (const it of items) {
-    const cat = it.snapshot_category?.trim() || "Sem categoria";
-    m.set(cat, (m.get(cat) ?? 0) + it.quantity);
-  }
-  return Array.from(m.entries())
-    .sort((a, b) => a[0].localeCompare(b[0], "pt-BR"))
-    .map(([label, qty]) => ({ label, qty }));
+  return totalsByCategoryFromOrderItems(items);
 }
 
 function normalizeKey(raw: string | null | undefined): string {
@@ -198,9 +193,13 @@ function calculateOrderProfit(order: OrderRow, costs: Record<string, number>): n
 
   let profit = 0;
   for (const line of lines) {
-    const key = normalizeKey(line.label);
+    const parent = catalogCategoryFromPricingGroup(line.label);
+    const key = normalizeKey(parent);
     const unitCost = costs[key] ?? costs[normalizeKey("Sem categoria")] ?? 0;
-    const lineCost = costsByLabel.get(line.label) ?? line.qty * unitCost;
+    const lineCost =
+      parent === line.label
+        ? (costsByLabel.get(line.label) ?? line.qty * unitCost)
+        : line.qty * unitCost;
     const lineRevenue =
       revenueByCategory[line.label] != null
         ? revenueByCategory[line.label]

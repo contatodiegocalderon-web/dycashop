@@ -1,14 +1,11 @@
+import { pricingGroupLabel } from "@/lib/plain-shirt-lines";
 import type { CartLine, OrderItemRow } from "@/types";
 
 export type CategoryQtyTotal = { label: string; qty: number };
 
-function normalizeCategory(raw: string | null | undefined): string {
-  const s = raw?.trim() ?? "";
-  return s !== "" ? s : "Sem categoria";
-}
-
 type OrderItemQty = Pick<OrderItemRow, "quantity"> & {
   snapshot_category?: string | null;
+  snapshot_brand?: string | null;
 };
 
 /** Totais por pasta/categoria para recibo e WhatsApp (pedido já gravado). */
@@ -17,7 +14,7 @@ export function totalsByCategoryFromOrderItems(
 ): CategoryQtyTotal[] {
   const m = new Map<string, number>();
   for (const it of items) {
-    const cat = normalizeCategory(it.snapshot_category);
+    const cat = pricingGroupLabel(it.snapshot_category, it.snapshot_brand);
     m.set(cat, (m.get(cat) ?? 0) + it.quantity);
   }
   return Array.from(m.entries())
@@ -29,7 +26,7 @@ export function totalsByCategoryFromOrderItems(
 export function totalsByCategoryFromCartLines(lines: CartLine[]): CategoryQtyTotal[] {
   const m = new Map<string, number>();
   for (const line of lines) {
-    const cat = normalizeCategory(line.product.category);
+    const cat = pricingGroupLabel(line.product.category, line.product.brand);
     m.set(cat, (m.get(cat) ?? 0) + line.quantity);
   }
   return Array.from(m.entries())

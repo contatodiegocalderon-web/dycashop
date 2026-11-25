@@ -18,6 +18,8 @@ type Props = {
    * Em `md+` o vídeo continua sempre visível.
    */
   showVideoOnMobile?: boolean;
+  /** Tecido ou linha dentro da mesma categoria (ex.: SUEDINE, 30.1). */
+  lineLabel?: string;
 };
 
 function formatRange(minQty: number, maxQty: number | null) {
@@ -63,9 +65,11 @@ function TierPrice({ price }: { price: number }) {
 function QualityVideo({
   categoryLabel,
   config,
+  lineLabel,
 }: {
   categoryLabel: string;
   config: CategoryShowcaseConfig;
+  lineLabel?: string;
 }) {
   const rawUrl = config.videoUrl?.trim() ?? "";
   const ytId = rawUrl ? parseYouTubeVideoId(rawUrl) : null;
@@ -75,7 +79,7 @@ function QualityVideo({
   return (
     <div className="rounded-xl border border-white/[0.08] bg-black/25 p-2 md:p-3">
       <p className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">
-        Padrão de qualidade
+        {lineLabel ? `Padrão de qualidade · ${lineLabel}` : "Padrão de qualidade"}
       </p>
       <div className="overflow-hidden rounded-lg border border-white/[0.08] bg-black">
         {rawUrl && ytId ? (
@@ -122,6 +126,7 @@ export function CategoryShowcaseBanner({
   config,
   afterPricing,
   showVideoOnMobile = true,
+  lineLabel,
 }: Props) {
   const retailPrice = config.retailPricePerPiece;
   const varejoMaxQty = WHOLESALE_CART_MIN_PIECES - 1;
@@ -130,7 +135,7 @@ export function CategoryShowcaseBanner({
     <section className="mb-6 flex flex-col gap-3 md:grid md:grid-cols-2 md:items-start">
       <div className="order-2 rounded-xl border border-white/[0.08] bg-black/25 p-3 md:order-1 md:p-4">
         <h2 className="text-base font-semibold text-stone-100">
-          Tabela de valores
+          {lineLabel ? `Tabela de valores · ${lineLabel}` : "Tabela de valores"}
         </h2>
 
         <div className="mt-3 overflow-hidden rounded-lg border border-white/[0.08]">
@@ -181,7 +186,11 @@ export function CategoryShowcaseBanner({
       <div
         className={`order-3 md:order-2 ${showVideoOnMobile ? "" : "hidden md:block"}`}
       >
-        <QualityVideo categoryLabel={categoryLabel} config={config} />
+        <QualityVideo
+          categoryLabel={lineLabel ? `${categoryLabel} ${lineLabel}` : categoryLabel}
+          config={config}
+          lineLabel={lineLabel}
+        />
       </div>
 
       {afterPricing ? (
