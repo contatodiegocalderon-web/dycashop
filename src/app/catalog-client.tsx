@@ -463,7 +463,12 @@ export function CatalogClient({
       )}
 
       {showPlainShirtChooser ? (
-        <PlainShirtLineButtons selectedId={null} onChoose={choosePlainShirt} />
+        <div className="space-y-2 pt-2">
+          <p className="text-center text-lg font-medium tracking-wide text-white sm:text-xl">
+            Escolha uma opção para ver os produtos
+          </p>
+          <PlainShirtLineButtons selectedId={null} onChoose={choosePlainShirt} />
+        </div>
       ) : null}
 
       {chosenPlainShirt ? (
