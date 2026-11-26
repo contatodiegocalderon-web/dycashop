@@ -22,6 +22,8 @@ import type { CategoryShowcaseConfig } from "@/lib/category-showcase";
 import {
   isPlainShirtCategory,
   PLAIN_SHIRT_LINES,
+  plainShirtLineForBrand,
+  type PlainShirtLine,
 } from "@/lib/plain-shirt-lines";
 import { isKitsStorefront } from "@/lib/kits-category";
 import { jeansCatalogSize } from "@/lib/jeans-size";
@@ -55,6 +57,75 @@ type Props = {
   /** Vitrine KITs PRONTOS: sem assistente, tabela, vídeo ou filtros. */
   kitsStorefront?: boolean;
 };
+
+function PlainShirtGlassButton({
+  label,
+  onClick,
+  compact = false,
+  active = false,
+}: {
+  label: string;
+  onClick: () => void;
+  compact?: boolean;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={
+        compact
+          ? `relative w-full overflow-hidden rounded-2xl border px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-[0.16em] text-white ring-1 ring-inset backdrop-blur-2xl transition duration-300 active:scale-[0.985] sm:py-3 sm:text-sm ${
+              active
+                ? "border-white/55 bg-white/[0.2] shadow-[0_8px_24px_rgba(0,0,0,0.35)] ring-white/40"
+                : "border-white/25 bg-white/[0.07] shadow-[0_6px_18px_rgba(0,0,0,0.28)] ring-white/15 hover:bg-white/[0.14]"
+            }`
+          : "group relative w-full overflow-hidden rounded-[28px] border border-white/30 bg-white/[0.07] px-6 py-12 text-center text-2xl font-semibold uppercase tracking-[0.22em] text-white shadow-[0_10px_40px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-white/25 backdrop-blur-2xl transition duration-300 hover:bg-white/[0.14] hover:shadow-[0_16px_48px_rgba(0,0,0,0.45)] active:scale-[0.985] sm:py-16 sm:text-3xl"
+      }
+    >
+      <span
+        className={`pointer-events-none absolute top-0 h-px bg-gradient-to-r from-transparent via-white/80 to-transparent ${
+          compact ? "inset-x-3" : "inset-x-8"
+        }`}
+      />
+      {!compact ? (
+        <span className="pointer-events-none absolute -left-8 top-0 h-24 w-24 rounded-full bg-white/20 blur-2xl" />
+      ) : null}
+      {label}
+    </button>
+  );
+}
+
+function PlainShirtLineButtons({
+  selectedId,
+  onChoose,
+  compact = false,
+}: {
+  selectedId: PlainShirtLine["id"] | null;
+  onChoose: (id: PlainShirtLine["id"]) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={
+        compact
+          ? "mx-auto grid max-w-md grid-cols-2 gap-2"
+          : "mx-auto grid max-w-3xl gap-4 py-6 sm:grid-cols-2 sm:gap-6 sm:py-10"
+      }
+    >
+      {PLAIN_SHIRT_LINES.map((line) => (
+        <PlainShirtGlassButton
+          key={line.id}
+          label={line.label}
+          compact={compact}
+          active={line.id === selectedId}
+          onClick={() => onChoose(line.id)}
+        />
+      ))}
+    </div>
+  );
+}
 
 function readRestoreSnapshot(pathname: string): CatalogBrowseSnapshot | null {
   if (typeof window === "undefined") return null;
@@ -100,6 +171,9 @@ export function CatalogClient({
   const [wizardGuidedFilter, setWizardGuidedFilter] =
     useState<WizardGuidedFilter | null>(null);
   const [wizardImageHint, setWizardImageHint] = useState(false);
+  const [plainShirtLineId, setPlainShirtLineId] = useState<
+    PlainShirtLine["id"] | null
+  >(null);
 
   useEffect(() => {
     const kitsPage = isKitsStorefront({
@@ -115,6 +189,7 @@ export function CatalogClient({
       setColors(snap.colors);
       setWizardDone(snap.wizardDone);
       setWizardGuidedFilter(snap.wizardGuidedFilter);
+      setPlainShirtLineId(snap.plainShirtLineId ?? null);
       pendingScrollY.current = snap.scrollY;
       if (snap.wizardDone) setLoading(true);
     } else if (kitsPage) {
@@ -180,8 +255,19 @@ export function CatalogClient({
     if (wizardGuidedFilter) {
       return filterProductsByWizardSelection(productsInSize, wizardGuidedFilter);
     }
-    return filterProductsBySelections(productsInSize, colors, brands);
-  }, [productsInSize, wizardGuidedFilter, colors, brands]);
+    const selected = filterProductsBySelections(productsInSize, colors, brands);
+    if (!plainShirtMode || !plainShirtLineId) return selected;
+    return selected.filter(
+      (product) => plainShirtLineForBrand(product.brand)?.id === plainShirtLineId
+    );
+  }, [
+    productsInSize,
+    wizardGuidedFilter,
+    colors,
+    brands,
+    plainShirtMode,
+    plainShirtLineId,
+  ]);
 
   useEffect(() => {
     if (!size || products.length === 0) return;
@@ -229,6 +315,7 @@ export function CatalogClient({
       categoryFree,
       wizardDone,
       wizardGuidedFilter,
+      plainShirtLineId,
     });
   }, [
     sessionReady,
@@ -239,6 +326,7 @@ export function CatalogClient({
     categoryFree,
     wizardDone,
     wizardGuidedFilter,
+    plainShirtLineId,
   ]);
 
   useEffect(() => {
@@ -349,6 +437,15 @@ export function CatalogClient({
     if (next.length !== colors.length) setColors(next);
   }, [colors, colorOptions]);
 
+  const chosenPlainShirt =
+    PLAIN_SHIRT_LINES.find((line) => line.id === plainShirtLineId) ?? null;
+  const showPlainShirtChooser = plainShirtMode && sessionReady && !chosenPlainShirt;
+
+  function choosePlainShirt(id: PlainShirtLine["id"]) {
+    setPlainShirtLineId(id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   const wizard =
     sessionReady && guidedMode && !wizardDone && categoryFixed ? (
       <CategoryGuidedWizard
@@ -365,22 +462,29 @@ export function CatalogClient({
         <p className="text-center text-sm text-stone-400">A retomar a seleção…</p>
       )}
 
-      {plainShirtMode && categoryFixed ? (
-        <div className="space-y-6">
-          {PLAIN_SHIRT_LINES.map((line) => (
-            <CategoryShowcaseBanner
-              key={line.id}
-              categoryLabel={categoryFixed}
-              lineLabel={line.label}
-              config={{
-                videoUrl: line.videoUrl,
-                wholesaleTiers: line.wholesaleTiers,
-                retailPricePerPiece: line.retailPricePerPiece,
-              }}
-              showVideoOnMobile
-            />
-          ))}
-        </div>
+      {showPlainShirtChooser ? (
+        <PlainShirtLineButtons selectedId={null} onChoose={choosePlainShirt} />
+      ) : null}
+
+      {chosenPlainShirt ? (
+        <PlainShirtLineButtons
+          selectedId={chosenPlainShirt.id}
+          onChoose={choosePlainShirt}
+          compact
+        />
+      ) : null}
+
+      {chosenPlainShirt && categoryFixed ? (
+        <CategoryShowcaseBanner
+          categoryLabel={categoryFixed}
+          lineLabel={chosenPlainShirt.label}
+          config={{
+            videoUrl: chosenPlainShirt.videoUrl,
+            wholesaleTiers: chosenPlainShirt.wholesaleTiers,
+            retailPricePerPiece: chosenPlainShirt.retailPricePerPiece,
+          }}
+          showVideoOnMobile
+        />
       ) : null}
 
       {showcaseConfig && categoryFixed && !kitsMode && !plainShirtMode ? (
@@ -394,10 +498,10 @@ export function CatalogClient({
         wizard
       )}
 
-      {showCatalog && (
+      {showCatalog && !showPlainShirtChooser && (
         <>
       <div ref={catalogAnchorRef} className="scroll-mt-20">
-      {!kitsMode && (
+      {!kitsMode && !plainShirtMode && (
       <CatalogFilters
         size={size}
         category={categoryFree}
@@ -441,6 +545,13 @@ export function CatalogClient({
       {!loading && !error && displayedProducts.length > 0 && (
         <CatalogSections products={displayedProducts} flat={kitsMode} />
       )}
+      {chosenPlainShirt ? (
+        <PlainShirtLineButtons
+          selectedId={chosenPlainShirt.id}
+          onChoose={choosePlainShirt}
+          compact
+        />
+      ) : null}
         </>
       )}
 

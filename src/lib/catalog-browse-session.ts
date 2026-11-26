@@ -11,6 +11,8 @@ export type CatalogBrowseSnapshot = {
   categoryFree: string;
   wizardDone: boolean;
   wizardGuidedFilter: WizardGuidedFilter | null;
+  /** Tecido escolhido em CAMISETAS LISAS, quando a visita volta do carrinho. */
+  plainShirtLineId?: "suedine" | "30.1" | null;
 };
 
 const SNAPSHOT_KEY = "dycashop.catalogBrowseSnapshot";
@@ -61,6 +63,10 @@ function normalizeSnapshot(raw: unknown): CatalogBrowseSnapshot | null {
       parsed.wizardGuidedFilter &&
       typeof parsed.wizardGuidedFilter === "object"
         ? (parsed.wizardGuidedFilter as WizardGuidedFilter)
+        : null,
+    plainShirtLineId:
+      parsed.plainShirtLineId === "suedine" || parsed.plainShirtLineId === "30.1"
+        ? parsed.plainShirtLineId
         : null,
   };
 }
