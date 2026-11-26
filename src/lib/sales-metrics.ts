@@ -3,7 +3,10 @@
  * KITs PRONTOS usam o custo das peças da composição (ex.: 5 bermudas + 5 camisetas), não 1× a categoria do kit.
  */
 import { readyKitLineCost } from "@/lib/kit-piece-cost";
-import { pricingGroupLabel } from "@/lib/plain-shirt-lines";
+import {
+  plainShirtLineForProduct,
+  pricingGroupLabel,
+} from "@/lib/plain-shirt-lines";
 
 export type CategoryCostMap = Record<string, number>;
 
@@ -66,7 +69,9 @@ function lineCost(it: OrderItemSaleRow, costs: CategoryCostMap): number {
   const kit = readyKitLineCost(it, costs);
   if (kit != null) return kit;
   const cat = resolveCategory(it);
-  const unit = costs[cat] ?? costs["Sem categoria"] ?? 0;
+  const shirt = plainShirtLineForProduct(cat, it.snapshot_brand);
+  const unit =
+    shirt?.costPerPiece ?? costs[cat] ?? costs["Sem categoria"] ?? 0;
   return it.quantity * unit;
 }
 
@@ -209,7 +214,9 @@ export function aggregateSalesMetrics(
         categoryRevenue > 0
           ? categoryRevenue * (qtyByCategory[catKey] > 0 ? qty / qtyByCategory[catKey]! : 0)
           : orderRevenue * (qty / orderPieces);
+      const shirt = plainShirtLineForProduct(folder, it.snapshot_brand);
       const unitCost =
+        shirt?.costPerPiece ??
         normalizedCosts[normalizeKey(folder)] ??
         normalizedCosts[normalizeKey("Sem categoria")] ??
         0;

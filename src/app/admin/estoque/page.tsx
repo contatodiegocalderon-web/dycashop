@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminPurpleCard, AdminPurpleStatCard } from "@/components/admin/admin-purple-card";
 import { CategoryPieChart } from "@/components/admin/metrics-charts";
 import { useAdminAuth } from "@/contexts/admin-auth";
+import { plainShirtLineFromGroup } from "@/lib/plain-shirt-lines";
 import type { CategoryStockSummary, StockInventorySnapshot } from "@/lib/stock-inventory";
 
 type ApiPayload = StockInventorySnapshot & {
@@ -35,6 +36,8 @@ function unitCostForCategory(
   category: string,
   costs: Record<string, number>
 ): number {
+  const shirt = plainShirtLineFromGroup(category);
+  if (shirt) return shirt.costPerPiece;
   if (costs[category] != null) return costs[category];
   return costs["Sem categoria"] ?? 0;
 }

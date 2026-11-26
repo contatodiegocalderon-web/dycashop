@@ -375,6 +375,7 @@ export function CatalogClient({
               config={{
                 videoUrl: line.videoUrl,
                 wholesaleTiers: line.wholesaleTiers,
+                retailPricePerPiece: line.retailPricePerPiece,
               }}
               showVideoOnMobile
             />

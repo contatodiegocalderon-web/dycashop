@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
 
     if (isOwner) {
       const { rows: products } = await fetchAllProductsForInventory<ProductStockRow>(
-        "category, size, stock, status, updated_at"
+        "category, brand, size, stock, status, updated_at"
       );
       const snap = aggregateStockInventory(products);
       estoque = {

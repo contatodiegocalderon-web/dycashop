@@ -658,7 +658,15 @@ export default function AdminCategoriasPage() {
                       <ul className="mt-2 list-disc space-y-1 pl-4">
                         {PLAIN_SHIRT_LINES.map((line) => (
                           <li key={line.id}>
-                            {line.label}:{" "}
+                            {line.label}: varejo R${" "}
+                            {line.retailPricePerPiece.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                            })}
+                            , {line.weightGrams} g, custo R${" "}
+                            {line.costPerPiece.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                            })}
+                            . Atacado:{" "}
                             {line.wholesaleTiers
                               .map(
                                 (tier) =>

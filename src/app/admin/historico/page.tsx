@@ -9,7 +9,10 @@ import {
 import { useAdminAuth } from "@/contexts/admin-auth";
 import { readyKitLineCost } from "@/lib/kit-piece-cost";
 import { totalsByCategoryFromOrderItems } from "@/lib/order-category-totals";
-import { catalogCategoryFromPricingGroup } from "@/lib/plain-shirt-lines";
+import {
+  catalogCategoryFromPricingGroup,
+  plainShirtLineFromGroup,
+} from "@/lib/plain-shirt-lines";
 import { groupOrdersByLocalDay } from "@/lib/order-day-groups";
 import type { OrderItemRow, OrderRow } from "@/types";
 
@@ -194,10 +197,16 @@ function calculateOrderProfit(order: OrderRow, costs: Record<string, number>): n
   let profit = 0;
   for (const line of lines) {
     const parent = catalogCategoryFromPricingGroup(line.label);
+    const shirt = plainShirtLineFromGroup(line.label);
     const key = normalizeKey(parent);
-    const unitCost = costs[key] ?? costs[normalizeKey("Sem categoria")] ?? 0;
-    const lineCost =
-      parent === line.label
+    const unitCost =
+      shirt?.costPerPiece ??
+      costs[key] ??
+      costs[normalizeKey("Sem categoria")] ??
+      0;
+    const lineCost = shirt
+      ? line.qty * shirt.costPerPiece
+      : parent === line.label
         ? (costsByLabel.get(line.label) ?? line.qty * unitCost)
         : line.qty * unitCost;
     const lineRevenue =

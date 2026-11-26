@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient();
     const { rows: all, readVia, expectedCount, warning } =
       await fetchAllProductsForInventory<ProductStockRow>(
-        "category, size, stock, status, updated_at"
+        "category, brand, size, stock, status, updated_at"
       );
 
     const snapshot = aggregateStockInventory(all);

@@ -1,7 +1,9 @@
+import { pricingGroupLabel } from "@/lib/plain-shirt-lines";
 import { compareProductSizes } from "@/lib/product-sizes";
 
 export type ProductStockRow = {
   category: string | null;
+  brand?: string | null;
   size: string;
   stock: number;
   status: string;
@@ -63,7 +65,7 @@ export function aggregateStockInventory(
   let catalogLastUpdatedAt: string | null = null;
 
   for (const p of products) {
-    const cat = categoryLabel(p.category);
+    const cat = pricingGroupLabel(categoryLabel(p.category), p.brand);
     const size = normalizeSize(p.size);
     const stock = Math.max(0, Number(p.stock) || 0);
 

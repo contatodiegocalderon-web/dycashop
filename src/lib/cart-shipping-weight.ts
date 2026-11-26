@@ -1,3 +1,4 @@
+import { plainShirtLineForProduct } from "@/lib/plain-shirt-lines";
 import type { CartLine } from "@/types";
 
 export function normalizeCategoryLabel(raw: string | null | undefined): string {
@@ -49,11 +50,16 @@ export function totalCartWeightGrams(
 }
 
 export function cartLinesToWeightInput(lines: CartLine[]) {
-  return lines.map((l) => ({
-    category: normalizeCategoryLabel(l.product.category),
-    quantity: l.quantity,
-    weightGrams: l.product.weight_grams ?? null,
-  }));
+  return lines.map((l) => {
+    const shirt = plainShirtLineForProduct(l.product.category, l.product.brand);
+    const own = Number(l.product.weight_grams);
+    return {
+      category: normalizeCategoryLabel(l.product.category),
+      quantity: l.quantity,
+      weightGrams:
+        Number.isFinite(own) && own > 0 ? own : shirt?.weightGrams ?? null,
+    };
+  });
 }
 
 export function gramsToCorreiosKg(grams: number): number {

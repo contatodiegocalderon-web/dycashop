@@ -1,4 +1,3 @@
-import { resolveUnitPrice } from "@/lib/cart-pricing";
 import type { WholesaleTier } from "@/lib/category-showcase";
 
 function lookupKey(label: string): string {
@@ -19,6 +18,10 @@ export type PlainShirtLine = {
   brand: string;
   videoUrl: string;
   wholesaleTiers: WholesaleTier[];
+  /** Preço unitário no varejo (menos de 5 peças no carrinho). */
+  retailPricePerPiece: number;
+  weightGrams: number;
+  costPerPiece: number;
 };
 
 /** Faixas fechadas até a próxima quantidade informada; a última fica em aberto. */
@@ -28,6 +31,9 @@ export const PLAIN_SHIRT_LINES: PlainShirtLine[] = [
     label: "SUEDINE",
     brand: "SUEDINE",
     videoUrl: "https://www.youtube.com/shorts/w4DaUxyHjhQ",
+    retailPricePerPiece: 45,
+    weightGrams: 600,
+    costPerPiece: 23.5,
     wholesaleTiers: [
       { minQty: 10, maxQty: 19, price: 35 },
       { minQty: 20, maxQty: 29, price: 30 },
@@ -39,6 +45,9 @@ export const PLAIN_SHIRT_LINES: PlainShirtLine[] = [
     label: "30.1",
     brand: "30.1",
     videoUrl: "https://www.youtube.com/shorts/VOrK98bJyzI",
+    retailPricePerPiece: 30,
+    weightGrams: 300,
+    costPerPiece: 13.5,
     wholesaleTiers: [
       { minQty: 10, maxQty: 19, price: 25 },
       { minQty: 20, maxQty: 29, price: 22 },
@@ -84,13 +93,30 @@ export function catalogCategoryFromPricingGroup(label: string): string {
   return isPlainShirtCategory(parent) ? parent : label;
 }
 
+export function plainShirtLineForProduct(
+  category: string | null | undefined,
+  brand: string | null | undefined
+): PlainShirtLine | null {
+  if (!isPlainShirtCategory(category)) return null;
+  return plainShirtLineForBrand(brand);
+}
+
+export function plainShirtLineFromGroup(groupLabel: string): PlainShirtLine | null {
+  if (catalogCategoryFromPricingGroup(groupLabel) === groupLabel) return null;
+  const lineLabel = groupLabel.split(GROUP_SEPARATOR).pop()?.trim() ?? "";
+  return plainShirtLineForBrand(lineLabel);
+}
+
 export function plainShirtUnitPriceForGroup(
   groupLabel: string,
   qty: number
 ): number | null {
-  if (catalogCategoryFromPricingGroup(groupLabel) === groupLabel) return null;
-  const lineLabel = groupLabel.split(GROUP_SEPARATOR).pop()?.trim() ?? "";
-  const line = plainShirtLineForBrand(lineLabel);
-  if (!line) return null;
-  return resolveUnitPrice(line.wholesaleTiers, qty);
+  const line = plainShirtLineFromGroup(groupLabel);
+  if (!line || qty < 1) return null;
+  for (const tier of line.wholesaleTiers) {
+    if (qty >= tier.minQty && (tier.maxQty == null || qty <= tier.maxQty)) {
+      return tier.price;
+    }
+  }
+  return null;
 }

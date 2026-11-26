@@ -1,5 +1,6 @@
 import { CRM_ATACADO_MIN_PIECES } from "@/lib/crm-funnel";
 import type { WholesaleTier } from "@/lib/category-showcase";
+import { plainShirtLineForProduct } from "@/lib/plain-shirt-lines";
 import { isKitProduct, parseKitUnitPrice } from "@/lib/kits-category";
 import type { CartLine } from "@/types";
 
@@ -126,6 +127,22 @@ export function computeCartPricing(
         unitPrice: null,
         lineTotal: null,
         isWholesalePrice: true,
+      };
+    }
+
+    const shirt = plainShirtLineForProduct(
+      line.product.category,
+      line.product.brand
+    );
+    if (shirt) {
+      const lineTotal = shirt.retailPricePerPiece * line.quantity;
+      hasAnyPrice = true;
+      subtotal += lineTotal;
+      return {
+        productId: line.productId,
+        unitPrice: shirt.retailPricePerPiece,
+        lineTotal,
+        isWholesalePrice: false,
       };
     }
 
