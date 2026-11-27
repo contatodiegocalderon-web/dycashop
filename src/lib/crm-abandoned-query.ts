@@ -136,41 +136,16 @@ export function hasOpenOrderFlag(
 }
 
 /**
- * Após um pedido PAGO: cancela pendentes anteriores do mesmo WhatsApp,
- * apaga CANCELADO antigos e zera follow-up da etapa 1.
- * Um carrinho novo depois desta compra volta a entrar no fluxo normal.
+ * Após um pedido PAGO: só zera o follow-up da etapa 1.
+ * Os outros pedidos do mesmo WhatsApp ficam na lista para serem confirmados.
  */
 export async function settleAbandonedAfterPaidOrder(
   admin: Admin,
   rawWa: string,
   confirmedOrderId: string
 ): Promise<void> {
-  const keys = expandWhatsappQueryKeys([normalizeWhatsappDigits(rawWa)]);
-  if (keys.length === 0) return;
-
-  const { data: pending, error: pErr } = await admin
-    .from("orders")
-    .select("id")
-    .eq("status", "PENDENTE_PAGAMENTO")
-    .in("customer_whatsapp", keys)
-    .neq("id", confirmedOrderId);
-
-  if (pErr) throw new Error(pErr.message);
-
-  const pendingIds = (pending ?? []).map((r) => (r as { id: string }).id);
-  if (pendingIds.length > 0) {
-    const { error: cErr } = await admin
-      .from("orders")
-      .update({
-        status: "CANCELADO",
-        updated_at: new Date().toISOString(),
-      })
-      .in("id", pendingIds);
-    if (cErr) throw new Error(cErr.message);
-  }
-
+  void confirmedOrderId;
   await clearAbandonedCrmHistory(admin, rawWa);
-  await purgeCancelledOrdersOnConfirm(admin, rawWa);
 }
 
 /** Limpa follow-ups e cliques de abandonado após confirmação de compra. */
@@ -189,39 +164,6 @@ export async function clearAbandonedCrmHistory(
     .from("crm_abandoned_whatsapp_clicks")
     .delete()
     .in("whatsapp_digits", keys);
-}
-
-/**
- * Remove pedidos CANCELADO do cliente ao confirmar compra.
- * Etapa 1 só volta a listá-lo quando houver novo cancelamento após esta compra.
- */
-export async function purgeCancelledOrdersOnConfirm(
-  admin: Admin,
-  rawWa: string
-): Promise<number> {
-  const keys = expandWhatsappQueryKeys([normalizeWhatsappDigits(rawWa)]);
-  if (keys.length === 0) return 0;
-
-  const { data, error } = await admin
-    .from("orders")
-    .select("id")
-    .eq("status", "CANCELADO")
-    .in("customer_whatsapp", keys);
-
-  if (error) throw new Error(error.message);
-
-  const ids = (data ?? []).map((r) => (r as { id: string }).id);
-  if (ids.length === 0) {
-    await admin.from("crm_hidden_contacts").delete().in("whatsapp_digits", keys);
-    return 0;
-  }
-
-  const { error: delErr } = await admin.from("orders").delete().in("id", ids);
-  if (delErr) throw new Error(delErr.message);
-
-  await admin.from("crm_hidden_contacts").delete().in("whatsapp_digits", keys);
-
-  return ids.length;
 }
 
 /** Oculta lead da etapa 1 (crm_hidden_contacts). */
